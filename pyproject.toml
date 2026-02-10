@@ -25,6 +25,7 @@ dependencies = [
     "httpx>=0.28.0",
     "typer>=0.15.0",
     "rich>=13.9.0",
+    "mcp[cli]>=1.2.0",
 ]
 
 [project.optional-dependencies]
@@ -46,6 +47,7 @@ embeddings-local = [
 
 [project.scripts]
 anki-atlas = "apps.cli:app"
+anki-atlas-mcp = "apps.mcp.cli:main"
 
 [build-system]
 requires = ["hatchling"]
