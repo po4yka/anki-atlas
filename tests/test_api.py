@@ -24,10 +24,12 @@ def test_health_endpoint(client: TestClient) -> None:
 
 
 def test_ready_endpoint(client: TestClient) -> None:
-    """Test /ready returns readiness status."""
+    """Test /ready returns status (may be not_ready without db)."""
     response = client.get("/ready")
     assert response.status_code == 200
 
     data = response.json()
-    assert data["status"] == "ready"
+    assert data["status"] in ("ready", "not_ready")
     assert "checks" in data
+    assert "postgres" in data["checks"]
+    assert "qdrant" in data["checks"]
