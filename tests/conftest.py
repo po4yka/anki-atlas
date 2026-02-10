@@ -3,13 +3,14 @@
 import json
 import sqlite3
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 
 
 @pytest.fixture
-def temp_dir() -> Path:
+def temp_dir() -> Generator[Path]:
     """Create a temporary directory for tests."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield Path(tmpdir)
