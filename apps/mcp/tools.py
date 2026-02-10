@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Annotated
 
 from pydantic import Field
 
 from apps.mcp.server import mcp
+from packages.common.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(module=__name__)
 
 
 @mcp.tool()
@@ -19,15 +19,9 @@ async def ankiatlas_search(
     deck_filter: Annotated[
         list[str] | None, Field(description="Filter by deck names (optional)")
     ] = None,
-    tag_filter: Annotated[
-        list[str] | None, Field(description="Filter by tags (optional)")
-    ] = None,
-    semantic_only: Annotated[
-        bool, Field(description="Use only semantic search (no FTS)")
-    ] = False,
-    fts_only: Annotated[
-        bool, Field(description="Use only full-text search (no semantic)")
-    ] = False,
+    tag_filter: Annotated[list[str] | None, Field(description="Filter by tags (optional)")] = None,
+    semantic_only: Annotated[bool, Field(description="Use only semantic search (no FTS)")] = False,
+    fts_only: Annotated[bool, Field(description="Use only full-text search (no semantic)")] = False,
 ) -> str:
     """Search Anki notes using hybrid semantic and full-text search.
 
@@ -68,18 +62,14 @@ async def ankiatlas_search(
         return format_search_result(result, note_details)
 
     except Exception as e:
-        logger.exception("Search failed")
+        logger.exception("search_failed", query=query, limit=limit)
         return f"**Error**: Search failed - {e}"
 
 
 @mcp.tool()
 async def ankiatlas_topic_coverage(
-    topic_path: Annotated[
-        str, Field(description="Topic path to analyze (e.g., 'math/calculus')")
-    ],
-    include_subtree: Annotated[
-        bool, Field(description="Include child topics in metrics")
-    ] = True,
+    topic_path: Annotated[str, Field(description="Topic path to analyze (e.g., 'math/calculus')")],
+    include_subtree: Annotated[bool, Field(description="Include child topics in metrics")] = True,
 ) -> str:
     """Get coverage metrics for a topic in your Anki collection.
 
@@ -101,15 +91,13 @@ async def ankiatlas_topic_coverage(
         return format_coverage_result(coverage)
 
     except Exception as e:
-        logger.exception("Coverage analysis failed")
+        logger.exception("coverage_analysis_failed", topic_path=topic_path)
         return f"**Error**: Coverage analysis failed - {e}"
 
 
 @mcp.tool()
 async def ankiatlas_topic_gaps(
-    topic_path: Annotated[
-        str, Field(description="Root topic path to analyze (e.g., 'math')")
-    ],
+    topic_path: Annotated[str, Field(description="Root topic path to analyze (e.g., 'math')")],
     min_coverage: Annotated[
         int, Field(description="Minimum notes for a topic to be considered covered", ge=1)
     ] = 1,
@@ -131,7 +119,7 @@ async def ankiatlas_topic_gaps(
         return format_gaps_result(gaps, topic_path)
 
     except Exception as e:
-        logger.exception("Gap analysis failed")
+        logger.exception("gap_analysis_failed", topic_path=topic_path, min_coverage=min_coverage)
         return f"**Error**: Gap analysis failed - {e}"
 
 
@@ -146,9 +134,7 @@ async def ankiatlas_duplicates(
     deck_filter: Annotated[
         list[str] | None, Field(description="Filter by deck names (optional)")
     ] = None,
-    tag_filter: Annotated[
-        list[str] | None, Field(description="Filter by tags (optional)")
-    ] = None,
+    tag_filter: Annotated[list[str] | None, Field(description="Filter by tags (optional)")] = None,
 ) -> str:
     """Find near-duplicate notes in your Anki collection.
 
@@ -172,15 +158,15 @@ async def ankiatlas_duplicates(
         return format_duplicates_result(clusters, stats)
 
     except Exception as e:
-        logger.exception("Duplicate detection failed")
+        logger.exception(
+            "duplicate_detection_failed", threshold=threshold, max_clusters=max_clusters
+        )
         return f"**Error**: Duplicate detection failed - {e}"
 
 
 @mcp.tool()
 async def ankiatlas_sync(
-    collection_path: Annotated[
-        str, Field(description="Path to Anki collection.anki2 file")
-    ],
+    collection_path: Annotated[str, Field(description="Path to Anki collection.anki2 file")],
     run_index: Annotated[
         bool, Field(description="Also rebuild the vector index after sync")
     ] = False,
@@ -225,10 +211,11 @@ async def ankiatlas_sync(
                 if index_stats.errors:
                     result += f"- **Errors**: {len(index_stats.errors)}\n"
             except Exception as e:
+                logger.exception("sync_indexing_failed", collection_path=collection_path)
                 result += f"*Indexing failed: {e}*"
 
         return result
 
     except Exception as e:
-        logger.exception("Sync failed")
+        logger.exception("sync_failed", collection_path=collection_path)
         return f"**Error**: Sync failed - {e}"

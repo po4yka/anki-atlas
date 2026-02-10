@@ -6,6 +6,9 @@ from typing import Any, cast
 from qdrant_client import AsyncQdrantClient, models
 
 from packages.common.config import Settings, get_settings
+from packages.common.logging import get_logger
+
+logger = get_logger(module=__name__)
 
 # Collection name for Anki notes
 COLLECTION_NAME = "anki_notes"
@@ -338,11 +341,7 @@ class QdrantRepository:
             with_payload=["note_id"],
         )
 
-        return [
-            (int(hit.payload["note_id"]), hit.score)
-            for hit in results.points
-            if hit.payload
-        ]
+        return [(int(hit.payload["note_id"]), hit.score) for hit in results.points if hit.payload]
 
     async def find_similar_to_note(
         self,
@@ -434,6 +433,7 @@ class QdrantRepository:
                 "status": info.status.value,
             }
         except Exception:
+            logger.warning("qdrant_collection_info_failed", collection=self.collection_name)
             return None
 
     async def health_check(self) -> bool:
@@ -448,6 +448,7 @@ class QdrantRepository:
             await client.get_collections()
             return True
         except Exception:
+            logger.warning("qdrant_health_check_failed")
             return False
 
 

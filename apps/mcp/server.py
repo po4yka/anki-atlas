@@ -1,16 +1,15 @@
 """FastMCP server for Anki Atlas tools."""
 
-import logging
 import sys
 
 from mcp.server.fastmcp import FastMCP
 
-# Configure logging to stderr (required for stdio transport)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    stream=sys.stderr,
-)
+from packages.common.config import get_settings
+from packages.common.logging import configure_logging
+
+# Configure structured logging to stderr (required for stdio transport)
+settings = get_settings()
+configure_logging(debug=settings.debug, json_output=True, log_stream=sys.stderr)
 
 # Initialize FastMCP server
 mcp = FastMCP(

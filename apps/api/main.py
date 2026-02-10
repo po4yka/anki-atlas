@@ -11,7 +11,10 @@ from pydantic import BaseModel
 
 from packages.common.config import get_settings
 from packages.common.database import check_connection, close_pool, run_migrations
+from packages.common.logging import configure_logging, get_logger
 from packages.indexer.qdrant import close_qdrant_repository, get_qdrant_repository
+
+logger = get_logger(module=__name__)
 
 
 class SyncRequest(BaseModel):
@@ -184,6 +187,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Application lifespan handler for startup/shutdown."""
     # Startup
     settings = get_settings()
+    configure_logging(debug=settings.debug, json_output=not settings.debug)
     app.state.settings = settings
     yield
     # Shutdown
@@ -229,6 +233,7 @@ def create_app() -> FastAPI:
             qdrant = await get_qdrant_repository()
             qdrant_ok = await qdrant.health_check()
         except Exception:
+            logger.warning("ready_check_qdrant_failed")
             qdrant_ok = False
 
         all_ok = postgres_ok and qdrant_ok
@@ -300,6 +305,7 @@ def create_app() -> FastAPI:
                 response.notes_skipped = index_stats.notes_skipped
                 response.index_errors = index_stats.errors if index_stats.errors else None
             except Exception as e:
+                logger.exception("sync_indexing_failed", source=str(source_path))
                 response.index_errors = [str(e)]
 
         return response
@@ -343,6 +349,7 @@ def create_app() -> FastAPI:
                 "collection": info,
             }
         except Exception as e:
+            logger.exception("index_info_failed")
             return {
                 "status": "error",
                 "error": str(e),

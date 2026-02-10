@@ -8,8 +8,11 @@ from psycopg import AsyncConnection
 
 from packages.common.config import Settings, get_settings
 from packages.common.database import get_connection
+from packages.common.logging import get_logger
 from packages.indexer.embeddings import EmbeddingProvider, get_embedding_provider
 from packages.indexer.qdrant import NotePayload, QdrantRepository, get_qdrant_repository
+
+logger = get_logger(module=__name__)
 
 
 @dataclass
@@ -130,6 +133,7 @@ class IndexService:
         try:
             vectors = await provider.embed(texts)
         except Exception as e:
+            logger.exception("embedding_failed", batch_size=len(texts))
             stats.errors.append(f"Embedding failed: {e}")
             return stats
 
@@ -154,6 +158,7 @@ class IndexService:
             upserted = await qdrant.upsert_vectors(vectors, payloads)
             stats.notes_embedded = upserted
         except Exception as e:
+            logger.exception("qdrant_upsert_failed", batch_size=len(vectors))
             stats.errors.append(f"Qdrant upsert failed: {e}")
 
         return stats
@@ -280,9 +285,7 @@ class IndexService:
         conn: AsyncConnection[dict[str, Any]],
     ) -> list[int]:
         """Get IDs of deleted notes that may still be in Qdrant."""
-        result = await conn.execute(
-            "SELECT note_id FROM notes WHERE deleted_at IS NOT NULL"
-        )
+        result = await conn.execute("SELECT note_id FROM notes WHERE deleted_at IS NOT NULL")
         return [row["note_id"] async for row in result]
 
     async def _update_index_metadata(self) -> None:
