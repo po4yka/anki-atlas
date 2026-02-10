@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  PYTHON_VERSION: "3.13"
+  UV_CACHE_DIR: /tmp/.uv-cache
 
 jobs:
   lint:
@@ -18,18 +18,21 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
+        run: uv python install
 
       - name: Install dependencies
-        run: uv pip install --system -e ".[dev]"
+        run: uv sync --frozen
 
       - name: Run ruff check
-        run: ruff check apps packages tests
+        run: uv run ruff check apps packages tests
 
       - name: Run ruff format check
-        run: ruff format --check apps packages tests
+        run: uv run ruff format --check apps packages tests
 
   typecheck:
     name: Type Check
@@ -39,15 +42,18 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
+        run: uv python install
 
       - name: Install dependencies
-        run: uv pip install --system -e ".[dev]"
+        run: uv sync --frozen
 
       - name: Run mypy
-        run: mypy apps packages
+        run: uv run mypy apps packages
 
   test:
     name: Test
@@ -57,15 +63,18 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
+        run: uv python install
 
       - name: Install dependencies
-        run: uv pip install --system -e ".[dev]"
+        run: uv sync --frozen
 
       - name: Run tests
-        run: pytest tests/ -v --cov --cov-report=xml
+        run: uv run pytest tests/ -v --cov --cov-report=xml
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -106,15 +115,34 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
+        run: uv python install
 
       - name: Install dependencies
-        run: uv pip install --system -e ".[dev]"
+        run: uv sync --frozen
 
       - name: Run integration tests
         env:
           ANKIATLAS_POSTGRES_URL: postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas
           ANKIATLAS_QDRANT_URL: http://localhost:6333
-        run: pytest tests/ -v -m integration || echo "No integration tests yet"
+        run: uv run pytest tests/ -v -m integration || echo "No integration tests yet"
+
+  # Ensure lockfile is up to date
+  lockfile:
+    name: Check Lockfile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Check lockfile is up to date
+        run: uv lock --check

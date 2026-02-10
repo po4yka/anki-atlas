@@ -1,14 +1,16 @@
-.PHONY: help install dev up down logs test lint format typecheck check clean
+.PHONY: help install sync dev up down logs test lint format typecheck check clean lock
 
 # Default target
 help:
 	@echo "Anki Atlas - Development Commands"
 	@echo ""
 	@echo "Setup:"
-	@echo "  install     Install dependencies with uv"
+	@echo "  install     Install dependencies with uv (creates venv)"
+	@echo "  sync        Sync dependencies from lockfile"
+	@echo "  lock        Update uv.lock"
 	@echo ""
 	@echo "Development:"
-	@echo "  dev         Run API server locally (requires deps installed)"
+	@echo "  dev         Run API server locally"
 	@echo "  up          Start postgres + qdrant via docker compose"
 	@echo "  down        Stop docker compose services"
 	@echo "  logs        Tail docker compose logs"
@@ -25,11 +27,17 @@ help:
 
 # Setup
 install:
-	uv pip install -e ".[dev]"
+	uv sync --all-extras
+
+sync:
+	uv sync
+
+lock:
+	uv lock
 
 # Development
 dev:
-	uvicorn apps.api.main:app --reload --host 0.0.0.0 --port 8000
+	uv run uvicorn apps.api.main:app --reload --host 0.0.0.0 --port 8000
 
 up:
 	docker compose up -d postgres qdrant
@@ -42,25 +50,25 @@ logs:
 
 # Quality
 test:
-	pytest tests/ -v
+	uv run pytest tests/ -v
 
 test-cov:
-	pytest tests/ -v --cov --cov-report=term-missing
+	uv run pytest tests/ -v --cov --cov-report=term-missing
 
 lint:
-	ruff check apps packages tests
+	uv run ruff check apps packages tests
 
 format:
-	ruff format apps packages tests
-	ruff check --fix apps packages tests
+	uv run ruff format apps packages tests
+	uv run ruff check --fix apps packages tests
 
 typecheck:
-	mypy apps packages
+	uv run mypy apps packages
 
 check: lint typecheck test
 
 # Cleanup
 clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov
-	rm -rf dist build *.egg-info
+	rm -rf dist build *.egg-info .venv
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
