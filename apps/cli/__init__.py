@@ -35,15 +35,31 @@ def sync(
         "--migrate/--no-migrate",
         help="Run database migrations before sync",
     ),
+    index: bool = typer.Option(
+        True,
+        "--index/--no-index",
+        help="Index notes to vector database after sync",
+    ),
+    force_reindex: bool = typer.Option(
+        False,
+        "--force-reindex",
+        help="Force re-embedding all notes",
+    ),
 ) -> None:
     """Sync Anki collection to the index."""
-    asyncio.run(_sync_async(source, run_migrations))
+    asyncio.run(_sync_async(source, run_migrations, index, force_reindex))
 
 
-async def _sync_async(source: str, run_migrations: bool) -> None:
+async def _sync_async(
+    source: str,
+    run_migrations: bool,
+    index: bool,
+    force_reindex: bool,
+) -> None:
     """Async sync implementation."""
     from packages.anki.sync import sync_anki_collection
     from packages.common.database import run_migrations as db_migrate
+    from packages.indexer.service import index_all_notes
 
     source_path = Path(source).expanduser().resolve()
 
@@ -64,29 +80,53 @@ async def _sync_async(source: str, run_migrations: bool) -> None:
             console.print(f"[red]Migration error:[/red] {e}")
             raise typer.Exit(1) from None
 
-    # Run sync
-    console.print("Syncing collection...")
+    # Run sync to PostgreSQL
+    console.print("Syncing collection to PostgreSQL...")
     try:
-        stats = await sync_anki_collection(source_path)
+        sync_stats = await sync_anki_collection(source_path)
 
-        # Display results
-        table = Table(title="Sync Complete")
+        table = Table(title="PostgreSQL Sync")
         table.add_column("Entity", style="cyan")
         table.add_column("Count", justify="right", style="green")
 
-        table.add_row("Decks", str(stats.decks_upserted))
-        table.add_row("Models", str(stats.models_upserted))
-        table.add_row("Notes", str(stats.notes_upserted))
-        table.add_row("Notes deleted", str(stats.notes_deleted))
-        table.add_row("Cards", str(stats.cards_upserted))
-        table.add_row("Card stats", str(stats.card_stats_upserted))
-        table.add_row("Duration (ms)", str(stats.duration_ms))
+        table.add_row("Decks", str(sync_stats.decks_upserted))
+        table.add_row("Models", str(sync_stats.models_upserted))
+        table.add_row("Notes", str(sync_stats.notes_upserted))
+        table.add_row("Notes deleted", str(sync_stats.notes_deleted))
+        table.add_row("Cards", str(sync_stats.cards_upserted))
+        table.add_row("Card stats", str(sync_stats.card_stats_upserted))
+        table.add_row("Duration (ms)", str(sync_stats.duration_ms))
 
         console.print(table)
 
     except Exception as e:
         console.print(f"[red]Sync error:[/red] {e}")
         raise typer.Exit(1) from None
+
+    # Run indexing if requested
+    if index:
+        console.print("\nIndexing notes to Qdrant...")
+        try:
+            index_stats = await index_all_notes(force_reindex=force_reindex)
+
+            table = Table(title="Vector Index")
+            table.add_column("Metric", style="cyan")
+            table.add_column("Count", justify="right", style="green")
+
+            table.add_row("Notes processed", str(index_stats.notes_processed))
+            table.add_row("Notes embedded", str(index_stats.notes_embedded))
+            table.add_row("Notes skipped", str(index_stats.notes_skipped))
+            table.add_row("Notes deleted", str(index_stats.notes_deleted))
+
+            console.print(table)
+
+            if index_stats.errors:
+                for error in index_stats.errors:
+                    console.print(f"[yellow]Warning:[/yellow] {error}")
+
+        except Exception as e:
+            console.print(f"[red]Indexing error:[/red] {e}")
+            raise typer.Exit(1) from None
 
 
 @app.command()
@@ -108,6 +148,47 @@ async def _migrate_async() -> None:
             console.print("[yellow]No migrations to apply[/yellow]")
     except Exception as e:
         console.print(f"[red]Migration error:[/red] {e}")
+        raise typer.Exit(1) from None
+
+
+@app.command()
+def index(
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Force re-embedding all notes",
+    ),
+) -> None:
+    """Index notes from PostgreSQL to vector database."""
+    asyncio.run(_index_async(force))
+
+
+async def _index_async(force: bool) -> None:
+    """Async index implementation."""
+    from packages.indexer.service import index_all_notes
+
+    console.print("Indexing notes to Qdrant...")
+    try:
+        stats = await index_all_notes(force_reindex=force)
+
+        table = Table(title="Vector Index")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Count", justify="right", style="green")
+
+        table.add_row("Notes processed", str(stats.notes_processed))
+        table.add_row("Notes embedded", str(stats.notes_embedded))
+        table.add_row("Notes skipped", str(stats.notes_skipped))
+        table.add_row("Notes deleted", str(stats.notes_deleted))
+
+        console.print(table)
+
+        if stats.errors:
+            for error in stats.errors:
+                console.print(f"[yellow]Warning:[/yellow] {error}")
+
+    except Exception as e:
+        console.print(f"[red]Indexing error:[/red] {e}")
         raise typer.Exit(1) from None
 
 
