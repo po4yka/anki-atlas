@@ -1,0 +1,63 @@
+# Root docker-compose for development
+# For full infrastructure, see infra/docker-compose.yml
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ankiatlas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ankiatlas
+      POSTGRES_PASSWORD: ankiatlas
+      POSTGRES_DB: ankiatlas
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ankiatlas -d ankiatlas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ankiatlas-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:6333/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ankiatlas-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      ANKIATLAS_POSTGRES_URL: postgresql://ankiatlas:ankiatlas@postgres:5432/ankiatlas
+      ANKIATLAS_QDRANT_URL: http://qdrant:6333
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    profiles:
+      - full
+
+volumes:
+  postgres_data:
+  qdrant_data:
