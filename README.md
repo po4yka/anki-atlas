@@ -7,7 +7,7 @@ Searchable hybrid index for Anki collections with agent-friendly tools.
 - **Hybrid Search**: Combines semantic (vector) and keyword (FTS) search with RRF fusion
 - **Topic Coverage**: Analyze what topics your cards cover and identify gaps
 - **Duplicate Detection**: Find near-duplicate cards using embedding similarity
-- **Agent Tools**: MCP server for integration with coding agents (Claude Code, etc.)
+- **Agent Tools**: MCP server for integration with AI agents (Claude Code, Claude Desktop)
 
 ## Quick Start
 
@@ -24,11 +24,17 @@ Searchable hybrid index for Anki collections with agent-friendly tools.
 git clone https://github.com/po4yka/anki-atlas.git
 cd anki-atlas
 
-# Start dependencies
+# Start dependencies (PostgreSQL + Qdrant)
 make up
 
 # Install Python dependencies
 make install
+
+# Run database migrations
+anki-atlas migrate
+
+# Sync your Anki collection
+anki-atlas sync --source /path/to/collection.anki2
 
 # Run the API server
 make dev
@@ -57,26 +63,61 @@ Key settings:
 | `ANKIATLAS_POSTGRES_URL` | PostgreSQL connection URL | `postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas` |
 | `ANKIATLAS_QDRANT_URL` | Qdrant server URL | `http://localhost:6333` |
 | `ANKIATLAS_EMBEDDING_PROVIDER` | `openai` or `local` | `openai` |
+| `ANKIATLAS_EMBEDDING_MODEL` | Embedding model name | `text-embedding-3-small` |
 | `ANKIATLAS_ANKI_COLLECTION_PATH` | Path to collection.anki2 | - |
+| `OPENAI_API_KEY` | OpenAI API key (if using openai provider) | - |
 
 ## CLI Usage
 
 ```bash
-# Sync your Anki collection
+# Sync your Anki collection (with indexing)
 anki-atlas sync --source /path/to/collection.anki2
+
+# Sync without indexing
+anki-atlas sync --source /path/to/collection.anki2 --no-index
+
+# Index notes to vector database
+anki-atlas index
 
 # Search cards
 anki-atlas search "compose recomposition" --deck Android --top 20
 
+# Load and view topic taxonomy
+anki-atlas topics --file topics.yml
+
+# Label notes with topics
+anki-atlas topics --file topics.yml --label
+
 # Check topic coverage
-anki-atlas coverage android/compose/state
+anki-atlas coverage programming/python
 
 # Find gaps in coverage
-anki-atlas gaps android --min-coverage 5
+anki-atlas gaps programming --min-coverage 5
 
 # Detect duplicates
 anki-atlas duplicates --threshold 0.92
+
+# Show version
+anki-atlas version
 ```
+
+## MCP Agent Tools
+
+Anki Atlas provides an MCP (Model Context Protocol) server for AI agent integration:
+
+```bash
+# Run the MCP server
+anki-atlas-mcp
+```
+
+Available tools:
+- `ankiatlas_search` - Hybrid semantic + keyword search
+- `ankiatlas_topic_coverage` - Topic coverage metrics
+- `ankiatlas_topic_gaps` - Find knowledge gaps
+- `ankiatlas_duplicates` - Near-duplicate detection
+- `ankiatlas_sync` - Sync Anki collection
+
+See [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) for detailed documentation and example prompts.
 
 ## Development
 
@@ -95,6 +136,23 @@ make test
 
 # Run all checks
 make check
+```
+
+## Project Structure
+
+```
+apps/
+  api/           # FastAPI application
+  cli/           # Typer CLI application
+  mcp/           # MCP server for AI agents
+packages/
+  anki/          # Anki collection reader and sync
+  indexer/       # Embedding and vector indexing
+  analytics/     # Topic coverage, gaps, duplicates
+  search/        # Hybrid search with RRF fusion
+  common/        # Shared config and database
+tests/           # Test suite
+docs/            # Documentation
 ```
 
 ## Architecture

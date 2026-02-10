@@ -41,9 +41,9 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
       "command": "uv",
       "args": ["run", "--directory", "/path/to/anki-atlas", "anki-atlas-mcp"],
       "env": {
-        "DATABASE_URL": "postgresql://user:pass@localhost:5432/anki_atlas",
-        "QDRANT_URL": "http://localhost:6333",
-        "EMBEDDING_PROVIDER": "openai",
+        "ANKIATLAS_POSTGRES_URL": "postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas",
+        "ANKIATLAS_QDRANT_URL": "http://localhost:6333",
+        "ANKIATLAS_EMBEDDING_PROVIDER": "openai",
         "OPENAI_API_KEY": "sk-..."
       }
     }
@@ -63,8 +63,8 @@ Add to your project's `.mcp.json`:
       "args": ["run", "anki-atlas-mcp"],
       "cwd": "/path/to/anki-atlas",
       "env": {
-        "DATABASE_URL": "postgresql://user:pass@localhost:5432/anki_atlas",
-        "QDRANT_URL": "http://localhost:6333"
+        "ANKIATLAS_POSTGRES_URL": "postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas",
+        "ANKIATLAS_QDRANT_URL": "http://localhost:6333"
       }
     }
   }
@@ -210,8 +210,8 @@ Tools return user-friendly error messages prefixed with `**Error**:` instead of 
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `QDRANT_URL` | Yes | Qdrant vector database URL |
-| `EMBEDDING_PROVIDER` | No | "openai" or "local" (default: openai) |
+| `ANKIATLAS_POSTGRES_URL` | Yes | PostgreSQL connection string |
+| `ANKIATLAS_QDRANT_URL` | Yes | Qdrant vector database URL |
+| `ANKIATLAS_EMBEDDING_PROVIDER` | No | "openai" or "local" (default: openai) |
+| `ANKIATLAS_EMBEDDING_MODEL` | No | Model name (default: text-embedding-3-small) |
 | `OPENAI_API_KEY` | If using OpenAI | OpenAI API key for embeddings |
-| `EMBEDDING_MODEL` | No | Model name (default: text-embedding-3-small) |
