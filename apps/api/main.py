@@ -100,6 +100,57 @@ class SearchResponse(BaseModel):
     filters_applied: dict[str, Any]
 
 
+class TopicItem(BaseModel):
+    """A topic in the taxonomy."""
+
+    topic_id: int
+    path: str
+    label: str
+    description: str | None = None
+    note_count: int = 0
+    avg_confidence: float = 0.0
+    mature_count: int = 0
+    depth: int = 0
+
+
+class TopicCoverageResponse(BaseModel):
+    """Coverage metrics for a topic."""
+
+    topic_id: int
+    path: str
+    label: str
+    note_count: int
+    subtree_count: int
+    child_count: int
+    covered_children: int
+    mature_count: int
+    avg_confidence: float
+    weak_notes: int
+    avg_lapses: float
+
+
+class TopicGapItem(BaseModel):
+    """A gap in topic coverage."""
+
+    topic_id: int
+    path: str
+    label: str
+    description: str | None
+    gap_type: str
+    note_count: int
+    threshold: int
+
+
+class TopicGapsResponse(BaseModel):
+    """Response with topic gaps."""
+
+    root_path: str
+    min_coverage: int
+    gaps: list[TopicGapItem]
+    missing_count: int
+    undercovered_count: int
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Application lifespan handler for startup/shutdown."""
@@ -335,6 +386,107 @@ def create_app() -> FastAPI:
                 "total": result.stats.total,
             },
             filters_applied=result.filters_applied,
+        )
+
+    @app.get("/topics", response_class=JSONResponse)
+    async def list_topics(
+        root: str | None = None,
+    ) -> dict[str, Any]:
+        """Get taxonomy tree with coverage info.
+
+        Args:
+            root: Optional root path to filter.
+
+        Returns:
+            List of topics with coverage metrics.
+        """
+        from packages.analytics import AnalyticsService
+
+        service = AnalyticsService()
+        tree = await service.get_taxonomy_tree(root)
+
+        return {
+            "topics": tree,
+            "count": len(tree),
+        }
+
+    @app.get("/topics/{topic_path:path}/coverage", response_model=TopicCoverageResponse)
+    async def topic_coverage(
+        topic_path: str,
+        include_subtree: bool = True,
+    ) -> TopicCoverageResponse:
+        """Get coverage metrics for a topic.
+
+        Args:
+            topic_path: Topic path (e.g., programming/python).
+            include_subtree: Include child topics in metrics.
+
+        Returns:
+            Coverage metrics.
+        """
+        from packages.analytics import AnalyticsService
+
+        service = AnalyticsService()
+        coverage = await service.get_coverage(topic_path, include_subtree)
+
+        if not coverage:
+            raise HTTPException(status_code=404, detail=f"Topic not found: {topic_path}")
+
+        return TopicCoverageResponse(
+            topic_id=coverage.topic_id,
+            path=coverage.path,
+            label=coverage.label,
+            note_count=coverage.note_count,
+            subtree_count=coverage.subtree_count,
+            child_count=coverage.child_count,
+            covered_children=coverage.covered_children,
+            mature_count=coverage.mature_count,
+            avg_confidence=coverage.avg_confidence,
+            weak_notes=coverage.weak_notes,
+            avg_lapses=coverage.avg_lapses,
+        )
+
+    @app.get("/topics/{topic_path:path}/gaps", response_model=TopicGapsResponse)
+    async def topic_gaps(
+        topic_path: str,
+        min_coverage: int = 1,
+    ) -> TopicGapsResponse:
+        """Find gaps in topic coverage.
+
+        Args:
+            topic_path: Root topic path.
+            min_coverage: Minimum notes for a topic to be considered covered.
+
+        Returns:
+            List of missing or undercovered topics.
+        """
+        from packages.analytics import AnalyticsService
+
+        service = AnalyticsService()
+        gaps = await service.get_gaps(topic_path, min_coverage)
+
+        gap_items = [
+            TopicGapItem(
+                topic_id=g.topic_id,
+                path=g.path,
+                label=g.label,
+                description=g.description,
+                gap_type=g.gap_type,
+                note_count=g.note_count,
+                threshold=g.threshold,
+            )
+            for g in gaps
+        ]
+
+        missing = sum(1 for g in gaps if g.gap_type == "missing")
+        undercovered = sum(1 for g in gaps if g.gap_type == "undercovered")
+
+        return TopicGapsResponse(
+            root_path=topic_path,
+            min_coverage=min_coverage,
+            gaps=gap_items,
+            missing_count=missing,
+            undercovered_count=undercovered,
         )
 
     return app
