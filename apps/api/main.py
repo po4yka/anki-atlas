@@ -151,6 +151,34 @@ class TopicGapsResponse(BaseModel):
     undercovered_count: int
 
 
+class DuplicateNoteItem(BaseModel):
+    """A duplicate note in a cluster."""
+
+    note_id: int
+    similarity: float
+    text: str
+    deck_names: list[str]
+    tags: list[str]
+
+
+class DuplicateClusterItem(BaseModel):
+    """A cluster of duplicate notes."""
+
+    representative_id: int
+    representative_text: str
+    deck_names: list[str]
+    tags: list[str]
+    duplicates: list[DuplicateNoteItem]
+    size: int
+
+
+class DuplicatesResponse(BaseModel):
+    """Response from duplicates endpoint."""
+
+    clusters: list[DuplicateClusterItem]
+    stats: dict[str, Any]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Application lifespan handler for startup/shutdown."""
@@ -487,6 +515,65 @@ def create_app() -> FastAPI:
             gaps=gap_items,
             missing_count=missing,
             undercovered_count=undercovered,
+        )
+
+    @app.get("/duplicates", response_model=DuplicatesResponse)
+    async def find_duplicates(
+        threshold: float = 0.92,
+        max_clusters: int = 100,
+        deck: str | None = None,
+        tag: str | None = None,
+    ) -> DuplicatesResponse:
+        """Find near-duplicate notes using embedding similarity.
+
+        Args:
+            threshold: Minimum similarity threshold (0-1).
+            max_clusters: Maximum clusters to return.
+            deck: Optional deck name filter.
+            tag: Optional tag filter.
+
+        Returns:
+            Clusters of duplicate notes with statistics.
+        """
+        from packages.analytics import DuplicateDetector
+
+        detector = DuplicateDetector()
+        clusters, stats = await detector.find_duplicates(
+            threshold=threshold,
+            max_clusters=max_clusters,
+            deck_filter=[deck] if deck else None,
+            tag_filter=[tag] if tag else None,
+        )
+
+        cluster_items = [
+            DuplicateClusterItem(
+                representative_id=c.representative_id,
+                representative_text=c.representative_text,
+                deck_names=c.deck_names,
+                tags=c.tags,
+                duplicates=[
+                    DuplicateNoteItem(
+                        note_id=d["note_id"],
+                        similarity=d["similarity"],
+                        text=d["text"],
+                        deck_names=d["deck_names"],
+                        tags=d["tags"],
+                    )
+                    for d in c.duplicates
+                ],
+                size=c.size,
+            )
+            for c in clusters
+        ]
+
+        return DuplicatesResponse(
+            clusters=cluster_items,
+            stats={
+                "notes_scanned": stats.notes_scanned,
+                "clusters_found": stats.clusters_found,
+                "total_duplicates": stats.total_duplicates,
+                "avg_cluster_size": stats.avg_cluster_size,
+            },
         )
 
     return app

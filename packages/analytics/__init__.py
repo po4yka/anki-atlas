@@ -9,6 +9,13 @@ from packages.analytics.coverage import (
     get_topic_gaps,
     get_weak_notes,
 )
+from packages.analytics.duplicates import (
+    DuplicateCluster,
+    DuplicateDetector,
+    DuplicatePair,
+    DuplicateStats,
+    find_duplicates,
+)
 from packages.analytics.labeling import (
     LabelingStats,
     TopicAssignment,
@@ -28,6 +35,10 @@ from packages.analytics.taxonomy import (
 __all__ = [
     "AnalyticsResult",
     "AnalyticsService",
+    "DuplicateCluster",
+    "DuplicateDetector",
+    "DuplicatePair",
+    "DuplicateStats",
     "LabelingStats",
     "Taxonomy",
     "Topic",
@@ -36,6 +47,7 @@ __all__ = [
     "TopicGap",
     "TopicLabeler",
     "WeakNote",
+    "find_duplicates",
     "get_coverage_tree",
     "get_topic_by_path",
     "get_topic_coverage",
