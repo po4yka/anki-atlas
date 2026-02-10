@@ -249,6 +249,101 @@ class QdrantRepository:
 
         return len(note_ids)
 
+    async def search(
+        self,
+        query_vector: list[float],
+        limit: int = 50,
+        deck_names: list[str] | None = None,
+        tags: list[str] | None = None,
+        model_ids: list[int] | None = None,
+        mature_only: bool = False,
+        max_lapses: int | None = None,
+        min_reps: int | None = None,
+    ) -> list[tuple[int, float]]:
+        """Search for similar vectors with optional filters.
+
+        Args:
+            query_vector: Query embedding vector.
+            limit: Maximum number of results.
+            deck_names: Filter by deck names (any match).
+            tags: Filter by tags (any match).
+            model_ids: Filter by model IDs.
+            mature_only: Only return mature cards (ivl >= 21).
+            max_lapses: Maximum lapses filter.
+            min_reps: Minimum reps filter.
+
+        Returns:
+            List of (note_id, score) tuples ordered by similarity.
+        """
+        client = await self.get_client()
+
+        # Build filter conditions
+        must_conditions: list[models.Condition] = []
+
+        if deck_names:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="deck_names",
+                    match=models.MatchAny(any=deck_names),
+                )
+            )
+
+        if tags:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="tags",
+                    match=models.MatchAny(any=tags),
+                )
+            )
+
+        if model_ids:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="model_id",
+                    match=models.MatchAny(any=model_ids),
+                )
+            )
+
+        if mature_only:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="mature",
+                    match=models.MatchValue(value=True),
+                )
+            )
+
+        if max_lapses is not None:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="lapses",
+                    range=models.Range(lte=max_lapses),
+                )
+            )
+
+        if min_reps is not None:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="reps",
+                    range=models.Range(gte=min_reps),
+                )
+            )
+
+        query_filter = models.Filter(must=must_conditions) if must_conditions else None
+
+        results = await client.query_points(
+            collection_name=self.collection_name,
+            query=query_vector,
+            query_filter=query_filter,
+            limit=limit,
+            with_payload=["note_id"],
+        )
+
+        return [
+            (int(hit.payload["note_id"]), hit.score)
+            for hit in results.points
+            if hit.payload
+        ]
+
     async def get_collection_info(self) -> dict[str, Any] | None:
         """Get collection information.
 

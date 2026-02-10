@@ -195,14 +195,106 @@ async def _index_async(force: bool) -> None:
 @app.command()
 def search(
     query: str = typer.Argument(..., help="Search query"),
-    deck: str | None = typer.Option(None, "--deck", "-d", help="Filter by deck"),
+    deck: str | None = typer.Option(None, "--deck", "-d", help="Filter by deck name"),
     tag: str | None = typer.Option(None, "--tag", "-t", help="Filter by tag"),
     top: int = typer.Option(10, "--top", "-n", help="Number of results"),
+    semantic_only: bool = typer.Option(False, "--semantic", help="Use only semantic search"),
+    fts_only: bool = typer.Option(False, "--fts", help="Use only full-text search"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed scores"),
 ) -> None:
     """Search the Anki index."""
-    console.print(f"Searching: {query} (deck={deck}, tag={tag}, top={top})")
-    console.print("[yellow]Not implemented yet[/yellow]")
-    raise typer.Exit(1)
+    asyncio.run(_search_async(query, deck, tag, top, semantic_only, fts_only, verbose))
+
+
+async def _search_async(
+    query: str,
+    deck: str | None,
+    tag: str | None,
+    top: int,
+    semantic_only: bool,
+    fts_only: bool,
+    verbose: bool,
+) -> None:
+    """Async search implementation."""
+    from packages.search import SearchFilters, SearchService
+
+    filters = SearchFilters(
+        deck_names=[deck] if deck else None,
+        tags=[tag] if tag else None,
+    )
+
+    service = SearchService()
+
+    console.print(f"Searching for: [cyan]{query}[/cyan]")
+    if deck:
+        console.print(f"  Deck filter: {deck}")
+    if tag:
+        console.print(f"  Tag filter: {tag}")
+
+    try:
+        result = await service.search(
+            query=query,
+            filters=filters,
+            limit=top,
+            semantic_only=semantic_only,
+            fts_only=fts_only,
+        )
+
+        if not result.results:
+            console.print("[yellow]No results found[/yellow]")
+            return
+
+        # Fetch note details
+        note_ids = [r.note_id for r in result.results]
+        notes_details = await service.get_notes_details(note_ids)
+
+        # Display results
+        table = Table(title=f"Search Results ({len(result.results)} found)")
+        table.add_column("#", style="dim", width=3)
+        table.add_column("Note ID", style="cyan")
+        table.add_column("Score", justify="right", style="green")
+        table.add_column("Sources", style="magenta")
+        table.add_column("Preview", style="white", no_wrap=False, max_width=60)
+
+        for i, r in enumerate(result.results, 1):
+            detail = notes_details.get(r.note_id)
+            preview = ""
+            if r.headline:
+                # Use FTS headline if available
+                preview = r.headline.replace("<<", "[bold]").replace(">>", "[/bold]")
+            elif detail:
+                # Fallback to truncated normalized text
+                preview = detail.normalized_text[:100] + "..." if len(detail.normalized_text) > 100 else detail.normalized_text
+
+            sources = ", ".join(r.sources)
+            score = f"{r.rrf_score:.4f}"
+
+            table.add_row(str(i), str(r.note_id), score, sources, preview)
+
+        console.print(table)
+
+        # Show stats
+        console.print(f"\n[dim]Stats: {result.stats.both} in both, "
+                      f"{result.stats.semantic_only} semantic only, "
+                      f"{result.stats.fts_only} FTS only[/dim]")
+
+        # Verbose mode: show detailed scores
+        if verbose and result.results:
+            console.print("\n[bold]Detailed Scores:[/bold]")
+            for r in result.results[:5]:  # Top 5 only
+                detail = notes_details.get(r.note_id)
+                tags_str = ", ".join(detail.tags) if detail and detail.tags else "none"
+                console.print(f"  Note {r.note_id}:")
+                console.print(f"    RRF: {r.rrf_score:.4f}")
+                if r.semantic_score is not None:
+                    console.print(f"    Semantic: {r.semantic_score:.4f} (rank {r.semantic_rank})")
+                if r.fts_score is not None:
+                    console.print(f"    FTS: {r.fts_score:.4f} (rank {r.fts_rank})")
+                console.print(f"    Tags: {tags_str}")
+
+    except Exception as e:
+        console.print(f"[red]Search error:[/red] {e}")
+        raise typer.Exit(1) from None
 
 
 @app.command()

@@ -57,6 +57,49 @@ class IndexResponse(BaseModel):
     errors: list[str]
 
 
+class SearchRequest(BaseModel):
+    """Request body for search endpoint."""
+
+    query: str
+    deck_names: list[str] | None = None
+    deck_names_exclude: list[str] | None = None
+    tags: list[str] | None = None
+    tags_exclude: list[str] | None = None
+    model_ids: list[int] | None = None
+    min_ivl: int | None = None
+    max_lapses: int | None = None
+    min_reps: int | None = None
+    top_k: int = 20
+    semantic_weight: float = 1.0
+    fts_weight: float = 1.0
+
+
+class SearchResultItem(BaseModel):
+    """A single search result."""
+
+    note_id: int
+    rrf_score: float
+    semantic_score: float | None = None
+    semantic_rank: int | None = None
+    fts_score: float | None = None
+    fts_rank: int | None = None
+    headline: str | None = None
+    sources: list[str]
+    # Optional enriched data
+    normalized_text: str | None = None
+    tags: list[str] | None = None
+    deck_names: list[str] | None = None
+
+
+class SearchResponse(BaseModel):
+    """Response from search endpoint."""
+
+    query: str
+    results: list[SearchResultItem]
+    stats: dict[str, int]
+    filters_applied: dict[str, Any]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Application lifespan handler for startup/shutdown."""
@@ -225,6 +268,74 @@ def create_app() -> FastAPI:
                 "status": "error",
                 "error": str(e),
             }
+
+    @app.post("/search", response_model=SearchResponse)
+    async def search(request: SearchRequest) -> SearchResponse:
+        """Search notes using hybrid semantic + keyword search.
+
+        Args:
+            request: Search request with query, filters, and options.
+
+        Returns:
+            Search results with score breakdown and statistics.
+        """
+        from packages.search import SearchFilters, SearchService
+
+        filters = SearchFilters(
+            deck_names=request.deck_names,
+            deck_names_exclude=request.deck_names_exclude,
+            tags=request.tags,
+            tags_exclude=request.tags_exclude,
+            model_ids=request.model_ids,
+            min_ivl=request.min_ivl,
+            max_lapses=request.max_lapses,
+            min_reps=request.min_reps,
+        )
+
+        service = SearchService()
+        result = await service.search(
+            query=request.query,
+            filters=filters,
+            limit=request.top_k,
+            semantic_weight=request.semantic_weight,
+            fts_weight=request.fts_weight,
+        )
+
+        # Fetch note details for enrichment
+        note_ids = [r.note_id for r in result.results]
+        notes_details = await service.get_notes_details(note_ids)
+
+        # Build response items
+        items: list[SearchResultItem] = []
+        for r in result.results:
+            detail = notes_details.get(r.note_id)
+            items.append(
+                SearchResultItem(
+                    note_id=r.note_id,
+                    rrf_score=r.rrf_score,
+                    semantic_score=r.semantic_score,
+                    semantic_rank=r.semantic_rank,
+                    fts_score=r.fts_score,
+                    fts_rank=r.fts_rank,
+                    headline=r.headline,
+                    sources=r.sources,
+                    normalized_text=detail.normalized_text if detail else None,
+                    tags=detail.tags if detail else None,
+                    deck_names=detail.deck_names if detail else None,
+                )
+            )
+
+        return SearchResponse(
+            query=result.query,
+            results=items,
+            stats={
+                "semantic_only": result.stats.semantic_only,
+                "fts_only": result.stats.fts_only,
+                "both": result.stats.both,
+                "total": result.stats.total,
+            },
+            filters_applied=result.filters_applied,
+        )
 
     return app
 
