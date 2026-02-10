@@ -7,6 +7,10 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from packages.common.logging import configure_logging
+
+configure_logging(debug=False, json_output=False)
+
 app = typer.Typer(
     name="anki-atlas",
     help="Searchable hybrid index for Anki collections",
@@ -353,7 +357,11 @@ async def _search_async(
                 preview = r.headline.replace("<<", "[bold]").replace(">>", "[/bold]")
             elif detail:
                 # Fallback to truncated normalized text
-                preview = detail.normalized_text[:100] + "..." if len(detail.normalized_text) > 100 else detail.normalized_text
+                preview = (
+                    detail.normalized_text[:100] + "..."
+                    if len(detail.normalized_text) > 100
+                    else detail.normalized_text
+                )
 
             sources = ", ".join(r.sources)
             score = f"{r.rrf_score:.4f}"
@@ -363,9 +371,11 @@ async def _search_async(
         console.print(table)
 
         # Show stats
-        console.print(f"\n[dim]Stats: {result.stats.both} in both, "
-                      f"{result.stats.semantic_only} semantic only, "
-                      f"{result.stats.fts_only} FTS only[/dim]")
+        console.print(
+            f"\n[dim]Stats: {result.stats.both} in both, "
+            f"{result.stats.semantic_only} semantic only, "
+            f"{result.stats.fts_only} FTS only[/dim]"
+        )
 
         # Verbose mode: show detailed scores
         if verbose and result.results:
@@ -389,7 +399,9 @@ async def _search_async(
 @app.command()
 def coverage(
     topic: str = typer.Argument(..., help="Topic path (e.g., programming/python)"),
-    include_subtree: bool = typer.Option(True, "--subtree/--no-subtree", help="Include child topics"),
+    include_subtree: bool = typer.Option(
+        True, "--subtree/--no-subtree", help="Include child topics"
+    ),
 ) -> None:
     """Show topic coverage metrics."""
     asyncio.run(_coverage_async(topic, include_subtree))
@@ -430,7 +442,9 @@ async def _coverage_async(topic: str, include_subtree: bool) -> None:
         # Show breadth coverage
         if cov.child_count > 0:
             breadth = cov.covered_children / cov.child_count
-            console.print(f"\n[dim]Breadth coverage: {breadth:.0%} ({cov.covered_children}/{cov.child_count} children covered)[/dim]")
+            console.print(
+                f"\n[dim]Breadth coverage: {breadth:.0%} ({cov.covered_children}/{cov.child_count} children covered)[/dim]"
+            )
 
     except Exception as e:
         console.print(f"[red]Coverage error:[/red] {e}")
@@ -489,7 +503,9 @@ async def _gaps_async(topic: str, min_coverage: int) -> None:
             console.print(table)
 
         # Summary
-        console.print(f"\n[dim]Total gaps: {len(gaps_list)} ({len(missing)} missing, {len(undercovered)} undercovered)[/dim]")
+        console.print(
+            f"\n[dim]Total gaps: {len(gaps_list)} ({len(missing)} missing, {len(undercovered)} undercovered)[/dim]"
+        )
 
     except Exception as e:
         console.print(f"[red]Gaps error:[/red] {e}")
@@ -558,17 +574,23 @@ async def _duplicates_async(
             if verbose or len(cluster.duplicates) <= 3:
                 # Show all duplicates
                 for dup in cluster.duplicates:
-                    console.print(f"  Duplicate: [yellow]{dup['note_id']}[/yellow] (sim={dup['similarity']:.3f})")
+                    console.print(
+                        f"  Duplicate: [yellow]{dup['note_id']}[/yellow] (sim={dup['similarity']:.3f})"
+                    )
                     console.print(f"    {dup['text'][:80]}...")
             else:
                 # Show summary
                 top_dup = cluster.duplicates[0]
-                console.print(f"  Top match: [yellow]{top_dup['note_id']}[/yellow] (sim={top_dup['similarity']:.3f})")
+                console.print(
+                    f"  Top match: [yellow]{top_dup['note_id']}[/yellow] (sim={top_dup['similarity']:.3f})"
+                )
                 console.print(f"    {top_dup['text'][:80]}...")
                 console.print(f"  ... and {len(cluster.duplicates) - 1} more duplicates")
 
         # Summary
-        console.print(f"\n[dim]Found {stats.total_duplicates} potential duplicates in {stats.clusters_found} clusters[/dim]")
+        console.print(
+            f"\n[dim]Found {stats.total_duplicates} potential duplicates in {stats.clusters_found} clusters[/dim]"
+        )
 
     except Exception as e:
         console.print(f"[red]Duplicates error:[/red] {e}")

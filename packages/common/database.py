@@ -11,6 +11,9 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from packages.common.config import Settings, get_settings
+from packages.common.logging import get_logger
+
+logger = get_logger(module=__name__)
 
 # Module-level pool (initialized on first use)
 _pool: AsyncConnectionPool[AsyncConnection[dict[str, Any]]] | None = None
@@ -90,11 +93,15 @@ async def check_connection(settings: Settings | None = None) -> bool:
         settings = get_settings()
 
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.postgres_url,
-            connect_timeout=5,
-        ) as conn, conn.cursor() as cur:
+        async with (
+            await psycopg.AsyncConnection.connect(
+                settings.postgres_url,
+                connect_timeout=5,
+            ) as conn,
+            conn.cursor() as cur,
+        ):
             await cur.execute("SELECT 1")
         return True
-    except Exception:
+    except psycopg.OperationalError as exc:
+        logger.warning("postgres_health_check_failed", error=str(exc))
         return False
