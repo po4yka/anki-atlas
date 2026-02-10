@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from packages.common.config import Settings, get_settings
 
 if TYPE_CHECKING:
-    import openai  # type: ignore[import-not-found]
+    import openai
     from sentence_transformers import SentenceTransformer
 
 

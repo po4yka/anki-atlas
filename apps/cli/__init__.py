@@ -193,6 +193,95 @@ async def _index_async(force: bool) -> None:
 
 
 @app.command()
+def topics(
+    taxonomy_file: str | None = typer.Option(
+        None,
+        "--file",
+        "-f",
+        help="Path to topics.yml file to load",
+    ),
+    label: bool = typer.Option(
+        False,
+        "--label",
+        "-l",
+        help="Label notes with topics after loading",
+    ),
+    min_confidence: float = typer.Option(
+        0.3,
+        "--min-confidence",
+        help="Minimum confidence for labeling",
+    ),
+) -> None:
+    """Manage topic taxonomy."""
+    asyncio.run(_topics_async(taxonomy_file, label, min_confidence))
+
+
+async def _topics_async(
+    taxonomy_file: str | None,
+    label: bool,
+    min_confidence: float,
+) -> None:
+    """Async topics implementation."""
+    from pathlib import Path
+
+    from packages.analytics import AnalyticsService
+
+    service = AnalyticsService()
+
+    try:
+        # Load taxonomy
+        if taxonomy_file:
+            yaml_path = Path(taxonomy_file).expanduser().resolve()
+            if not yaml_path.exists():
+                console.print(f"[red]File not found:[/red] {yaml_path}")
+                raise typer.Exit(1) from None
+
+            console.print(f"Loading taxonomy from: {yaml_path}")
+            taxonomy = await service.load_taxonomy(yaml_path)
+            console.print(f"[green]Loaded {len(taxonomy.topics)} topics[/green]")
+        else:
+            taxonomy = await service.load_taxonomy()
+            console.print(f"Loaded {len(taxonomy.topics)} topics from database")
+
+        # Display taxonomy tree
+        tree = await service.get_taxonomy_tree()
+
+        if tree:
+            table = Table(title="Topic Taxonomy")
+            table.add_column("Path", style="cyan")
+            table.add_column("Label")
+            table.add_column("Notes", justify="right", style="green")
+            table.add_column("Mature", justify="right")
+
+            for t in tree:
+                indent = "  " * t["depth"]
+                table.add_row(
+                    indent + t["path"].split("/")[-1],
+                    t["label"],
+                    str(t["note_count"]),
+                    str(t["mature_count"]),
+                )
+
+            console.print(table)
+        else:
+            console.print("[yellow]No topics in database[/yellow]")
+
+        # Label notes if requested
+        if label and taxonomy.topics:
+            console.print("\nLabeling notes with topics...")
+            stats = await service.label_notes(taxonomy, min_confidence)
+
+            console.print("[green]Labeling complete:[/green]")
+            console.print(f"  Notes processed: {stats.notes_processed}")
+            console.print(f"  Assignments created: {stats.assignments_created}")
+            console.print(f"  Topics matched: {stats.topics_matched}")
+
+    except Exception as e:
+        console.print(f"[red]Topics error:[/red] {e}")
+        raise typer.Exit(1) from None
+
+
+@app.command()
 def search(
     query: str = typer.Argument(..., help="Search query"),
     deck: str | None = typer.Option(None, "--deck", "-d", help="Filter by deck name"),
@@ -299,23 +388,112 @@ async def _search_async(
 
 @app.command()
 def coverage(
-    topic: str = typer.Argument(..., help="Topic path (e.g., android/compose/state)"),
+    topic: str = typer.Argument(..., help="Topic path (e.g., programming/python)"),
+    include_subtree: bool = typer.Option(True, "--subtree/--no-subtree", help="Include child topics"),
 ) -> None:
     """Show topic coverage metrics."""
-    console.print(f"Coverage for: {topic}")
-    console.print("[yellow]Not implemented yet[/yellow]")
-    raise typer.Exit(1)
+    asyncio.run(_coverage_async(topic, include_subtree))
+
+
+async def _coverage_async(topic: str, include_subtree: bool) -> None:
+    """Async coverage implementation."""
+    from packages.analytics import AnalyticsService
+
+    service = AnalyticsService()
+
+    console.print(f"Coverage for: [cyan]{topic}[/cyan]")
+    if include_subtree:
+        console.print("  (including subtree)")
+
+    try:
+        cov = await service.get_coverage(topic, include_subtree)
+
+        if not cov:
+            console.print(f"[red]Topic not found:[/red] {topic}")
+            raise typer.Exit(1) from None
+
+        table = Table(title=f"Coverage: {cov.label}")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", justify="right", style="green")
+
+        table.add_row("Notes", str(cov.note_count))
+        table.add_row("Subtree notes", str(cov.subtree_count))
+        table.add_row("Mature notes", str(cov.mature_count))
+        table.add_row("Child topics", str(cov.child_count))
+        table.add_row("Covered children", str(cov.covered_children))
+        table.add_row("Avg confidence", f"{cov.avg_confidence:.2%}")
+        table.add_row("Weak notes", str(cov.weak_notes))
+        table.add_row("Avg lapses", f"{cov.avg_lapses:.1f}")
+
+        console.print(table)
+
+        # Show breadth coverage
+        if cov.child_count > 0:
+            breadth = cov.covered_children / cov.child_count
+            console.print(f"\n[dim]Breadth coverage: {breadth:.0%} ({cov.covered_children}/{cov.child_count} children covered)[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Coverage error:[/red] {e}")
+        raise typer.Exit(1) from None
 
 
 @app.command()
 def gaps(
     topic: str = typer.Argument(..., help="Topic path"),
-    min_coverage: int = typer.Option(5, "--min-coverage", help="Minimum coverage threshold"),
+    min_coverage: int = typer.Option(1, "--min-coverage", "-m", help="Minimum notes for coverage"),
 ) -> None:
     """Detect gaps in topic coverage."""
-    console.print(f"Gaps for: {topic} (min_coverage={min_coverage})")
-    console.print("[yellow]Not implemented yet[/yellow]")
-    raise typer.Exit(1)
+    asyncio.run(_gaps_async(topic, min_coverage))
+
+
+async def _gaps_async(topic: str, min_coverage: int) -> None:
+    """Async gaps implementation."""
+    from packages.analytics import AnalyticsService
+
+    service = AnalyticsService()
+
+    console.print(f"Gaps for: [cyan]{topic}[/cyan] (min_coverage={min_coverage})")
+
+    try:
+        gaps_list = await service.get_gaps(topic, min_coverage)
+
+        if not gaps_list:
+            console.print("[green]No gaps found - all topics have sufficient coverage[/green]")
+            return
+
+        # Separate missing and undercovered
+        missing = [g for g in gaps_list if g.gap_type == "missing"]
+        undercovered = [g for g in gaps_list if g.gap_type == "undercovered"]
+
+        if missing:
+            table = Table(title=f"Missing Topics ({len(missing)})")
+            table.add_column("Path", style="red")
+            table.add_column("Label")
+            table.add_column("Description", max_width=40)
+
+            for g in missing:
+                table.add_row(g.path, g.label, g.description or "")
+
+            console.print(table)
+
+        if undercovered:
+            table = Table(title=f"Undercovered Topics ({len(undercovered)})")
+            table.add_column("Path", style="yellow")
+            table.add_column("Label")
+            table.add_column("Notes", justify="right")
+            table.add_column("Threshold", justify="right")
+
+            for g in undercovered:
+                table.add_row(g.path, g.label, str(g.note_count), str(g.threshold))
+
+            console.print(table)
+
+        # Summary
+        console.print(f"\n[dim]Total gaps: {len(gaps_list)} ({len(missing)} missing, {len(undercovered)} undercovered)[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Gaps error:[/red] {e}")
+        raise typer.Exit(1) from None
 
 
 @app.command()
