@@ -36,18 +36,20 @@ Primary users are coding agents (Claude Code / Codex) and humans via CLI/API.
 ```
 apps/
   api/           # FastAPI app (search + analytics + health)
+  cli/           # Typer CLI application
   mcp/           # MCP server exposing tool calls
 packages/
-  anki/          # Anki extractors (SQLite + optional AnkiConnect)
-  indexer/       # embedding, qdrant upsert, incremental sync
-  analytics/     # topic labeling, coverage scoring, dedupe
-  common/        # config, logging, text normalization
+  anki/          # Anki extractors (SQLite reader, sync)
+  indexer/       # embedding providers, Qdrant upsert, incremental sync
+  analytics/     # topic labeling, coverage scoring, duplicate detection
+  search/        # hybrid search with RRF fusion
+  common/        # config, database, text normalization
 infra/
   docker-compose.yml
-scripts/         # one-shot utilities (migrate, reset, backfill)
+config/          # example configuration files
 docs/            # architecture, API, agent-tool docs
 tests/
-  fixtures/      # tiny collection.anki2 for testing
+  fixtures/      # test fixtures for Anki parsing
 ```
 
 ## Layered Architecture
@@ -55,41 +57,41 @@ tests/
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                      Interfaces                         │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌───────────┐  │
-│  │ FastAPI │  │   CLI   │  │   MCP   │  │ Job Runner│  │
-│  │ (HTTP)  │  │ (typer) │  │ (stdio) │  │ (async)   │  │
-│  └────┬────┘  └────┬────┘  └────┬────┘  └─────┬─────┘  │
-└───────┼────────────┼────────────┼─────────────┼────────┘
-        │            │            │             │
-        └────────────┴─────┬──────┴─────────────┘
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐                 │
+│  │ FastAPI │  │   CLI   │  │   MCP   │                 │
+│  │ (HTTP)  │  │ (typer) │  │ (stdio) │                 │
+│  └────┬────┘  └────┬────┘  └────┬────┘                 │
+└───────┼────────────┼────────────┼──────────────────────┘
+        │            │            │
+        └────────────┴─────┬──────┘
                            ▼
 ┌─────────────────────────────────────────────────────────┐
 │                    Domain Services                      │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │ SyncService  │  │SearchService │  │TopicService  │  │
+│  │ SyncService  │  │SearchService │  │ Analytics    │  │
 │  │ - ingest     │  │ - hybrid     │  │ - coverage   │  │
 │  │ - diff       │  │ - filters    │  │ - gaps       │  │
 │  │ - normalize  │  │ - RRF fusion │  │ - labeling   │  │
 │  └──────────────┘  └──────────────┘  └──────────────┘  │
 │  ┌──────────────┐  ┌──────────────┐                    │
-│  │ IndexService │  │ DedupeService│                    │
+│  │ IndexService │  │ DuplicateDet │                    │
 │  │ - embed      │  │ - cluster    │                    │
-│  │ - upsert     │  │ - threshold  │                    │
+│  │ - upsert     │  │ - similarity │                    │
 │  └──────────────┘  └──────────────┘                    │
 └───────────────────────────┬─────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────┐
 │                    Infrastructure                       │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │ PostgresRepo │  │  QdrantRepo  │  │EmbeddingProv │  │
-│  │ - notes      │  │  - vectors   │  │ - OpenAI     │  │
-│  │ - cards      │  │  - payloads  │  │ - Local      │  │
+│  │   Database   │  │  QdrantRepo  │  │EmbeddingProv │  │
+│  │ - PostgreSQL │  │  - vectors   │  │ - OpenAI     │  │
+│  │ - migrations │  │  - payloads  │  │ - Local      │  │
 │  │ - FTS        │  │  - ANN       │  │              │  │
 │  └──────────────┘  └──────────────┘  └──────────────┘  │
-│  ┌──────────────┐  ┌──────────────┐                    │
-│  │  AnkiReader  │  │ AnkiConnect  │                    │
-│  │  (SQLite)    │  │ (optional)   │                    │
-│  └──────────────┘  └──────────────┘                    │
+│  ┌──────────────┐                                      │
+│  │  AnkiReader  │                                      │
+│  │  (SQLite)    │                                      │
+│  └──────────────┘                                      │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -360,6 +362,8 @@ For a given topic (and optional filters):
 
 ## MCP Tools
 
+The MCP server exposes the following tools for AI agent integration:
+
 ```
 ankiatlas_search(query, filters, top_k)
 ankiatlas_topic_coverage(topic_path, filters)
@@ -368,27 +372,44 @@ ankiatlas_duplicates(filters, similarity_threshold)
 ankiatlas_sync(source)
 ```
 
+See [MCP_TOOLS.md](MCP_TOOLS.md) for detailed tool documentation, parameters, and example agent prompts.
+
 ## CLI
 
 ```bash
+# Sync collection and index
 anki-atlas sync --source /path/to/collection.anki2
+
+# Search with filters
 anki-atlas search "compose recomposition" --deck Android --tag kotlin --top 20
+
+# Manage topic taxonomy
+anki-atlas topics --file topics.yml --label
+
+# View topic coverage
 anki-atlas coverage android/compose/state
+
+# Find coverage gaps
 anki-atlas gaps android --min-coverage 5
+
+# Find duplicates
 anki-atlas duplicates --threshold 0.92
+
+# Run MCP server
+anki-atlas-mcp
 ```
 
 ## Implementation Milestones
 
 | Milestone | Description | Status |
 |-----------|-------------|--------|
-| 0 - Bootstrap | Repo setup, tooling, docker-compose, FastAPI `/health` | Not started |
-| 1 - Anki Extractor | SQLite reader, normalization, Postgres schema, incremental sync | Not started |
-| 2 - Indexing | Embedding provider, Qdrant upsert, version tracking | Not started |
-| 3 - Hybrid Search | FTS + ANN + RRF fusion, `/search` endpoint | Not started |
-| 4 - Topics + Coverage | Taxonomy loader, labeling, coverage/gaps endpoints | Not started |
-| 5 - Duplicates | Duplicate finder, `/duplicates` endpoint | Not started |
-| 6 - Agent Tools | MCP server, tool documentation | Not started |
+| 0 - Bootstrap | Repo setup, tooling, docker-compose, FastAPI `/health` | Complete |
+| 1 - Anki Extractor | SQLite reader, normalization, Postgres schema, incremental sync | Complete |
+| 2 - Indexing | Embedding provider, Qdrant upsert, version tracking | Complete |
+| 3 - Hybrid Search | FTS + ANN + RRF fusion, `/search` endpoint | Complete |
+| 4 - Topics + Coverage | Taxonomy loader, labeling, coverage/gaps endpoints | Complete |
+| 5 - Duplicates | Duplicate finder, `/duplicates` endpoint | Complete |
+| 6 - Agent Tools | MCP server, tool documentation | Complete |
 
 ## Text Normalization
 
@@ -406,24 +427,28 @@ anki-atlas duplicates --threshold 0.92
 
 ## Configuration
 
-Support `.env` + `config.yml`:
+Configuration via environment variables (with `ANKIATLAS_` prefix) or `.env` file:
 
-```yaml
-anki:
-  source: /path/to/collection.anki2
-  # or ankiconnect_url: http://localhost:8765
+```bash
+# Database
+ANKIATLAS_POSTGRES_URL=postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas
 
-postgres:
-  url: postgresql://user:pass@localhost:5432/ankiatlas
+# Vector store
+ANKIATLAS_QDRANT_URL=http://localhost:6333
 
-qdrant:
-  url: http://localhost:6333
+# Embedding configuration
+ANKIATLAS_EMBEDDING_PROVIDER=openai  # or 'local'
+ANKIATLAS_EMBEDDING_MODEL=text-embedding-3-small
+ANKIATLAS_EMBEDDING_DIMENSION=1536
 
-embedding:
-  provider: openai  # or 'local'
-  model: text-embedding-3-small
-  dimension: 1536
+# OpenAI API key (required if using openai provider)
+OPENAI_API_KEY=sk-...
 
-topics:
-  taxonomy_path: ./topics.yml
+# Anki source (optional, can be passed via CLI)
+ANKIATLAS_ANKI_COLLECTION_PATH=/path/to/collection.anki2
+
+# API configuration
+ANKIATLAS_API_HOST=0.0.0.0
+ANKIATLAS_API_PORT=8000
+ANKIATLAS_DEBUG=false
 ```
