@@ -1,4 +1,4 @@
-"""Tests for analytics module (taxonomy, labeling, coverage)."""
+"""Tests for analytics module (taxonomy, labeling, coverage, duplicates)."""
 
 import tempfile
 from pathlib import Path
@@ -6,6 +6,12 @@ from pathlib import Path
 import pytest
 
 from packages.analytics.coverage import TopicCoverage, TopicGap
+from packages.analytics.duplicates import (
+    DuplicateCluster,
+    DuplicateDetector,
+    DuplicatePair,
+    DuplicateStats,
+)
 from packages.analytics.labeling import TopicAssignment, TopicLabeler, cosine_similarity
 from packages.analytics.taxonomy import (
     Taxonomy,
@@ -298,3 +304,112 @@ class TestTopicGap:
 
         assert missing.gap_type == "missing"
         assert undercovered.gap_type == "undercovered"
+
+
+class TestDuplicatePair:
+    """Tests for DuplicatePair dataclass."""
+
+    def test_pair_creation(self) -> None:
+        """Test creating a duplicate pair."""
+        pair = DuplicatePair(
+            note_id_a=100,
+            note_id_b=200,
+            similarity=0.95,
+        )
+        assert pair.note_id_a == 100
+        assert pair.note_id_b == 200
+        assert pair.similarity == 0.95
+
+
+class TestDuplicateCluster:
+    """Tests for DuplicateCluster dataclass."""
+
+    def test_cluster_size(self) -> None:
+        """Test cluster size calculation."""
+        cluster = DuplicateCluster(
+            representative_id=1,
+            representative_text="Test note content",
+        )
+        # Empty cluster - just representative
+        assert cluster.size == 1
+
+        # Add duplicates
+        cluster.duplicates = [
+            {"note_id": 2, "similarity": 0.95, "text": "Similar 1"},
+            {"note_id": 3, "similarity": 0.92, "text": "Similar 2"},
+        ]
+        assert cluster.size == 3
+
+    def test_default_values(self) -> None:
+        """Test default values for cluster."""
+        cluster = DuplicateCluster(
+            representative_id=1,
+            representative_text="Test",
+        )
+        assert cluster.duplicates == []
+        assert cluster.deck_names == []
+        assert cluster.tags == []
+
+
+class TestDuplicateStats:
+    """Tests for DuplicateStats dataclass."""
+
+    def test_default_values(self) -> None:
+        """Test default values."""
+        stats = DuplicateStats()
+        assert stats.notes_scanned == 0
+        assert stats.clusters_found == 0
+        assert stats.total_duplicates == 0
+        assert stats.avg_cluster_size == 0.0
+
+
+class TestDuplicateDetector:
+    """Tests for DuplicateDetector class."""
+
+    def test_cluster_duplicates_empty(self) -> None:
+        """Test clustering with empty pairs."""
+        detector = DuplicateDetector()
+        clusters = detector._cluster_duplicates([])
+        assert clusters == {}
+
+    def test_cluster_duplicates_single_pair(self) -> None:
+        """Test clustering with single pair."""
+        detector = DuplicateDetector()
+        pairs = [
+            DuplicatePair(note_id_a=1, note_id_b=2, similarity=0.95),
+        ]
+        clusters = detector._cluster_duplicates(pairs)
+
+        # Should have one cluster with root=1 (smaller ID)
+        assert 1 in clusters
+        assert len(clusters[1]) == 1
+        assert clusters[1][0][0] == 2  # note_id
+        assert clusters[1][0][1] == 0.95  # similarity
+
+    def test_cluster_duplicates_transitive(self) -> None:
+        """Test transitive clustering (A~B, B~C -> A,B,C in same cluster)."""
+        detector = DuplicateDetector()
+        pairs = [
+            DuplicatePair(note_id_a=1, note_id_b=2, similarity=0.95),
+            DuplicatePair(note_id_a=2, note_id_b=3, similarity=0.93),
+        ]
+        clusters = detector._cluster_duplicates(pairs)
+
+        # All three should be in one cluster with root=1
+        assert 1 in clusters
+        member_ids = {m[0] for m in clusters[1]}
+        assert member_ids == {2, 3}
+
+    def test_cluster_duplicates_separate_clusters(self) -> None:
+        """Test that unrelated pairs form separate clusters."""
+        detector = DuplicateDetector()
+        pairs = [
+            DuplicatePair(note_id_a=1, note_id_b=2, similarity=0.95),
+            DuplicatePair(note_id_a=10, note_id_b=20, similarity=0.93),
+        ]
+        clusters = detector._cluster_duplicates(pairs)
+
+        # Should have two separate clusters
+        assert len(clusters) == 2
+        assert 1 in clusters
+        assert 10 in clusters

@@ -498,12 +498,81 @@ async def _gaps_async(topic: str, min_coverage: int) -> None:
 
 @app.command()
 def duplicates(
-    threshold: float = typer.Option(0.92, "--threshold", help="Similarity threshold"),
+    threshold: float = typer.Option(0.92, "--threshold", "-t", help="Similarity threshold (0-1)"),
+    max_clusters: int = typer.Option(50, "--max", "-n", help="Maximum clusters to show"),
+    deck: str | None = typer.Option(None, "--deck", "-d", help="Filter by deck name"),
+    tag: str | None = typer.Option(None, "--tag", help="Filter by tag"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show all duplicates in clusters"),
 ) -> None:
-    """Find duplicate cards."""
-    console.print(f"Finding duplicates (threshold={threshold})")
-    console.print("[yellow]Not implemented yet[/yellow]")
-    raise typer.Exit(1)
+    """Find near-duplicate notes using embedding similarity."""
+    asyncio.run(_duplicates_async(threshold, max_clusters, deck, tag, verbose))
+
+
+async def _duplicates_async(
+    threshold: float,
+    max_clusters: int,
+    deck: str | None,
+    tag: str | None,
+    verbose: bool,
+) -> None:
+    """Async duplicates implementation."""
+    from packages.analytics import DuplicateDetector
+
+    console.print(f"Finding duplicates (threshold={threshold:.2f})")
+    if deck:
+        console.print(f"  Deck filter: {deck}")
+    if tag:
+        console.print(f"  Tag filter: {tag}")
+
+    try:
+        detector = DuplicateDetector()
+        clusters, stats = await detector.find_duplicates(
+            threshold=threshold,
+            max_clusters=max_clusters,
+            deck_filter=[deck] if deck else None,
+            tag_filter=[tag] if tag else None,
+        )
+
+        # Show stats
+        console.print("\n[bold]Scan Results:[/bold]")
+        console.print(f"  Notes scanned: {stats.notes_scanned}")
+        console.print(f"  Clusters found: {stats.clusters_found}")
+        console.print(f"  Total duplicates: {stats.total_duplicates}")
+        if stats.avg_cluster_size > 0:
+            console.print(f"  Avg cluster size: {stats.avg_cluster_size:.1f}")
+
+        if not clusters:
+            console.print("\n[green]No duplicates found[/green]")
+            return
+
+        # Show clusters
+        console.print(f"\n[bold]Duplicate Clusters ({len(clusters)}):[/bold]")
+
+        for i, cluster in enumerate(clusters, 1):
+            console.print(f"\n[cyan]Cluster {i}[/cyan] ({cluster.size} notes)")
+            console.print(f"  Representative: [bold]{cluster.representative_id}[/bold]")
+            console.print(f"    {cluster.representative_text[:80]}...")
+            if cluster.deck_names:
+                console.print(f"    Decks: {', '.join(cluster.deck_names[:3])}")
+
+            if verbose or len(cluster.duplicates) <= 3:
+                # Show all duplicates
+                for dup in cluster.duplicates:
+                    console.print(f"  Duplicate: [yellow]{dup['note_id']}[/yellow] (sim={dup['similarity']:.3f})")
+                    console.print(f"    {dup['text'][:80]}...")
+            else:
+                # Show summary
+                top_dup = cluster.duplicates[0]
+                console.print(f"  Top match: [yellow]{top_dup['note_id']}[/yellow] (sim={top_dup['similarity']:.3f})")
+                console.print(f"    {top_dup['text'][:80]}...")
+                console.print(f"  ... and {len(cluster.duplicates) - 1} more duplicates")
+
+        # Summary
+        console.print(f"\n[dim]Found {stats.total_duplicates} potential duplicates in {stats.clusters_found} clusters[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Duplicates error:[/red] {e}")
+        raise typer.Exit(1) from None
 
 
 if __name__ == "__main__":

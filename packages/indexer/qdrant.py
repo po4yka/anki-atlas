@@ -1,7 +1,7 @@
 """Qdrant vector database repository."""
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from qdrant_client import AsyncQdrantClient, models
 
@@ -343,6 +343,79 @@ class QdrantRepository:
             for hit in results.points
             if hit.payload
         ]
+
+    async def find_similar_to_note(
+        self,
+        note_id: int,
+        limit: int = 10,
+        min_score: float = 0.9,
+        deck_names: list[str] | None = None,
+        tags: list[str] | None = None,
+    ) -> list[tuple[int, float]]:
+        """Find notes similar to a given note.
+
+        Args:
+            note_id: Note ID to find similar notes for.
+            limit: Maximum results.
+            min_score: Minimum similarity score.
+            deck_names: Optional deck filter.
+            tags: Optional tag filter.
+
+        Returns:
+            List of (note_id, score) tuples.
+        """
+        client = await self.get_client()
+
+        # Get the vector for the note
+        points = await client.retrieve(
+            collection_name=self.collection_name,
+            ids=[note_id],
+            with_vectors=True,
+        )
+
+        if not points or not points[0].vector:
+            return []
+
+        # Vector is list[float] for single-vector collections
+        query_vector = cast("list[float]", points[0].vector)
+
+        # Build filter conditions
+        must_conditions: list[models.Condition] = []
+
+        if deck_names:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="deck_names",
+                    match=models.MatchAny(any=deck_names),
+                )
+            )
+
+        if tags:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="tags",
+                    match=models.MatchAny(any=tags),
+                )
+            )
+
+        query_filter = models.Filter(must=must_conditions) if must_conditions else None
+
+        # Search for similar vectors
+        results = await client.query_points(
+            collection_name=self.collection_name,
+            query=query_vector,
+            query_filter=query_filter,
+            limit=limit + 1,  # +1 to exclude self
+            score_threshold=min_score,
+            with_payload=["note_id"],
+        )
+
+        # Filter out self and return
+        return [
+            (int(hit.payload["note_id"]), hit.score)
+            for hit in results.points
+            if hit.payload and int(hit.payload["note_id"]) != note_id
+        ][:limit]
 
     async def get_collection_info(self) -> dict[str, Any] | None:
         """Get collection information.
