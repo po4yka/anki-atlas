@@ -148,12 +148,41 @@ class QdrantRepository:
 
     async def _create_collection(self, client: AsyncQdrantClient, dimension: int) -> None:
         """Create the collection with optimized settings and payload indexes."""
+        # Configure quantization for memory optimization
+        quantization_config: models.ScalarQuantization | models.BinaryQuantization | None = None
+        if self.settings.qdrant_quantization == "scalar":
+            quantization_config = models.ScalarQuantization(
+                scalar=models.ScalarQuantizationConfig(
+                    type=models.ScalarType.INT8,
+                    always_ram=True,
+                )
+            )
+        elif self.settings.qdrant_quantization == "binary":
+            quantization_config = models.BinaryQuantization(
+                binary=models.BinaryQuantizationConfig(
+                    always_ram=True,
+                )
+            )
+
+        # Configure on-disk storage for large collections
+        vectors_config = models.VectorParams(
+            size=dimension,
+            distance=models.Distance.COSINE,
+            on_disk=self.settings.qdrant_on_disk,
+        )
+
+        logger.info(
+            "creating_collection",
+            collection=self.collection_name,
+            dimension=dimension,
+            quantization=self.settings.qdrant_quantization,
+            on_disk=self.settings.qdrant_on_disk,
+        )
+
         await client.create_collection(
             collection_name=self.collection_name,
-            vectors_config=models.VectorParams(
-                size=dimension,
-                distance=models.Distance.COSINE,
-            ),
+            vectors_config=vectors_config,
+            quantization_config=quantization_config,
             optimizers_config=models.OptimizersConfigDiff(
                 indexing_threshold=10000,
             ),
@@ -476,8 +505,13 @@ class QdrantRepository:
                 "points_count": info.points_count,
                 "status": info.status.value,
             }
-        except Exception:
-            logger.warning("qdrant_collection_info_failed", collection=self.collection_name)
+        except Exception as e:
+            logger.warning(
+                "qdrant_collection_info_failed",
+                collection=self.collection_name,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return None
 
     async def health_check(self) -> bool:
@@ -491,8 +525,12 @@ class QdrantRepository:
             # Simple health check - get collections list
             await client.get_collections()
             return True
-        except Exception:
-            logger.warning("qdrant_health_check_failed")
+        except Exception as e:
+            logger.warning(
+                "qdrant_health_check_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return False
 
 

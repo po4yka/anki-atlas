@@ -311,15 +311,17 @@ async def get_coverage_tree(
         )
 
         async for row in result:
-            tree.append({
-                "topic_id": row["topic_id"],
-                "path": row["path"],
-                "label": row["label"],
-                "description": row["description"],
-                "note_count": row["note_count"] or 0,
-                "avg_confidence": float(row["avg_confidence"] or 0),
-                "mature_count": row["mature_count"] or 0,
-                "depth": row["path"].count("/"),
-            })
+            tree.append(
+                {
+                    "topic_id": row["topic_id"],
+                    "path": row["path"],
+                    "label": row["label"],
+                    "description": row["description"],
+                    "note_count": row["note_count"] or 0,
+                    "avg_confidence": float(row["avg_confidence"] or 0),
+                    "mature_count": row["mature_count"] or 0,
+                    "depth": row["path"].count("/"),
+                }
+            )
 
     return tree

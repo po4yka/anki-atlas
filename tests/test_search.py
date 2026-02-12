@@ -40,7 +40,10 @@ class TestReciprocalRankFusion:
 
     def test_fts_only(self) -> None:
         """Test fusion with only FTS results."""
-        fts: list[tuple[int, float, str | None]] = [(10, 0.8, "headline 10"), (20, 0.6, "headline 20")]
+        fts: list[tuple[int, float, str | None]] = [
+            (10, 0.8, "headline 10"),
+            (20, 0.6, "headline 20"),
+        ]
         results, stats = reciprocal_rank_fusion([], fts)
 
         assert len(results) == 2
@@ -86,15 +89,11 @@ class TestReciprocalRankFusion:
         fts: list[tuple[int, float, str | None]] = [(2, 0.9, None)]
 
         # Equal weights: both should have same RRF score
-        results, _ = reciprocal_rank_fusion(
-            semantic, fts, semantic_weight=1.0, fts_weight=1.0
-        )
+        results, _ = reciprocal_rank_fusion(semantic, fts, semantic_weight=1.0, fts_weight=1.0)
         assert results[0].rrf_score == results[1].rrf_score
 
         # Higher semantic weight
-        results, _ = reciprocal_rank_fusion(
-            semantic, fts, semantic_weight=2.0, fts_weight=1.0
-        )
+        results, _ = reciprocal_rank_fusion(semantic, fts, semantic_weight=2.0, fts_weight=1.0)
         note1 = next(r for r in results if r.note_id == 1)
         note2 = next(r for r in results if r.note_id == 2)
         assert note1.rrf_score > note2.rrf_score
@@ -186,9 +185,7 @@ class TestSearchService:
         mock_qdrant_repository: AsyncMock,
     ) -> None:
         """Test search with semantic only flag."""
-        mock_qdrant_repository.search = AsyncMock(
-            return_value=[(1, 0.95), (2, 0.85)]
-        )
+        mock_qdrant_repository.search = AsyncMock(return_value=[(1, 0.95), (2, 0.85)])
 
         service = SearchService(
             settings=settings,
@@ -238,9 +235,7 @@ class TestSearchService:
     ) -> None:
         """Test hybrid search combining both sources."""
         # Semantic results
-        mock_qdrant_repository.search = AsyncMock(
-            return_value=[(1, 0.95), (2, 0.85)]
-        )
+        mock_qdrant_repository.search = AsyncMock(return_value=[(1, 0.95), (2, 0.85)])
 
         # FTS results (note 1 overlaps, note 3 is new)
         fts_results = [

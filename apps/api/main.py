@@ -5,13 +5,25 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from packages.common.config import get_settings
 from packages.common.database import check_connection, close_pool, run_migrations
-from packages.common.logging import configure_logging, get_logger
+from packages.common.exceptions import (
+    AnkiAtlasError,
+    ConflictError,
+    DatabaseError,
+    NotFoundError,
+    VectorStoreError,
+)
+from packages.common.logging import (
+    clear_correlation_id,
+    configure_logging,
+    get_logger,
+    set_correlation_id,
+)
 from packages.indexer.qdrant import close_qdrant_repository, get_qdrant_repository
 
 logger = get_logger(module=__name__)
@@ -207,6 +219,56 @@ def create_app() -> FastAPI:
         debug=settings.debug,
     )
 
+    @app.middleware("http")
+    async def correlation_id_middleware(request: Request, call_next: Any) -> Any:
+        """Add correlation ID to request context for tracing."""
+        # Use existing header or generate new ID
+        correlation_id = request.headers.get("X-Request-ID")
+        set_correlation_id(correlation_id)
+
+        try:
+            response = await call_next(request)
+            # Include correlation ID in response headers
+            from packages.common.logging import get_correlation_id
+
+            response.headers["X-Request-ID"] = get_correlation_id() or ""
+            return response
+        finally:
+            clear_correlation_id()
+
+    @app.exception_handler(AnkiAtlasError)
+    async def ankiatlas_exception_handler(request: Request, exc: AnkiAtlasError) -> JSONResponse:
+        """Handle application-specific exceptions with appropriate status codes."""
+        # Map exception types to HTTP status codes
+        if isinstance(exc, NotFoundError):
+            status_code = 404
+        elif isinstance(exc, ConflictError):
+            status_code = 409
+        elif isinstance(exc, (DatabaseError, VectorStoreError)):
+            status_code = 503
+        else:
+            status_code = 500
+
+        # Log with context
+        logger.error(
+            "request_failed",
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+            status_code=status_code,
+            path=str(request.url.path),
+            **exc.context,
+        )
+
+        # Return safe error response (no internal details in production)
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "error": type(exc).__name__,
+                "message": str(exc),
+                "path": str(request.url.path),
+            },
+        )
+
     @app.get("/health", response_class=JSONResponse)
     async def health() -> dict[str, Any]:
         """Health check endpoint.
@@ -232,8 +294,8 @@ def create_app() -> FastAPI:
         try:
             qdrant = await get_qdrant_repository()
             qdrant_ok = await qdrant.health_check()
-        except Exception:
-            logger.warning("ready_check_qdrant_failed")
+        except Exception as e:
+            logger.warning("ready_check_qdrant_failed", error=str(e), error_type=type(e).__name__)
             qdrant_ok = False
 
         all_ok = postgres_ok and qdrant_ok
@@ -338,6 +400,11 @@ def create_app() -> FastAPI:
         except EmbeddingModelChanged as e:
             raise HTTPException(status_code=409, detail=str(e)) from e
         except Exception as e:
+            logger.exception(
+                "index_notes_failed",
+                error_type=type(e).__name__,
+                force_reindex=request.force_reindex,
+            )
             raise HTTPException(
                 status_code=500,
                 detail=f"Indexing failed: {e}",
@@ -354,7 +421,7 @@ def create_app() -> FastAPI:
                 "collection": info,
             }
         except Exception as e:
-            logger.exception("index_info_failed")
+            logger.exception("index_info_failed", error_type=type(e).__name__)
             return {
                 "status": "error",
                 "error": str(e),

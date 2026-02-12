@@ -116,9 +116,7 @@ class DuplicateDetector:
         stats.clusters_found = len(result_clusters)
         stats.total_duplicates = sum(len(c.duplicates) for c in result_clusters)
         if result_clusters:
-            stats.avg_cluster_size = sum(c.size for c in result_clusters) / len(
-                result_clusters
-            )
+            stats.avg_cluster_size = sum(c.size for c in result_clusters) / len(result_clusters)
 
         return result_clusters, stats
 

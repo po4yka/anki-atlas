@@ -227,9 +227,7 @@ class MockEmbeddingProvider(EmbeddingProvider):
             # Repeat hash to fill dimension
             repeated = (text_hash * ((self._dimension // 16) + 1))[: self._dimension]
             # Convert bytes to floats in [-1, 1]
-            embedding = [
-                (struct.unpack("B", bytes([b]))[0] / 127.5) - 1.0 for b in repeated
-            ]
+            embedding = [(struct.unpack("B", bytes([b]))[0] / 127.5) - 1.0 for b in repeated]
             embeddings.append(embedding)
         return embeddings
 

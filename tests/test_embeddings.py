@@ -73,6 +73,7 @@ class TestMockEmbeddingProvider:
     def test_content_hash_includes_model(self) -> None:
         """Test that content hash includes model name."""
         provider1 = MockEmbeddingProvider(dimension=384)
+
         # Create a subclass with different model name
         class DifferentMock(MockEmbeddingProvider):
             @property
