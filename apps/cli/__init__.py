@@ -7,9 +7,10 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from packages.common.logging import configure_logging
+from packages.common.logging import configure_logging, get_logger
 
 configure_logging(debug=False, json_output=False)
+logger = get_logger(module=__name__)
 
 app = typer.Typer(
     name="anki-atlas",
@@ -81,6 +82,7 @@ async def _sync_async(
             if result.applied:
                 console.print(f"[green]Applied migrations:[/green] {', '.join(result.applied)}")
         except Exception as e:
+            logger.exception("cli_migration_failed", error_type=type(e).__name__)
             console.print(f"[red]Migration error:[/red] {e}")
             raise typer.Exit(1) from None
 
@@ -104,6 +106,7 @@ async def _sync_async(
         console.print(table)
 
     except Exception as e:
+        logger.exception("cli_sync_failed", source=str(source_path), error_type=type(e).__name__)
         console.print(f"[red]Sync error:[/red] {e}")
         raise typer.Exit(1) from None
 
@@ -129,9 +132,11 @@ async def _sync_async(
                     console.print(f"[yellow]Warning:[/yellow] {error}")
 
         except EmbeddingModelChanged as e:
+            logger.warning("cli_embedding_model_changed", error=str(e))
             console.print(f"[yellow]{e}[/yellow]")
             raise typer.Exit(1) from None
         except Exception as e:
+            logger.exception("cli_indexing_failed", error_type=type(e).__name__)
             console.print(f"[red]Indexing error:[/red] {e}")
             raise typer.Exit(1) from None
 
@@ -154,6 +159,7 @@ async def _migrate_async() -> None:
         else:
             console.print("[yellow]No new migrations to apply[/yellow]")
     except Exception as e:
+        logger.exception("cli_migrate_failed", error_type=type(e).__name__)
         console.print(f"[red]Migration error:[/red] {e}")
         raise typer.Exit(1) from None
 
@@ -195,9 +201,11 @@ async def _index_async(force: bool) -> None:
                 console.print(f"[yellow]Warning:[/yellow] {error}")
 
     except EmbeddingModelChanged as e:
+        logger.warning("cli_index_model_changed", error=str(e))
         console.print(f"[yellow]{e}[/yellow]")
         raise typer.Exit(1) from None
     except Exception as e:
+        logger.exception("cli_index_failed", force=force, error_type=type(e).__name__)
         console.print(f"[red]Indexing error:[/red] {e}")
         raise typer.Exit(1) from None
 
@@ -287,6 +295,7 @@ async def _topics_async(
             console.print(f"  Topics matched: {stats.topics_matched}")
 
     except Exception as e:
+        logger.exception("cli_topics_failed", error_type=type(e).__name__)
         console.print(f"[red]Topics error:[/red] {e}")
         raise typer.Exit(1) from None
 
@@ -398,6 +407,7 @@ async def _search_async(
                 console.print(f"    Tags: {tags_str}")
 
     except Exception as e:
+        logger.exception("cli_search_failed", query=query, error_type=type(e).__name__)
         console.print(f"[red]Search error:[/red] {e}")
         raise typer.Exit(1) from None
 
@@ -453,6 +463,7 @@ async def _coverage_async(topic: str, include_subtree: bool) -> None:
             )
 
     except Exception as e:
+        logger.exception("cli_coverage_failed", topic=topic, error_type=type(e).__name__)
         console.print(f"[red]Coverage error:[/red] {e}")
         raise typer.Exit(1) from None
 
@@ -514,6 +525,7 @@ async def _gaps_async(topic: str, min_coverage: int) -> None:
         )
 
     except Exception as e:
+        logger.exception("cli_gaps_failed", topic=topic, error_type=type(e).__name__)
         console.print(f"[red]Gaps error:[/red] {e}")
         raise typer.Exit(1) from None
 
@@ -599,6 +611,11 @@ async def _duplicates_async(
         )
 
     except Exception as e:
+        logger.exception(
+            "cli_duplicates_failed",
+            threshold=threshold,
+            error_type=type(e).__name__,
+        )
         console.print(f"[red]Duplicates error:[/red] {e}")
         raise typer.Exit(1) from None
 

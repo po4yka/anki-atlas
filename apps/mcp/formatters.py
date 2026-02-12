@@ -55,7 +55,9 @@ def format_search_result(
             deck = "-"
 
         sources = "+".join(sr.sources) if sr.sources else "-"
-        lines.append(f"| {i} | {sr.rrf_score:.3f} ({sources}) | {sr.note_id} | {preview} | {tags} | {deck} |")
+        lines.append(
+            f"| {i} | {sr.rrf_score:.3f} ({sources}) | {sr.note_id} | {preview} | {tags} | {deck} |"
+        )
 
     if len(result.results) > 20:
         lines.append(f"\n*...and {len(result.results) - 20} more results*")
@@ -147,9 +149,7 @@ def format_gaps_result(gaps: list[Any], topic_path: str) -> str:
         lines.append("| Topic | Path | Notes | Threshold |")
         lines.append("|-------|------|-------|-----------|")
         for gap in undercovered[:15]:
-            lines.append(
-                f"| {gap.label} | `{gap.path}` | {gap.note_count} | {gap.threshold} |"
-            )
+            lines.append(f"| {gap.label} | `{gap.path}` | {gap.note_count} | {gap.threshold} |")
         if len(undercovered) > 15:
             lines.append(f"\n*...and {len(undercovered) - 15} more undercovered topics*")
 

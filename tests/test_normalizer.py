@@ -1,6 +1,5 @@
 """Tests for HTML to text normalization."""
 
-
 from packages.anki.models import AnkiNote
 from packages.anki.normalizer import (
     normalize_note,
