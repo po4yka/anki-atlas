@@ -257,7 +257,7 @@ def create_app() -> FastAPI:
             Sync and indexing statistics.
         """
         from packages.anki.sync import sync_anki_collection
-        from packages.indexer.service import index_all_notes
+        from packages.indexer.service import EmbeddingModelChanged, index_all_notes
 
         source_path = Path(request.source).expanduser().resolve()
 
@@ -304,6 +304,9 @@ def create_app() -> FastAPI:
                 response.notes_embedded = index_stats.notes_embedded
                 response.notes_skipped = index_stats.notes_skipped
                 response.index_errors = index_stats.errors if index_stats.errors else None
+            except EmbeddingModelChanged as e:
+                logger.warning("sync_embedding_model_changed", error=str(e))
+                response.index_errors = [str(e)]
             except Exception as e:
                 logger.exception("sync_indexing_failed", source=str(source_path))
                 response.index_errors = [str(e)]
@@ -320,7 +323,7 @@ def create_app() -> FastAPI:
         Returns:
             Indexing statistics.
         """
-        from packages.indexer.service import index_all_notes
+        from packages.indexer.service import EmbeddingModelChanged, index_all_notes
 
         try:
             stats = await index_all_notes(force_reindex=request.force_reindex)
@@ -332,6 +335,8 @@ def create_app() -> FastAPI:
                 notes_deleted=stats.notes_deleted,
                 errors=stats.errors,
             )
+        except EmbeddingModelChanged as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
         except Exception as e:
             raise HTTPException(
                 status_code=500,

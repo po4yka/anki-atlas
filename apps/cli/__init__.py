@@ -63,7 +63,7 @@ async def _sync_async(
     """Async sync implementation."""
     from packages.anki.sync import sync_anki_collection
     from packages.common.database import run_migrations as db_migrate
-    from packages.indexer.service import index_all_notes
+    from packages.indexer.service import EmbeddingModelChanged, index_all_notes
 
     source_path = Path(source).expanduser().resolve()
 
@@ -77,9 +77,9 @@ async def _sync_async(
     if run_migrations:
         console.print("Running database migrations...")
         try:
-            applied = await db_migrate()
-            if applied:
-                console.print(f"[green]Applied migrations:[/green] {', '.join(applied)}")
+            result = await db_migrate()
+            if result.applied:
+                console.print(f"[green]Applied migrations:[/green] {', '.join(result.applied)}")
         except Exception as e:
             console.print(f"[red]Migration error:[/red] {e}")
             raise typer.Exit(1) from None
@@ -128,6 +128,9 @@ async def _sync_async(
                 for error in index_stats.errors:
                     console.print(f"[yellow]Warning:[/yellow] {error}")
 
+        except EmbeddingModelChanged as e:
+            console.print(f"[yellow]{e}[/yellow]")
+            raise typer.Exit(1) from None
         except Exception as e:
             console.print(f"[red]Indexing error:[/red] {e}")
             raise typer.Exit(1) from None
@@ -145,11 +148,11 @@ async def _migrate_async() -> None:
 
     console.print("Running database migrations...")
     try:
-        applied = await run_migrations()
-        if applied:
-            console.print(f"[green]Applied migrations:[/green] {', '.join(applied)}")
+        result = await run_migrations()
+        if result.applied:
+            console.print(f"[green]Applied migrations:[/green] {', '.join(result.applied)}")
         else:
-            console.print("[yellow]No migrations to apply[/yellow]")
+            console.print("[yellow]No new migrations to apply[/yellow]")
     except Exception as e:
         console.print(f"[red]Migration error:[/red] {e}")
         raise typer.Exit(1) from None
@@ -170,7 +173,7 @@ def index(
 
 async def _index_async(force: bool) -> None:
     """Async index implementation."""
-    from packages.indexer.service import index_all_notes
+    from packages.indexer.service import EmbeddingModelChanged, index_all_notes
 
     console.print("Indexing notes to Qdrant...")
     try:
@@ -191,6 +194,9 @@ async def _index_async(force: bool) -> None:
             for error in stats.errors:
                 console.print(f"[yellow]Warning:[/yellow] {error}")
 
+    except EmbeddingModelChanged as e:
+        console.print(f"[yellow]{e}[/yellow]")
+        raise typer.Exit(1) from None
     except Exception as e:
         console.print(f"[red]Indexing error:[/red] {e}")
         raise typer.Exit(1) from None

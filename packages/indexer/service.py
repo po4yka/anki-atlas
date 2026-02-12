@@ -15,6 +15,18 @@ from packages.indexer.qdrant import NotePayload, QdrantRepository, get_qdrant_re
 logger = get_logger(module=__name__)
 
 
+class EmbeddingModelChanged(Exception):
+    """Raised when embedding model changed since last indexing."""
+
+    def __init__(self, stored: str, current: str) -> None:
+        self.stored_version = stored
+        self.current_version = current
+        super().__init__(
+            f"Embedding model changed: '{stored}' -> '{current}'. "
+            f"Use --force-reindex to re-embed all notes with the new model."
+        )
+
+
 @dataclass
 class NoteForIndexing:
     """Note data needed for indexing."""
@@ -178,6 +190,22 @@ class IndexService:
         qdrant = await self.get_qdrant_repository()
         return await qdrant.delete_vectors(note_ids)
 
+    async def _get_stored_embedding_version(self) -> str | None:
+        """Read embedding_version from sync_metadata table.
+
+        Returns:
+            The stored version string, or None if not yet set.
+        """
+        async with get_connection(self.settings) as conn:
+            result = await conn.execute(
+                "SELECT value FROM sync_metadata WHERE key = 'embedding_version'"
+            )
+            row = await result.fetchone()
+            if row is None:
+                return None
+            value: str = json.loads(row["value"])
+            return value
+
     async def index_from_database(
         self,
         force_reindex: bool = False,
@@ -191,8 +219,28 @@ class IndexService:
 
         Returns:
             Combined IndexStats from all batches.
+
+        Raises:
+            EmbeddingModelChanged: If the embedding model changed and
+                force_reindex is False.
         """
         total_stats = IndexStats()
+
+        provider = await self.get_embedding_provider()
+        current_version = self._embedding_version(provider)
+        stored_version = await self._get_stored_embedding_version()
+
+        if stored_version is not None and stored_version != current_version:
+            if not force_reindex:
+                raise EmbeddingModelChanged(stored_version, current_version)
+            # Force reindex: recreate the collection with the new dimension
+            qdrant = await self.get_qdrant_repository()
+            await qdrant.recreate_collection(provider.dimension)
+            logger.warning(
+                "embedding_model_changed_recreating",
+                stored=stored_version,
+                current=current_version,
+            )
 
         async with get_connection(self.settings) as conn:
             # Get total count

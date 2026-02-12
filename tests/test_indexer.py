@@ -1,13 +1,23 @@
 """Tests for indexer service."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from qdrant_client import models
 
 from packages.common.config import Settings
 from packages.indexer.embeddings import MockEmbeddingProvider
-from packages.indexer.qdrant import NotePayload, QdrantRepository
-from packages.indexer.service import IndexService, IndexStats, NoteForIndexing
+from packages.indexer.qdrant import (
+    DimensionMismatchError,
+    NotePayload,
+    QdrantRepository,
+)
+from packages.indexer.service import (
+    EmbeddingModelChanged,
+    IndexService,
+    IndexStats,
+    NoteForIndexing,
+)
 
 
 @pytest.fixture
@@ -133,12 +143,8 @@ class TestIndexService:
     ) -> None:
         """Test that unchanged notes are skipped."""
         # Simulate note 1 already having same hash
-        existing_hash = mock_embedding_provider.content_hash(
-            sample_notes[0].normalized_text
-        )
-        mock_qdrant_repository.get_existing_hashes = AsyncMock(
-            return_value={1: existing_hash}
-        )
+        existing_hash = mock_embedding_provider.content_hash(sample_notes[0].normalized_text)
+        mock_qdrant_repository.get_existing_hashes = AsyncMock(return_value={1: existing_hash})
         mock_qdrant_repository.upsert_vectors = AsyncMock(return_value=1)
 
         service = IndexService(
@@ -162,9 +168,7 @@ class TestIndexService:
     ) -> None:
         """Test force reindex ignores existing hashes."""
         # Simulate all notes having same hash
-        existing_hash = mock_embedding_provider.content_hash(
-            sample_notes[0].normalized_text
-        )
+        existing_hash = mock_embedding_provider.content_hash(sample_notes[0].normalized_text)
         mock_qdrant_repository.get_existing_hashes = AsyncMock(
             return_value={1: existing_hash, 2: existing_hash}
         )
@@ -246,6 +250,147 @@ class TestIndexService:
         deleted = await service.delete_notes([])
         assert deleted == 0
         mock_qdrant_repository.delete_vectors.assert_not_called()
+
+    async def test_model_change_detected_raises(
+        self,
+        settings: Settings,
+        mock_embedding_provider: MockEmbeddingProvider,
+        mock_qdrant_repository: AsyncMock,
+    ) -> None:
+        """Test that a changed embedding version raises EmbeddingModelChanged."""
+        service = IndexService(
+            settings=settings,
+            embedding_provider=mock_embedding_provider,
+            qdrant_repository=mock_qdrant_repository,
+        )
+
+        stored_version = "1:openai/text-embedding-3-small:1536"
+        with patch.object(
+            service,
+            "_get_stored_embedding_version",
+            new_callable=AsyncMock,
+            return_value=stored_version,
+        ):
+            with pytest.raises(EmbeddingModelChanged) as exc_info:
+                await service.index_from_database(force_reindex=False)
+
+            assert exc_info.value.stored_version == stored_version
+            assert "mock/test" in exc_info.value.current_version
+
+    async def test_model_change_with_force_reindex_recreates(
+        self,
+        settings: Settings,
+        mock_embedding_provider: MockEmbeddingProvider,
+        mock_qdrant_repository: AsyncMock,
+    ) -> None:
+        """Test force_reindex recreates collection on model change."""
+        service = IndexService(
+            settings=settings,
+            embedding_provider=mock_embedding_provider,
+            qdrant_repository=mock_qdrant_repository,
+        )
+        mock_qdrant_repository.recreate_collection = AsyncMock()
+
+        stored_version = "1:openai/text-embedding-3-small:1536"
+        with (
+            patch.object(
+                service,
+                "_get_stored_embedding_version",
+                new_callable=AsyncMock,
+                return_value=stored_version,
+            ),
+            patch(
+                "packages.indexer.service.get_connection",
+            ) as mock_conn,
+        ):
+            # Simulate empty DB (0 notes) so index_from_database finishes quickly
+            mock_result = AsyncMock()
+            mock_result.fetchone = AsyncMock(return_value={"count": 0})
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__ = AsyncMock(return_value=mock_ctx)
+            mock_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.execute = AsyncMock(return_value=mock_result)
+            mock_ctx.commit = AsyncMock()
+            mock_conn.return_value = mock_ctx
+
+            await service.index_from_database(force_reindex=True)
+
+            mock_qdrant_repository.recreate_collection.assert_called_once_with(384)
+
+    async def test_first_run_no_stored_version_proceeds(
+        self,
+        settings: Settings,
+        mock_embedding_provider: MockEmbeddingProvider,
+        mock_qdrant_repository: AsyncMock,
+    ) -> None:
+        """Test first run with no stored version proceeds normally."""
+        service = IndexService(
+            settings=settings,
+            embedding_provider=mock_embedding_provider,
+            qdrant_repository=mock_qdrant_repository,
+        )
+
+        with (
+            patch.object(
+                service,
+                "_get_stored_embedding_version",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "packages.indexer.service.get_connection",
+            ) as mock_conn,
+        ):
+            mock_result = AsyncMock()
+            mock_result.fetchone = AsyncMock(return_value={"count": 0})
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__ = AsyncMock(return_value=mock_ctx)
+            mock_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_ctx.execute = AsyncMock(return_value=mock_result)
+            mock_ctx.commit = AsyncMock()
+            mock_conn.return_value = mock_ctx
+
+            # Should NOT raise
+            stats = await service.index_from_database(force_reindex=False)
+            assert stats.notes_processed == 0
+
+
+class TestDimensionMismatch:
+    """Tests for Qdrant dimension validation."""
+
+    async def test_dimension_mismatch_in_ensure_collection(self) -> None:
+        """Test that mismatched dimensions raise DimensionMismatchError."""
+        repo = QdrantRepository(
+            settings=Settings(
+                embedding_provider="mock",
+                embedding_model="mock",
+                embedding_dimension=384,
+                postgres_url="postgresql://test:test@localhost/test",
+                qdrant_url="http://localhost:6333",
+            ),
+        )
+
+        mock_client = AsyncMock()
+        # Collection exists
+        mock_collection = MagicMock()
+        mock_collection.name = "anki_notes"
+        mock_client.get_collections = AsyncMock(
+            return_value=MagicMock(collections=[mock_collection])
+        )
+        # Collection has dimension 384
+        mock_info = MagicMock()
+        mock_info.config.params.vectors = models.VectorParams(
+            size=384, distance=models.Distance.COSINE
+        )
+        mock_client.get_collection = AsyncMock(return_value=mock_info)
+
+        repo._client = mock_client
+
+        with pytest.raises(DimensionMismatchError) as exc_info:
+            await repo.ensure_collection(1536)
+
+        assert exc_info.value.expected == 1536
+        assert exc_info.value.actual == 384
 
 
 class TestNoteForIndexing:

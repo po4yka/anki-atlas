@@ -14,6 +14,19 @@ logger = get_logger(module=__name__)
 COLLECTION_NAME = "anki_notes"
 
 
+class DimensionMismatchError(Exception):
+    """Raised when requested dimension doesn't match existing collection."""
+
+    def __init__(self, collection: str, expected: int, actual: int) -> None:
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            f"Collection '{collection}' has dimension {actual}, "
+            f"but provider requires {expected}. "
+            f"Use --force-reindex to recreate the collection."
+        )
+
+
 @dataclass
 class NotePayload:
     """Payload stored with each vector in Qdrant."""
@@ -90,6 +103,9 @@ class QdrantRepository:
 
         Returns:
             True if collection was created, False if it already existed.
+
+        Raises:
+            DimensionMismatchError: If collection exists with a different dimension.
         """
         client = await self.get_client()
 
@@ -98,16 +114,46 @@ class QdrantRepository:
         exists = any(c.name == self.collection_name for c in collections.collections)
 
         if exists:
+            # Validate dimension matches
+            info = await client.get_collection(self.collection_name)
+            vectors_config = info.config.params.vectors
+            if isinstance(vectors_config, models.VectorParams):
+                actual_dim = vectors_config.size
+                if actual_dim != dimension:
+                    raise DimensionMismatchError(self.collection_name, dimension, actual_dim)
             return False
 
-        # Create collection with optimized settings
+        await self._create_collection(client, dimension)
+        return True
+
+    async def recreate_collection(self, dimension: int) -> None:
+        """Drop and recreate the collection with a new dimension.
+
+        Args:
+            dimension: Vector dimension for the new collection.
+        """
+        client = await self.get_client()
+
+        collections = await client.get_collections()
+        exists = any(c.name == self.collection_name for c in collections.collections)
+        if exists:
+            logger.warning(
+                "recreating_collection",
+                collection=self.collection_name,
+                dimension=dimension,
+            )
+            await client.delete_collection(self.collection_name)
+
+        await self._create_collection(client, dimension)
+
+    async def _create_collection(self, client: AsyncQdrantClient, dimension: int) -> None:
+        """Create the collection with optimized settings and payload indexes."""
         await client.create_collection(
             collection_name=self.collection_name,
             vectors_config=models.VectorParams(
                 size=dimension,
                 distance=models.Distance.COSINE,
             ),
-            # Optimize for filtering
             optimizers_config=models.OptimizersConfigDiff(
                 indexing_threshold=10000,
             ),
@@ -139,8 +185,6 @@ class QdrantRepository:
             field_name="mature",
             field_schema=models.PayloadSchemaType.BOOL,
         )
-
-        return True
 
     async def get_existing_hashes(self, note_ids: list[int]) -> dict[int, str]:
         """Get content hashes for existing notes.
