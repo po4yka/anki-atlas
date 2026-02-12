@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -56,10 +57,20 @@ async def get_connection(
         yield conn
 
 
-async def run_migrations(settings: Settings | None = None) -> list[str]:
+@dataclass
+class MigrationResult:
+    """Result of a migration run."""
+
+    applied: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
+
+
+async def run_migrations(settings: Settings | None = None) -> MigrationResult:
     """Run all pending migrations.
 
-    Returns list of applied migration names.
+    Tracks applied migrations in a `schema_migrations` table so each
+    .sql file executes at most once.  Returns a MigrationResult with
+    the names of applied and skipped migrations.
     """
     if settings is None:
         settings = get_settings()
@@ -67,24 +78,49 @@ async def run_migrations(settings: Settings | None = None) -> list[str]:
     migrations_dir = Path(__file__).parent / "migrations"
     migration_files = sorted(migrations_dir.glob("*.sql"))
 
-    applied: list[str] = []
+    result = MigrationResult()
 
     async with await psycopg.AsyncConnection.connect(
         settings.postgres_url,
         row_factory=dict_row,
     ) as conn:
+        # Bootstrap the tracking table
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "CREATE TABLE IF NOT EXISTS schema_migrations ("
+                "  name TEXT PRIMARY KEY,"
+                "  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+                ")"
+            )
+        await conn.commit()
+
+        # Load already-applied set
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT name FROM schema_migrations")
+            rows = await cur.fetchall()
+        already_applied: set[str] = {row["name"] for row in rows}
+
         for migration_file in migration_files:
             migration_name = migration_file.stem
+
+            if migration_name in already_applied:
+                logger.debug("migration_skipped", name=migration_name)
+                result.skipped.append(migration_name)
+                continue
+
             sql = migration_file.read_text()
 
-            # Execute migration
             async with conn.cursor() as cur:
                 await cur.execute(sql)
-
+                await cur.execute(
+                    "INSERT INTO schema_migrations (name) VALUES (%s)",
+                    (migration_name,),
+                )
             await conn.commit()
-            applied.append(migration_name)
+            logger.info("migration_applied", name=migration_name)
+            result.applied.append(migration_name)
 
-    return applied
+    return result
 
 
 async def check_connection(settings: Settings | None = None) -> bool:
