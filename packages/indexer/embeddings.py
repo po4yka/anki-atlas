@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from packages.common.config import Settings, get_settings
 
 if TYPE_CHECKING:
+    import google.genai
     import openai
     from sentence_transformers import SentenceTransformer
 
@@ -124,6 +125,65 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
             sorted_data = sorted(response.data, key=lambda x: x.index)
             batch_embeddings = [item.embedding for item in sorted_data]
             all_embeddings.extend(batch_embeddings)
+
+        return all_embeddings
+
+
+class GoogleEmbeddingProvider(EmbeddingProvider):
+    """Google Gemini embedding provider."""
+
+    def __init__(
+        self,
+        model: str = "gemini-embedding-001",
+        dimension: int = 3072,
+        batch_size: int = 100,
+    ) -> None:
+        self._model = model
+        self._dimension = dimension
+        self._batch_size = batch_size
+        self._client: google.genai.Client | None = None
+
+    @property
+    def model_name(self) -> str:
+        return f"google/{self._model}"
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
+    def _get_client(self) -> Any:
+        """Lazily initialize Google GenAI client."""
+        if self._client is None:
+            try:
+                from google import genai
+            except ImportError as e:
+                raise ImportError(
+                    "google-genai package not installed. "
+                    "Install with: uv sync --extra embeddings-google"
+                ) from e
+            self._client = genai.Client()
+        return self._client
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        """Embed texts using Google Gemini API."""
+        if not texts:
+            return []
+
+        client = self._get_client()
+        all_embeddings: list[list[float]] = []
+
+        for i in range(0, len(texts), self._batch_size):
+            batch = texts[i : i + self._batch_size]
+
+            response = await client.aio.models.embed_content(
+                model=self._model,
+                contents=batch,
+                config={"output_dimensionality": self._dimension},
+            )
+
+            all_embeddings.extend(
+                [list(emb.values) for emb in response.embeddings]
+            )
 
         return all_embeddings
 
@@ -248,6 +308,11 @@ def get_embedding_provider(settings: Settings | None = None) -> EmbeddingProvide
 
     if provider_type == "openai":
         return OpenAIEmbeddingProvider(
+            model=settings.embedding_model,
+            dimension=settings.embedding_dimension,
+        )
+    elif provider_type == "google":
+        return GoogleEmbeddingProvider(
             model=settings.embedding_model,
             dimension=settings.embedding_dimension,
         )

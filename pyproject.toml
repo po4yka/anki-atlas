@@ -43,6 +43,9 @@ dev = [
 embeddings-openai = [
     "openai>=1.55.0",
 ]
+embeddings-google = [
+    "google-genai>=1.0.0",
+]
 embeddings-local = [
     "sentence-transformers>=3.3.0",
 ]
@@ -104,8 +107,9 @@ warn_redundant_casts = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["openai.*", "qdrant_client.*", "sentence_transformers.*"]
+module = ["google", "google.genai.*", "openai.*", "qdrant_client.*", "sentence_transformers.*"]
 ignore_missing_imports = true
+follow_untyped_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

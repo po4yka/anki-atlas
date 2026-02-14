@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     # Embedding configuration
     embedding_provider: str = Field(
         default="openai",
-        description="Embedding provider: 'openai', 'local', or 'mock'",
+        description="Embedding provider: 'openai', 'google', 'local', or 'mock'",
     )
     embedding_model: str = Field(
         default="text-embedding-3-small",

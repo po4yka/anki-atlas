@@ -68,13 +68,16 @@ Key settings:
 | `ANKIATLAS_POSTGRES_URL` | PostgreSQL connection URL | `postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas` |
 | `ANKIATLAS_QDRANT_URL` | Qdrant server URL | `http://localhost:6333` |
 | `ANKIATLAS_REDIS_URL` | Redis URL for async jobs | `redis://localhost:6379/0` |
-| `ANKIATLAS_EMBEDDING_PROVIDER` | `openai` or `local` | `openai` |
+| `ANKIATLAS_EMBEDDING_PROVIDER` | `openai`, `google`, or `local` | `openai` |
 | `ANKIATLAS_EMBEDDING_MODEL` | Embedding model name | `text-embedding-3-small` |
 | `ANKIATLAS_RERANK_ENABLED` | Enable CrossEncoder reranking | `false` |
 | `ANKIATLAS_RERANK_MODEL` | CrossEncoder model name | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
 | `ANKIATLAS_RERANK_TOP_N` | Candidates reranked per query | `50` |
 | `ANKIATLAS_ANKI_COLLECTION_PATH` | Path to collection.anki2 | - |
 | `OPENAI_API_KEY` | OpenAI API key (if using openai provider) | - |
+| `GOOGLE_API_KEY` | Google API key (if using google provider) | - |
+
+Provider extras: `uv sync --extra embeddings-openai`, `uv sync --extra embeddings-google`, `uv sync --extra embeddings-local`.
 
 Reranking requires `sentence-transformers` (install with `uv sync --extra embeddings-local`).
 
