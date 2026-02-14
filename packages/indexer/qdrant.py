@@ -330,7 +330,9 @@ class QdrantRepository:
         query_vector: list[float],
         limit: int = 50,
         deck_names: list[str] | None = None,
+        deck_names_exclude: list[str] | None = None,
         tags: list[str] | None = None,
+        tags_exclude: list[str] | None = None,
         model_ids: list[int] | None = None,
         mature_only: bool = False,
         max_lapses: int | None = None,
@@ -342,7 +344,9 @@ class QdrantRepository:
             query_vector: Query embedding vector.
             limit: Maximum number of results.
             deck_names: Filter by deck names (any match).
+            deck_names_exclude: Exclude notes in these decks.
             tags: Filter by tags (any match).
+            tags_exclude: Exclude notes with these tags.
             model_ids: Filter by model IDs.
             mature_only: Only return mature cards (ivl >= 21).
             max_lapses: Maximum lapses filter.
@@ -355,6 +359,7 @@ class QdrantRepository:
 
         # Build filter conditions
         must_conditions: list[models.Condition] = []
+        must_not_conditions: list[models.Condition] = []
 
         if deck_names:
             must_conditions.append(
@@ -369,6 +374,22 @@ class QdrantRepository:
                 models.FieldCondition(
                     key="tags",
                     match=models.MatchAny(any=tags),
+                )
+            )
+
+        if deck_names_exclude:
+            must_not_conditions.append(
+                models.FieldCondition(
+                    key="deck_names",
+                    match=models.MatchAny(any=deck_names_exclude),
+                )
+            )
+
+        if tags_exclude:
+            must_not_conditions.append(
+                models.FieldCondition(
+                    key="tags",
+                    match=models.MatchAny(any=tags_exclude),
                 )
             )
 
@@ -404,7 +425,11 @@ class QdrantRepository:
                 )
             )
 
-        query_filter = models.Filter(must=must_conditions) if must_conditions else None
+        query_filter = (
+            models.Filter(must=must_conditions, must_not=must_not_conditions)
+            if must_conditions or must_not_conditions
+            else None
+        )
 
         results = await client.query_points(
             collection_name=self.collection_name,

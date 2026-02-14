@@ -16,7 +16,7 @@ COPY apps ./apps
 COPY packages ./packages
 
 # Install project itself
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --extra embeddings-openai
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash appuser && \

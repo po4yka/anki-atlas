@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # Embedding configuration
     embedding_provider: str = Field(
         default="openai",
-        description="Embedding provider: 'openai' or 'local'",
+        description="Embedding provider: 'openai', 'local', or 'mock'",
     )
     embedding_model: str = Field(
         default="text-embedding-3-small",
@@ -64,8 +64,15 @@ class Settings(BaseSettings):
 
     @field_validator("embedding_dimension")
     @classmethod
-    def validate_dimension(cls, v: int) -> int:
-        """Validate embedding dimension is a known model dimension."""
+    def validate_dimension(cls, v: int, info: ValidationInfo) -> int:
+        """Validate embedding dimension with provider-specific rules."""
+        if v <= 0:
+            raise ValueError("embedding_dimension must be positive")
+
+        provider = str(info.data.get("embedding_provider", "openai")).lower()
+        if provider == "mock":
+            return v
+
         valid_dimensions = {384, 768, 1024, 1536, 3072}
         if v not in valid_dimensions:
             raise ValueError(

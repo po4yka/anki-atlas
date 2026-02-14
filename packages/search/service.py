@@ -162,7 +162,9 @@ class SearchService:
 
         # Map filters to Qdrant format
         deck_names = filters.deck_names if filters else None
+        deck_names_exclude = filters.deck_names_exclude if filters else None
         tags = filters.tags if filters else None
+        tags_exclude = filters.tags_exclude if filters else None
         model_ids = filters.model_ids if filters else None
         mature_only = (filters.min_ivl or 0) >= 21 if filters else False
         max_lapses = filters.max_lapses if filters else None
@@ -172,7 +174,9 @@ class SearchService:
             query_vector=query_vector,
             limit=limit,
             deck_names=deck_names,
+            deck_names_exclude=deck_names_exclude,
             tags=tags,
+            tags_exclude=tags_exclude,
             model_ids=model_ids,
             mature_only=mature_only,
             max_lapses=max_lapses,
