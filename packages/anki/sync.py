@@ -250,8 +250,12 @@ class SyncService:
         collection: AnkiCollection,
     ) -> int:
         """Sync card stats to PostgreSQL."""
+        # Filter out stats for cards that no longer exist (orphaned revlog entries)
+        valid_card_ids = {card.card_id for card in collection.cards}
         count = 0
         for stats in collection.card_stats:
+            if stats.card_id not in valid_card_ids:
+                continue
             await conn.execute(
                 """
                 INSERT INTO card_stats (

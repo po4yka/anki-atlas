@@ -210,7 +210,8 @@ class IndexService:
             row = await result.fetchone()
             if row is None:
                 return None
-            value: str = json.loads(row["value"])
+            # psycopg auto-deserializes jsonb, so row["value"] is already a str
+            value: str = row["value"]
             return value
 
     async def index_from_database(

@@ -87,9 +87,49 @@ class AnkiReader:
             extracted_at=datetime.now(UTC),
         )
 
-    def read_decks(self) -> list[AnkiDeck]:
-        """Read decks from collection."""
+    def _has_modern_schema(self) -> bool:
+        """Check if the collection uses the modern Anki schema (separate tables)."""
         conn = self._ensure_connected()
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='notetypes'"
+        )
+        return cursor.fetchone() is not None
+
+    def read_decks(self) -> list[AnkiDeck]:
+        """Read decks from collection.
+
+        Supports both legacy (col.decks JSON) and modern (decks table) schemas.
+        """
+        conn = self._ensure_connected()
+
+        if self._has_modern_schema():
+            return self._read_decks_modern(conn)
+        return self._read_decks_legacy(conn)
+
+    def _read_decks_modern(self, conn: sqlite3.Connection) -> list[AnkiDeck]:
+        """Read decks from the modern separate decks table."""
+        cursor = conn.execute("SELECT id, name FROM decks")
+        result: list[AnkiDeck] = []
+
+        for row in cursor:
+            name = row["name"]
+            parent_name = None
+            if "::" in name:
+                parent_name = name.rsplit("::", 1)[0]
+
+            result.append(
+                AnkiDeck(
+                    deck_id=row["id"],
+                    name=name,
+                    parent_name=parent_name,
+                    config={},
+                )
+            )
+
+        return result
+
+    def _read_decks_legacy(self, conn: sqlite3.Connection) -> list[AnkiDeck]:
+        """Read decks from legacy col.decks JSON blob."""
         cursor = conn.execute("SELECT decks FROM col")
         row = cursor.fetchone()
 
@@ -103,11 +143,9 @@ class AnkiReader:
             deck_id = int(deck_id_str)
             name = deck_data.get("name", "")
 
-            # Parse parent from name (e.g., "Parent::Child" -> parent_name = "Parent")
             parent_name = None
             if "::" in name:
-                parts = name.rsplit("::", 1)
-                parent_name = parts[0]
+                parent_name = name.rsplit("::", 1)[0]
 
             result.append(
                 AnkiDeck(
@@ -121,8 +159,59 @@ class AnkiReader:
         return result
 
     def read_models(self) -> list[AnkiModel]:
-        """Read note types/models from collection."""
+        """Read note types/models from collection.
+
+        Supports both legacy (col.models JSON) and modern (notetypes + fields tables) schemas.
+        """
         conn = self._ensure_connected()
+
+        if self._has_modern_schema():
+            return self._read_models_modern(conn)
+        return self._read_models_legacy(conn)
+
+    def _read_models_modern(self, conn: sqlite3.Connection) -> list[AnkiModel]:
+        """Read models from the modern notetypes + fields tables."""
+        # Build field lists per notetype
+        fields_cursor = conn.execute("SELECT ntid, ord, name FROM fields ORDER BY ntid, ord")
+        model_fields: dict[int, list[dict[str, Any]]] = {}
+        for row in fields_cursor:
+            ntid = row["ntid"]
+            if ntid not in model_fields:
+                model_fields[ntid] = []
+            model_fields[ntid].append({"name": row["name"], "ord": row["ord"]})
+
+        # Build template lists per notetype
+        templates_cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='templates'"
+        )
+        model_templates: dict[int, list[dict[str, Any]]] = {}
+        if templates_cursor.fetchone() is not None:
+            tmpl_cursor = conn.execute("SELECT ntid, ord, name FROM templates ORDER BY ntid, ord")
+            for row in tmpl_cursor:
+                ntid = row["ntid"]
+                if ntid not in model_templates:
+                    model_templates[ntid] = []
+                model_templates[ntid].append({"name": row["name"], "ord": row["ord"]})
+
+        cursor = conn.execute("SELECT id, name FROM notetypes")
+        result: list[AnkiModel] = []
+
+        for row in cursor:
+            model_id = row["id"]
+            result.append(
+                AnkiModel(
+                    model_id=model_id,
+                    name=row["name"],
+                    fields=model_fields.get(model_id, []),
+                    templates=model_templates.get(model_id, []),
+                    config={},
+                )
+            )
+
+        return result
+
+    def _read_models_legacy(self, conn: sqlite3.Connection) -> list[AnkiModel]:
+        """Read models from legacy col.models JSON blob."""
         cursor = conn.execute("SELECT models FROM col")
         row = cursor.fetchone()
 

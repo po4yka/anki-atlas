@@ -152,7 +152,11 @@ class GoogleEmbeddingProvider(EmbeddingProvider):
         return self._dimension
 
     def _get_client(self) -> Any:
-        """Lazily initialize Google GenAI client."""
+        """Lazily initialize Google GenAI client.
+
+        Reads API key from GOOGLE_API_KEY or GEMINI_API_KEY env vars,
+        including values loaded from .env by dotenv.
+        """
         if self._client is None:
             try:
                 from google import genai
@@ -161,13 +165,27 @@ class GoogleEmbeddingProvider(EmbeddingProvider):
                     "google-genai package not installed. "
                     "Install with: uv sync --extra embeddings-google"
                 ) from e
-            self._client = genai.Client()
+
+            import os
+
+            from dotenv import load_dotenv
+
+            load_dotenv()
+            api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "GOOGLE_API_KEY or GEMINI_API_KEY environment variable is required "
+                    "for the Google embedding provider"
+                )
+            self._client = genai.Client(api_key=api_key)
         return self._client
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        """Embed texts using Google Gemini API."""
+        """Embed texts using Google Gemini API with rate-limit retry."""
         if not texts:
             return []
+
+        import asyncio
 
         client = self._get_client()
         all_embeddings: list[list[float]] = []
@@ -175,11 +193,25 @@ class GoogleEmbeddingProvider(EmbeddingProvider):
         for i in range(0, len(texts), self._batch_size):
             batch = texts[i : i + self._batch_size]
 
-            response = await client.aio.models.embed_content(
-                model=self._model,
-                contents=batch,
-                config={"output_dimensionality": self._dimension},
-            )
+            # Pace requests to avoid burst rate limits
+            if i > 0:
+                await asyncio.sleep(0.5)
+
+            # Retry with exponential backoff on rate limits
+            for attempt in range(5):
+                try:
+                    response = await client.aio.models.embed_content(
+                        model=self._model,
+                        contents=batch,
+                        config={"output_dimensionality": self._dimension},
+                    )
+                    break
+                except Exception as e:
+                    if "429" in str(e) and attempt < 4:
+                        wait = 2 ** (attempt + 1)  # 2, 4, 8, 16 seconds
+                        await asyncio.sleep(wait)
+                        continue
+                    raise
 
             all_embeddings.extend(
                 [list(emb.values) for emb in response.embeddings]

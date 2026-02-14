@@ -162,6 +162,7 @@ class TestSearchService:
             embedding_provider="mock",
             embedding_model="mock",
             embedding_dimension=384,
+            rerank_enabled=False,
             postgres_url="postgresql://test:test@localhost/test",
             qdrant_url="http://localhost:6333",
         )
@@ -356,6 +357,8 @@ class TestSearchService:
         sparse_query = kwargs["query_sparse_vector"]
         assert sparse_query.indices
         assert sparse_query.values
+        # search() passes retrieval_limit = limit * 2 = 20 to _semantic_search,
+        # which computes prefetch_limit = max(20 * 3, 30) = 60
         assert kwargs["prefetch_limit"] == 60
 
     async def test_search_propagates_lexical_fallback_metadata(
