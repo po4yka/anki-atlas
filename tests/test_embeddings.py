@@ -4,6 +4,7 @@ import pytest
 
 from packages.common.config import Settings
 from packages.indexer.embeddings import (
+    GoogleEmbeddingProvider,
     MockEmbeddingProvider,
     get_embedding_provider,
 )
@@ -87,6 +88,37 @@ class TestMockEmbeddingProvider:
         assert hash1 != hash2  # Different model, different hash
 
 
+class TestGoogleEmbeddingProvider:
+    """Tests for GoogleEmbeddingProvider."""
+
+    def test_model_name(self) -> None:
+        provider = GoogleEmbeddingProvider(model="gemini-embedding-001")
+        assert provider.model_name == "google/gemini-embedding-001"
+
+    def test_dimension(self) -> None:
+        provider = GoogleEmbeddingProvider(dimension=3072)
+        assert provider.dimension == 3072
+
+    def test_custom_dimension(self) -> None:
+        provider = GoogleEmbeddingProvider(dimension=768)
+        assert provider.dimension == 768
+
+    def test_import_error_on_missing_package(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import builtins
+
+        real_import = builtins.__import__
+
+        def mock_import(name: str, *args: object, **kwargs: object) -> object:
+            if name == "google" or name == "google.genai":
+                raise ImportError("No module named 'google'")
+            return real_import(name, *args, **kwargs)
+
+        provider = GoogleEmbeddingProvider()
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+        with pytest.raises(ImportError, match="google-genai package not installed"):
+            provider._get_client()
+
+
 class TestGetEmbeddingProvider:
     """Tests for get_embedding_provider factory."""
 
@@ -102,6 +134,20 @@ class TestGetEmbeddingProvider:
         provider = get_embedding_provider(settings)
         assert isinstance(provider, MockEmbeddingProvider)
         assert provider.dimension == 256
+
+    def test_get_google_provider(self) -> None:
+        """Test getting Google provider from settings."""
+        settings = Settings(
+            embedding_provider="google",
+            embedding_model="gemini-embedding-001",
+            embedding_dimension=3072,
+            postgres_url="postgresql://test:test@localhost/test",
+            qdrant_url="http://localhost:6333",
+        )
+        provider = get_embedding_provider(settings)
+        assert isinstance(provider, GoogleEmbeddingProvider)
+        assert provider.model_name == "google/gemini-embedding-001"
+        assert provider.dimension == 3072
 
     def test_unknown_provider_raises(self) -> None:
         """Test that unknown provider raises ValueError."""
