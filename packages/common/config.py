@@ -37,6 +37,24 @@ class Settings(BaseSettings):
         description="Store vectors on disk for very large collections",
     )
 
+    # Async jobs
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        description="Redis URL for async job queue",
+    )
+    job_queue_name: str = Field(
+        default="ankiatlas_jobs",
+        description="Arq queue name for background jobs",
+    )
+    job_result_ttl_seconds: int = Field(
+        default=86400,
+        description="How long to keep job metadata/results in Redis",
+    )
+    job_max_retries: int = Field(
+        default=3,
+        description="Maximum retry attempts for failed background jobs",
+    )
+
     # Embedding configuration
     embedding_provider: str = Field(
         default="openai",
@@ -95,6 +113,22 @@ class Settings(BaseSettings):
         """Validate Qdrant URL format."""
         if not v.startswith(("http://", "https://")):
             raise ValueError("qdrant_url must be an HTTP(S) URL")
+        return v
+
+    @field_validator("redis_url")
+    @classmethod
+    def validate_redis_url(cls, v: str) -> str:
+        """Validate Redis URL format."""
+        if not v.startswith(("redis://", "rediss://")):
+            raise ValueError("redis_url must be a Redis URL")
+        return v
+
+    @field_validator("job_result_ttl_seconds", "job_max_retries")
+    @classmethod
+    def validate_positive_int(cls, v: int) -> int:
+        """Validate integer settings that must be positive."""
+        if v <= 0:
+            raise ValueError("value must be positive")
         return v
 
 

@@ -24,7 +24,7 @@ Searchable hybrid index for Anki collections with agent-friendly tools.
 git clone https://github.com/po4yka/anki-atlas.git
 cd anki-atlas
 
-# Start dependencies (PostgreSQL + Qdrant)
+# Start dependencies (PostgreSQL + Qdrant + Redis)
 make up
 
 # Install Python dependencies
@@ -38,6 +38,9 @@ anki-atlas sync --source /path/to/collection.anki2
 
 # Run the API server
 make dev
+
+# In another terminal, run background worker
+make worker
 ```
 
 The API will be available at http://localhost:8000
@@ -62,6 +65,7 @@ Key settings:
 |----------|-------------|---------|
 | `ANKIATLAS_POSTGRES_URL` | PostgreSQL connection URL | `postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas` |
 | `ANKIATLAS_QDRANT_URL` | Qdrant server URL | `http://localhost:6333` |
+| `ANKIATLAS_REDIS_URL` | Redis URL for async jobs | `redis://localhost:6379/0` |
 | `ANKIATLAS_EMBEDDING_PROVIDER` | `openai` or `local` | `openai` |
 | `ANKIATLAS_EMBEDDING_MODEL` | Embedding model name | `text-embedding-3-small` |
 | `ANKIATLAS_ANKI_COLLECTION_PATH` | Path to collection.anki2 | - |
@@ -116,6 +120,28 @@ Available tools:
 - `ankiatlas_topic_gaps` - Find knowledge gaps
 - `ankiatlas_duplicates` - Near-duplicate detection
 - `ankiatlas_sync` - Sync Anki collection
+
+## Async Jobs API
+
+Long-running operations can be queued and tracked asynchronously:
+
+```bash
+# Enqueue a sync job
+curl -X POST http://localhost:8000/jobs/sync \
+  -H "Content-Type: application/json" \
+  -d '{"source":"/path/to/collection.anki2","run_migrations":true,"index":true}'
+
+# Enqueue index-only job
+curl -X POST http://localhost:8000/jobs/index \
+  -H "Content-Type: application/json" \
+  -d '{"force_reindex":false}'
+
+# Poll job status/progress
+curl http://localhost:8000/jobs/<job_id>
+
+# Cancel job
+curl -X POST http://localhost:8000/jobs/<job_id>/cancel
+```
 
 See [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) for detailed documentation and example prompts.
 

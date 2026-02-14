@@ -1,4 +1,4 @@
-.PHONY: help install sync dev up down logs test lint format typecheck check clean lock
+.PHONY: help install sync dev worker up down logs test lint format typecheck check clean lock
 
 # Default target
 help:
@@ -11,7 +11,8 @@ help:
 	@echo ""
 	@echo "Development:"
 	@echo "  dev         Run API server locally"
-	@echo "  up          Start postgres + qdrant via docker compose"
+	@echo "  worker      Run arq background worker"
+	@echo "  up          Start postgres + qdrant + redis via docker compose"
 	@echo "  down        Stop docker compose services"
 	@echo "  logs        Tail docker compose logs"
 	@echo ""
@@ -39,8 +40,11 @@ lock:
 dev:
 	uv run uvicorn apps.api.main:app --reload --host 0.0.0.0 --port 8000
 
+worker:
+	uv run arq apps.worker.WorkerSettings
+
 up:
-	docker compose up -d postgres qdrant
+	docker compose up -d postgres qdrant redis
 
 down:
 	docker compose down

@@ -1,7 +1,9 @@
 """Anki Atlas API - FastAPI application."""
 
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,12 @@ from packages.common.logging import (
     set_correlation_id,
 )
 from packages.indexer.qdrant import close_qdrant_repository, get_qdrant_repository
+from packages.jobs import (
+    JobBackendUnavailableError,
+    JobRecord,
+    close_job_manager,
+    get_job_manager,
+)
 
 logger = get_logger(module=__name__)
 
@@ -70,6 +78,53 @@ class IndexResponse(BaseModel):
     notes_skipped: int
     notes_deleted: int
     errors: list[str]
+
+
+class AsyncSyncRequest(BaseModel):
+    """Request body for async sync job."""
+
+    source: str
+    run_migrations: bool = True
+    index: bool = True
+    force_reindex: bool = False
+    run_at: datetime | None = None
+
+
+class AsyncIndexRequest(BaseModel):
+    """Request body for async index job."""
+
+    force_reindex: bool = False
+    run_at: datetime | None = None
+
+
+class JobAcceptedResponse(BaseModel):
+    """Response from async job enqueue."""
+
+    job_id: str
+    status: str
+    job_type: str
+    created_at: datetime
+    scheduled_for: datetime | None = None
+    poll_url: str
+
+
+class JobStatusResponse(BaseModel):
+    """Response with background job status/progress."""
+
+    job_id: str
+    job_type: str
+    status: str
+    progress: float
+    message: str | None = None
+    attempts: int
+    max_retries: int
+    cancel_requested: bool
+    created_at: datetime | None = None
+    scheduled_for: datetime | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    result: dict[str, Any] | None = None
+    error: str | None = None
 
 
 class SearchRequest(BaseModel):
@@ -194,6 +249,26 @@ class DuplicatesResponse(BaseModel):
     stats: dict[str, Any]
 
 
+def _to_job_status_response(job: JobRecord) -> JobStatusResponse:
+    """Map internal job record to API response."""
+    return JobStatusResponse(
+        job_id=job.job_id,
+        job_type=job.job_type,
+        status=job.status,
+        progress=job.progress,
+        message=job.message,
+        attempts=job.attempts,
+        max_retries=job.max_retries,
+        cancel_requested=job.cancel_requested,
+        created_at=job.created_at,
+        scheduled_for=job.scheduled_for,
+        started_at=job.started_at,
+        finished_at=job.finished_at,
+        result=job.result,
+        error=job.error,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Application lifespan handler for startup/shutdown."""
@@ -205,6 +280,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # Shutdown
     await close_pool()
     await close_qdrant_repository()
+    await close_job_manager()
 
 
 def create_app() -> FastAPI:
@@ -282,6 +358,7 @@ def create_app() -> FastAPI:
             "services": {
                 "postgres": {"configured": True},
                 "qdrant": {"configured": True},
+                "redis": {"configured": True},
             },
         }
 
@@ -298,13 +375,23 @@ def create_app() -> FastAPI:
             logger.warning("ready_check_qdrant_failed", error=str(e), error_type=type(e).__name__)
             qdrant_ok = False
 
-        all_ok = postgres_ok and qdrant_ok
+        # Check Redis connectivity (for async jobs)
+        try:
+            manager = await asyncio.wait_for(get_job_manager(), timeout=1.0)
+            redis = await asyncio.wait_for(manager.connect(), timeout=1.0)
+            redis_ok = bool(await asyncio.wait_for(redis.ping(), timeout=1.0))
+        except Exception as e:
+            logger.warning("ready_check_redis_failed", error=str(e), error_type=type(e).__name__)
+            redis_ok = False
+
+        all_ok = postgres_ok and qdrant_ok and redis_ok
 
         return {
             "status": "ready" if all_ok else "not_ready",
             "checks": {
                 "postgres": "ok" if postgres_ok else "failed",
                 "qdrant": "ok" if qdrant_ok else "failed",
+                "redis": "ok" if redis_ok else "failed",
             },
         }
 
@@ -409,6 +496,104 @@ def create_app() -> FastAPI:
                 status_code=500,
                 detail=f"Indexing failed: {e}",
             ) from e
+
+    @app.post("/jobs/sync", response_model=JobAcceptedResponse, status_code=202)
+    async def enqueue_sync_job(request: AsyncSyncRequest) -> JobAcceptedResponse:
+        """Enqueue async sync/index job and return job ID for polling."""
+        source_path = Path(request.source).expanduser().resolve()
+        if not source_path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Collection not found: {source_path}",
+            )
+
+        run_at = request.run_at
+        if run_at and run_at.tzinfo is None:
+            run_at = run_at.replace(tzinfo=UTC)
+
+        try:
+            manager = await get_job_manager()
+            job = await manager.enqueue_sync_job(
+                payload={
+                    "source": str(source_path),
+                    "run_migrations": request.run_migrations,
+                    "index": request.index,
+                    "force_reindex": request.force_reindex,
+                },
+                run_at=run_at,
+            )
+        except JobBackendUnavailableError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("enqueue_sync_job_failed", error_type=type(exc).__name__)
+            raise HTTPException(status_code=500, detail=f"Failed to enqueue sync job: {exc}") from exc
+
+        return JobAcceptedResponse(
+            job_id=job.job_id,
+            status=job.status,
+            job_type=job.job_type,
+            created_at=job.created_at or datetime.now(UTC),
+            scheduled_for=job.scheduled_for,
+            poll_url=f"/jobs/{job.job_id}",
+        )
+
+    @app.post("/jobs/index", response_model=JobAcceptedResponse, status_code=202)
+    async def enqueue_index_job(request: AsyncIndexRequest) -> JobAcceptedResponse:
+        """Enqueue async indexing job and return job ID for polling."""
+        run_at = request.run_at
+        if run_at and run_at.tzinfo is None:
+            run_at = run_at.replace(tzinfo=UTC)
+
+        try:
+            manager = await get_job_manager()
+            job = await manager.enqueue_index_job(
+                payload={
+                    "force_reindex": request.force_reindex,
+                },
+                run_at=run_at,
+            )
+        except JobBackendUnavailableError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("enqueue_index_job_failed", error_type=type(exc).__name__)
+            raise HTTPException(status_code=500, detail=f"Failed to enqueue index job: {exc}") from exc
+
+        return JobAcceptedResponse(
+            job_id=job.job_id,
+            status=job.status,
+            job_type=job.job_type,
+            created_at=job.created_at or datetime.now(UTC),
+            scheduled_for=job.scheduled_for,
+            poll_url=f"/jobs/{job.job_id}",
+        )
+
+    @app.get("/jobs/{job_id}", response_model=JobStatusResponse)
+    async def get_job_status(job_id: str) -> JobStatusResponse:
+        """Get status/progress for a background job."""
+        try:
+            manager = await get_job_manager()
+            job = await manager.get_job(job_id)
+        except JobBackendUnavailableError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+        return _to_job_status_response(job)
+
+    @app.post("/jobs/{job_id}/cancel", response_model=JobStatusResponse)
+    async def cancel_job(job_id: str) -> JobStatusResponse:
+        """Request cancellation of a background job."""
+        try:
+            manager = await get_job_manager()
+            job = await manager.cancel_job(job_id)
+        except JobBackendUnavailableError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+        return _to_job_status_response(job)
 
     @app.get("/index/info", response_class=JSONResponse)
     async def index_info() -> dict[str, Any]:

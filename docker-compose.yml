@@ -39,6 +39,21 @@ services:
       retries: 5
       start_period: 10s
 
+  redis:
+    image: redis:7-alpine
+    container_name: ankiatlas-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   api:
     build:
       context: .
@@ -50,10 +65,13 @@ services:
     environment:
       ANKIATLAS_POSTGRES_URL: postgresql://ankiatlas:ankiatlas@postgres:5432/ankiatlas
       ANKIATLAS_QDRANT_URL: http://qdrant:6333
+      ANKIATLAS_REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     profiles:
       - full
@@ -61,3 +79,4 @@ services:
 volumes:
   postgres_data:
   qdrant_data:
+  redis_data:

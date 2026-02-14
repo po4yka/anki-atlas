@@ -312,6 +312,30 @@ class TestSearchService:
         assert kwargs["deck_names_exclude"] == ["Archive"]
         assert kwargs["tags_exclude"] == ["suspended"]
 
+    async def test_search_forwards_sparse_query_and_prefetch_limit(
+        self,
+        settings: Settings,
+        mock_embedding_provider: MockEmbeddingProvider,
+        mock_qdrant_repository: AsyncMock,
+    ) -> None:
+        """Test that semantic search includes sparse query vector and prefetch limit."""
+        mock_qdrant_repository.search = AsyncMock(return_value=[])
+
+        service = SearchService(
+            settings=settings,
+            embedding_provider=mock_embedding_provider,
+            qdrant_repository=mock_qdrant_repository,
+        )
+
+        with patch("packages.search.service.search_fts", return_value=[]):
+            await service.search("python decorators", semantic_only=True, limit=10)
+
+        kwargs = mock_qdrant_repository.search.await_args.kwargs
+        sparse_query = kwargs["query_sparse_vector"]
+        assert sparse_query.indices
+        assert sparse_query.values
+        assert kwargs["prefetch_limit"] == 60
+
 
 class TestSearchResult:
     """Tests for SearchResult dataclass."""

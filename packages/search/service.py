@@ -159,6 +159,8 @@ class SearchService:
 
         # Embed the query
         query_vector = await provider.embed_single(query)
+        query_sparse_vector = QdrantRepository.text_to_sparse_vector(query)
+        prefetch_limit = max(limit * 3, 30)
 
         # Map filters to Qdrant format
         deck_names = filters.deck_names if filters else None
@@ -172,7 +174,9 @@ class SearchService:
 
         return await qdrant.search(
             query_vector=query_vector,
+            query_sparse_vector=query_sparse_vector,
             limit=limit,
+            prefetch_limit=prefetch_limit,
             deck_names=deck_names,
             deck_names_exclude=deck_names_exclude,
             tags=tags,
