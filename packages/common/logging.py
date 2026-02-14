@@ -78,7 +78,6 @@ def configure_logging(
         structlog.contextvars.merge_contextvars,
         add_correlation_id,
         structlog.stdlib.add_log_level,
-        structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.UnicodeDecoder(),
@@ -93,7 +92,7 @@ def configure_logging(
     structlog.configure(
         processors=[
             *shared_processors,
-            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+            renderer,
         ],
         logger_factory=structlog.PrintLoggerFactory(file=log_stream),
         wrapper_class=structlog.stdlib.BoundLogger,

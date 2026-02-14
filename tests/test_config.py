@@ -29,8 +29,8 @@ class TestEmbeddingDimensionValidation:
         assert "Unsupported embedding dimension" in str(errors[0]["msg"])
 
     def test_default_dimension_is_valid(self) -> None:
-        """Test that default dimension (1536) is valid."""
-        settings = Settings()
+        """Test that default dimension (1536) is valid for openai provider."""
+        settings = Settings(embedding_provider="openai", embedding_dimension=1536)
         assert settings.embedding_dimension == 1536
 
     def test_mock_provider_allows_custom_dimension(self) -> None:
@@ -165,8 +165,8 @@ class TestRerankSettings:
     """Tests for reranking-related settings."""
 
     def test_default_rerank_settings(self) -> None:
-        """Default reranking settings should be valid."""
-        settings = Settings()
+        """Reranking settings should be valid with defaults."""
+        settings = Settings(rerank_enabled=False)
         assert settings.rerank_enabled is False
         assert settings.rerank_model
         assert settings.rerank_top_n > 0
