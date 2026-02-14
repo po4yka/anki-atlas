@@ -14,6 +14,8 @@ class SearchResult:
     fts_score: float | None = None
     fts_rank: int | None = None
     headline: str | None = None
+    rerank_score: float | None = None
+    rerank_rank: int | None = None
 
     @property
     def sources(self) -> list[str]:

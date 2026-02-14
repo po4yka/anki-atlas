@@ -1,14 +1,19 @@
 """Hybrid search service combining semantic and FTS."""
 
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any
 
 from packages.common.config import Settings, get_settings
 from packages.common.database import get_connection
+from packages.common.logging import get_logger
 from packages.indexer.embeddings import EmbeddingProvider, get_embedding_provider
 from packages.indexer.qdrant import QdrantRepository, get_qdrant_repository
-from packages.search.fts import SearchFilters, search_fts
+from packages.search.fts import SearchFilters, search_lexical
 from packages.search.fusion import FusionStats, SearchResult, reciprocal_rank_fusion
+from packages.search.reranker import CrossEncoderReranker, Reranker
+
+logger = get_logger(module=__name__)
 
 
 @dataclass
@@ -19,6 +24,13 @@ class HybridSearchResult:
     stats: FusionStats
     query: str
     filters_applied: dict[str, Any] = field(default_factory=dict)
+    lexical_mode: str = "none"
+    lexical_fallback_used: bool = False
+    query_suggestions: list[str] = field(default_factory=list)
+    autocomplete_suggestions: list[str] = field(default_factory=list)
+    rerank_applied: bool = False
+    rerank_model: str | None = None
+    rerank_top_n: int | None = None
 
 
 @dataclass
@@ -43,6 +55,7 @@ class SearchService:
         settings: Settings | None = None,
         embedding_provider: EmbeddingProvider | None = None,
         qdrant_repository: QdrantRepository | None = None,
+        reranker: Reranker | None = None,
     ) -> None:
         """Initialize search service.
 
@@ -50,10 +63,13 @@ class SearchService:
             settings: Application settings.
             embedding_provider: Embedding provider for semantic search.
             qdrant_repository: Qdrant repository for vector search.
+            reranker: Optional reranker implementation.
         """
         self.settings = settings or get_settings()
         self._embedding_provider = embedding_provider
         self._qdrant_repository = qdrant_repository
+        self._reranker = reranker
+        self._reranker_unavailable_logged = False
 
     async def get_embedding_provider(self) -> EmbeddingProvider:
         """Get or create embedding provider."""
@@ -67,6 +83,15 @@ class SearchService:
             self._qdrant_repository = await get_qdrant_repository(self.settings)
         return self._qdrant_repository
 
+    async def get_reranker(self) -> Reranker:
+        """Get or create reranker."""
+        if self._reranker is None:
+            self._reranker = CrossEncoderReranker(
+                model_name=self.settings.rerank_model,
+                batch_size=self.settings.rerank_batch_size,
+            )
+        return self._reranker
+
     async def search(
         self,
         query: str,
@@ -76,6 +101,8 @@ class SearchService:
         fts_weight: float = 1.0,
         semantic_only: bool = False,
         fts_only: bool = False,
+        rerank: bool | None = None,
+        rerank_top_n: int | None = None,
     ) -> HybridSearchResult:
         """Perform hybrid search.
 
@@ -87,6 +114,8 @@ class SearchService:
             fts_weight: Weight for FTS in RRF.
             semantic_only: Only use semantic search.
             fts_only: Only use FTS.
+            rerank: Override config and enable/disable second-stage reranking.
+            rerank_top_n: Override configured rerank candidate count.
 
         Returns:
             HybridSearchResult with fused results and statistics.
@@ -98,27 +127,52 @@ class SearchService:
                 query=query,
             )
 
+        rerank_enabled = self.settings.rerank_enabled if rerank is None else rerank
+        rerank_candidate_limit = rerank_top_n or self.settings.rerank_top_n
+        candidate_limit = max(limit, rerank_candidate_limit) if rerank_enabled else limit
+        retrieval_limit = candidate_limit * 2
+
         # Collect results from both sources
         semantic_results: list[tuple[int, float]] = []
         fts_results: list[tuple[int, float, str | None]] = []
 
         # Run semantic search (unless fts_only)
         if not fts_only:
-            semantic_results = await self._semantic_search(query, filters, limit * 2)
+            semantic_results = await self._semantic_search(query, filters, retrieval_limit)
 
-        # Run FTS search (unless semantic_only)
+        lexical_mode = "none"
+        lexical_fallback_used = False
+        query_suggestions: list[str] = []
+        autocomplete_suggestions: list[str] = []
+
+        # Run lexical search (unless semantic_only)
         if not semantic_only:
-            fts_raw = await search_fts(query, filters, limit * 2, self.settings)
-            fts_results = [(r.note_id, r.rank, r.headline) for r in fts_raw]
+            lexical = await search_lexical(query, filters, retrieval_limit, self.settings)
+            lexical_mode = lexical.mode
+            lexical_fallback_used = lexical.used_fallback
+            query_suggestions = lexical.query_suggestions
+            autocomplete_suggestions = lexical.autocomplete_suggestions
+            fts_results = [(r.note_id, r.rank, r.headline) for r in lexical.results]
 
         # Fuse results
         results, stats = reciprocal_rank_fusion(
             semantic_results=semantic_results,
             fts_results=fts_results,
-            limit=limit,
+            limit=candidate_limit,
             semantic_weight=semantic_weight if not fts_only else 0.0,
             fts_weight=fts_weight if not semantic_only else 0.0,
         )
+
+        rerank_applied = False
+        if rerank_enabled:
+            results, rerank_applied = await self._rerank_results(
+                query=query,
+                results=results,
+                limit=limit,
+                rerank_top_n=rerank_candidate_limit,
+            )
+        else:
+            results = results[:limit]
 
         # Build filters applied dict
         filters_applied: dict[str, Any] = {}
@@ -145,6 +199,13 @@ class SearchService:
             stats=stats,
             query=query,
             filters_applied=filters_applied,
+            lexical_mode=lexical_mode,
+            lexical_fallback_used=lexical_fallback_used,
+            query_suggestions=query_suggestions,
+            autocomplete_suggestions=autocomplete_suggestions,
+            rerank_applied=rerank_applied,
+            rerank_model=self.settings.rerank_model if rerank_enabled else None,
+            rerank_top_n=rerank_candidate_limit if rerank_enabled else None,
         )
 
     async def _semantic_search(
@@ -186,6 +247,69 @@ class SearchService:
             max_lapses=max_lapses,
             min_reps=min_reps,
         )
+
+    async def _rerank_results(
+        self,
+        query: str,
+        results: list[SearchResult],
+        limit: int,
+        rerank_top_n: int,
+    ) -> tuple[list[SearchResult], bool]:
+        """Rerank top-N hybrid candidates with a cross-encoder."""
+        if len(results) <= 1:
+            return results[:limit], False
+
+        top_n = min(max(limit, rerank_top_n), len(results))
+        candidates = results[:top_n]
+        note_ids = [r.note_id for r in candidates]
+        note_details = await self.get_notes_details(note_ids)
+
+        docs_for_scoring: list[tuple[int, str]] = []
+        for candidate in candidates:
+            detail = note_details.get(candidate.note_id)
+            if detail and detail.normalized_text.strip():
+                docs_for_scoring.append((candidate.note_id, detail.normalized_text))
+
+        if len(docs_for_scoring) <= 1:
+            return results[:limit], False
+
+        try:
+            reranker = await self.get_reranker()
+            rerank_scores = await reranker.rerank(query, docs_for_scoring)
+        except Exception as e:
+            if not self._reranker_unavailable_logged:
+                with suppress(Exception):
+                    logger.warning(
+                        "rerank_unavailable",
+                        model=self.settings.rerank_model,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                    )
+                self._reranker_unavailable_logged = True
+            return results[:limit], False
+
+        score_by_note = dict(rerank_scores)
+        scored_candidates: list[SearchResult] = []
+        unscored_candidates: list[SearchResult] = []
+        for candidate in candidates:
+            candidate.rerank_score = score_by_note.get(candidate.note_id)
+            if candidate.rerank_score is None:
+                unscored_candidates.append(candidate)
+            else:
+                scored_candidates.append(candidate)
+
+        if not scored_candidates:
+            return results[:limit], False
+
+        scored_candidates.sort(
+            key=lambda item: item.rerank_score if item.rerank_score is not None else float("-inf"),
+            reverse=True,
+        )
+        for rank, candidate in enumerate(scored_candidates, start=1):
+            candidate.rerank_rank = rank
+
+        reordered = scored_candidates + unscored_candidates + results[top_n:]
+        return reordered[:limit], True
 
     async def get_notes_details(
         self,

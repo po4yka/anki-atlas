@@ -154,6 +154,8 @@ class SearchResultItem(BaseModel):
     fts_score: float | None = None
     fts_rank: int | None = None
     headline: str | None = None
+    rerank_score: float | None = None
+    rerank_rank: int | None = None
     sources: list[str]
     # Optional enriched data
     normalized_text: str | None = None
@@ -168,6 +170,8 @@ class SearchResponse(BaseModel):
     results: list[SearchResultItem]
     stats: dict[str, int]
     filters_applied: dict[str, Any]
+    lexical: dict[str, Any] | None = None
+    rerank: dict[str, Any] | None = None
 
 
 class TopicItem(BaseModel):
@@ -661,6 +665,8 @@ def create_app() -> FastAPI:
                     fts_score=r.fts_score,
                     fts_rank=r.fts_rank,
                     headline=r.headline,
+                    rerank_score=r.rerank_score,
+                    rerank_rank=r.rerank_rank,
                     sources=r.sources,
                     normalized_text=detail.normalized_text if detail else None,
                     tags=detail.tags if detail else None,
@@ -678,6 +684,17 @@ def create_app() -> FastAPI:
                 "total": result.stats.total,
             },
             filters_applied=result.filters_applied,
+            lexical={
+                "mode": result.lexical_mode,
+                "fallback_used": result.lexical_fallback_used,
+                "query_suggestions": result.query_suggestions,
+                "autocomplete_suggestions": result.autocomplete_suggestions,
+            },
+            rerank={
+                "applied": result.rerank_applied,
+                "model": result.rerank_model,
+                "top_n": result.rerank_top_n,
+            },
         )
 
     @app.get("/topics", response_class=JSONResponse)

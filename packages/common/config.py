@@ -68,6 +68,22 @@ class Settings(BaseSettings):
         default=1536,
         description="Embedding vector dimension",
     )
+    rerank_enabled: bool = Field(
+        default=False,
+        description="Enable second-stage reranking with a cross-encoder model",
+    )
+    rerank_model: str = Field(
+        default="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        description="Sentence-transformers CrossEncoder model for reranking",
+    )
+    rerank_top_n: int = Field(
+        default=50,
+        description="Number of hybrid candidates to rerank",
+    )
+    rerank_batch_size: int = Field(
+        default=32,
+        description="Batch size for reranking model inference",
+    )
 
     # API configuration
     api_host: str = Field(default="0.0.0.0", description="API host")
@@ -123,7 +139,7 @@ class Settings(BaseSettings):
             raise ValueError("redis_url must be a Redis URL")
         return v
 
-    @field_validator("job_result_ttl_seconds", "job_max_retries")
+    @field_validator("job_result_ttl_seconds", "job_max_retries", "rerank_top_n", "rerank_batch_size")
     @classmethod
     def validate_positive_int(cls, v: int) -> int:
         """Validate integer settings that must be positive."""

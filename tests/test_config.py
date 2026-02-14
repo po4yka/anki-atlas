@@ -159,3 +159,20 @@ class TestEnvironmentVariables:
         """Test that default debug is False."""
         settings = Settings()
         assert settings.debug is False
+
+
+class TestRerankSettings:
+    """Tests for reranking-related settings."""
+
+    def test_default_rerank_settings(self) -> None:
+        """Default reranking settings should be valid."""
+        settings = Settings()
+        assert settings.rerank_enabled is False
+        assert settings.rerank_model
+        assert settings.rerank_top_n > 0
+        assert settings.rerank_batch_size > 0
+
+    def test_invalid_rerank_top_n_rejected(self) -> None:
+        """rerank_top_n must be positive."""
+        with pytest.raises(ValidationError):
+            Settings(rerank_top_n=0)
