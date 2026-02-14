@@ -129,7 +129,15 @@ jobs:
         env:
           ANKIATLAS_POSTGRES_URL: postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas
           ANKIATLAS_QDRANT_URL: http://localhost:6333
-        run: uv run pytest tests/ -v -m integration || echo "No integration tests yet"
+        run: |
+          set +e
+          uv run pytest tests/ -v -m integration
+          status=$?
+          if [ $status -eq 5 ]; then
+            echo "No integration tests yet"
+            exit 0
+          fi
+          exit $status
 
   # Ensure lockfile is up to date
   lockfile:

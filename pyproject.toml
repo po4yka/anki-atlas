@@ -103,7 +103,7 @@ warn_redundant_casts = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["qdrant_client.*", "sentence_transformers.*"]
+module = ["openai.*", "qdrant_client.*", "sentence_transformers.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -133,4 +133,5 @@ dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
+    "types-PyYAML>=6.0.0",
 ]

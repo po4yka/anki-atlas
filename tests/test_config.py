@@ -33,6 +33,22 @@ class TestEmbeddingDimensionValidation:
         settings = Settings()
         assert settings.embedding_dimension == 1536
 
+    def test_mock_provider_allows_custom_dimension(self) -> None:
+        """Test that mock provider allows non-standard positive dimensions."""
+        settings = Settings(
+            embedding_provider="mock",
+            embedding_dimension=256,
+        )
+        assert settings.embedding_dimension == 256
+
+    def test_non_positive_dimension_rejected(self) -> None:
+        """Test that non-positive dimensions are rejected for all providers."""
+        with pytest.raises(ValidationError):
+            Settings(
+                embedding_provider="mock",
+                embedding_dimension=0,
+            )
+
 
 class TestPostgresUrlValidation:
     """Tests for postgres_url validator."""

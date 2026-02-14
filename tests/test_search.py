@@ -285,6 +285,33 @@ class TestSearchService:
             assert result.filters_applied["tags"] == ["python"]
             assert result.filters_applied["min_ivl"] == 21
 
+    async def test_search_exclude_filters_forwarded_to_semantic_search(
+        self,
+        settings: Settings,
+        mock_embedding_provider: MockEmbeddingProvider,
+        mock_qdrant_repository: AsyncMock,
+    ) -> None:
+        """Test that exclude filters are forwarded to vector search."""
+        mock_qdrant_repository.search = AsyncMock(return_value=[])
+
+        service = SearchService(
+            settings=settings,
+            embedding_provider=mock_embedding_provider,
+            qdrant_repository=mock_qdrant_repository,
+        )
+
+        filters = SearchFilters(
+            deck_names_exclude=["Archive"],
+            tags_exclude=["suspended"],
+        )
+
+        with patch("packages.search.service.search_fts", return_value=[]):
+            await service.search("test", filters=filters)
+
+        kwargs = mock_qdrant_repository.search.await_args.kwargs
+        assert kwargs["deck_names_exclude"] == ["Archive"]
+        assert kwargs["tags_exclude"] == ["suspended"]
+
 
 class TestSearchResult:
     """Tests for SearchResult dataclass."""
