@@ -6,12 +6,29 @@ import pytest
 
 from packages.common.config import Settings
 from packages.indexer.embeddings import MockEmbeddingProvider
-from packages.search.fts import FTSResult, SearchFilters
+from packages.search.fts import FTSResult, LexicalSearchResult, SearchFilters
 from packages.search.fusion import (
     SearchResult,
     reciprocal_rank_fusion,
 )
-from packages.search.service import SearchService
+from packages.search.service import NoteDetail, SearchService
+
+
+class MockReranker:
+    """Simple reranker for deterministic tests."""
+
+    def __init__(self, scores: dict[int, float], fail: bool = False) -> None:
+        self.scores = scores
+        self.fail = fail
+
+    async def rerank(
+        self,
+        query: str,  # noqa: ARG002
+        documents: list[tuple[int, str]],
+    ) -> list[tuple[int, float]]:
+        if self.fail:
+            raise RuntimeError("reranker unavailable")
+        return [(note_id, self.scores[note_id]) for note_id, _ in documents if note_id in self.scores]
 
 
 class TestReciprocalRankFusion:
@@ -194,10 +211,10 @@ class TestSearchService:
         )
 
         # Patch FTS search to ensure it's not called
-        with patch("packages.search.service.search_fts") as mock_fts:
+        with patch("packages.search.service.search_lexical") as mock_lexical:
             result = await service.search("test query", semantic_only=True)
 
-            mock_fts.assert_not_called()
+            mock_lexical.assert_not_called()
             assert len(result.results) == 2
             assert result.stats.fts_only == 0
 
@@ -219,7 +236,8 @@ class TestSearchService:
             FTSResult(note_id=20, rank=0.6, headline="another headline"),
         ]
 
-        with patch("packages.search.service.search_fts", return_value=fts_results):
+        lexical_result = LexicalSearchResult(results=fts_results, mode="fts")
+        with patch("packages.search.service.search_lexical", return_value=lexical_result):
             result = await service.search("test query", fts_only=True)
 
             assert len(result.results) == 2
@@ -249,7 +267,8 @@ class TestSearchService:
             qdrant_repository=mock_qdrant_repository,
         )
 
-        with patch("packages.search.service.search_fts", return_value=fts_results):
+        lexical_result = LexicalSearchResult(results=fts_results, mode="fts")
+        with patch("packages.search.service.search_lexical", return_value=lexical_result):
             result = await service.search("test query")
 
             assert len(result.results) == 3  # 1, 2, 3
@@ -278,7 +297,8 @@ class TestSearchService:
             min_ivl=21,
         )
 
-        with patch("packages.search.service.search_fts", return_value=[]):
+        lexical_result = LexicalSearchResult(results=[], mode="none")
+        with patch("packages.search.service.search_lexical", return_value=lexical_result):
             result = await service.search("test", filters=filters)
 
             assert result.filters_applied["deck_names"] == ["TestDeck"]
@@ -305,7 +325,8 @@ class TestSearchService:
             tags_exclude=["suspended"],
         )
 
-        with patch("packages.search.service.search_fts", return_value=[]):
+        lexical_result = LexicalSearchResult(results=[], mode="none")
+        with patch("packages.search.service.search_lexical", return_value=lexical_result):
             await service.search("test", filters=filters)
 
         kwargs = mock_qdrant_repository.search.await_args.kwargs
@@ -327,7 +348,8 @@ class TestSearchService:
             qdrant_repository=mock_qdrant_repository,
         )
 
-        with patch("packages.search.service.search_fts", return_value=[]):
+        lexical_result = LexicalSearchResult(results=[], mode="none")
+        with patch("packages.search.service.search_lexical", return_value=lexical_result):
             await service.search("python decorators", semantic_only=True, limit=10)
 
         kwargs = mock_qdrant_repository.search.await_args.kwargs
@@ -335,6 +357,124 @@ class TestSearchService:
         assert sparse_query.indices
         assert sparse_query.values
         assert kwargs["prefetch_limit"] == 60
+
+    async def test_search_propagates_lexical_fallback_metadata(
+        self,
+        settings: Settings,
+        mock_embedding_provider: MockEmbeddingProvider,
+        mock_qdrant_repository: AsyncMock,
+    ) -> None:
+        """Test lexical fallback metadata is exposed by SearchService."""
+        service = SearchService(
+            settings=settings,
+            embedding_provider=mock_embedding_provider,
+            qdrant_repository=mock_qdrant_repository,
+        )
+
+        lexical_result = LexicalSearchResult(
+            results=[FTSResult(note_id=42, rank=0.7, source="fuzzy")],
+            mode="fuzzy",
+            used_fallback=True,
+            query_suggestions=["python decorators"],
+            autocomplete_suggestions=["python"],
+        )
+        with patch("packages.search.service.search_lexical", return_value=lexical_result):
+            result = await service.search("pythn decoratr", fts_only=True)
+
+        assert result.lexical_mode == "fuzzy"
+        assert result.lexical_fallback_used is True
+        assert result.query_suggestions == ["python decorators"]
+        assert result.autocomplete_suggestions == ["python"]
+
+    async def test_search_reranks_top_candidates(
+        self,
+        settings: Settings,
+        mock_embedding_provider: MockEmbeddingProvider,
+        mock_qdrant_repository: AsyncMock,
+    ) -> None:
+        """CrossEncoder reranker should reorder top hybrid candidates."""
+        settings.rerank_enabled = True
+        settings.rerank_top_n = 3
+
+        service = SearchService(
+            settings=settings,
+            embedding_provider=mock_embedding_provider,
+            qdrant_repository=mock_qdrant_repository,
+            reranker=MockReranker(scores={3: 0.9, 1: 0.4, 2: 0.1}),
+        )
+
+        lexical_result = LexicalSearchResult(
+            results=[
+                FTSResult(note_id=1, rank=0.9),
+                FTSResult(note_id=2, rank=0.8),
+                FTSResult(note_id=3, rank=0.7),
+            ],
+            mode="fts",
+        )
+        with (
+            patch("packages.search.service.search_lexical", return_value=lexical_result),
+            patch.object(
+                service,
+                "get_notes_details",
+                AsyncMock(
+                    return_value={
+                        1: NoteDetail(1, 1, "doc one", [], [], False, 0, 0),
+                        2: NoteDetail(2, 1, "doc two", [], [], False, 0, 0),
+                        3: NoteDetail(3, 1, "doc three", [], [], False, 0, 0),
+                    }
+                ),
+            ),
+        ):
+            result = await service.search("ambiguous query", fts_only=True, limit=3)
+
+        assert [r.note_id for r in result.results] == [3, 1, 2]
+        assert result.rerank_applied is True
+        assert result.results[0].rerank_rank == 1
+        assert result.results[0].rerank_score == 0.9
+
+    async def test_search_rerank_failure_falls_back_to_rrf_order(
+        self,
+        settings: Settings,
+        mock_embedding_provider: MockEmbeddingProvider,
+        mock_qdrant_repository: AsyncMock,
+    ) -> None:
+        """If reranker fails, search should return original fused order."""
+        settings.rerank_enabled = True
+        settings.rerank_top_n = 3
+
+        service = SearchService(
+            settings=settings,
+            embedding_provider=mock_embedding_provider,
+            qdrant_repository=mock_qdrant_repository,
+            reranker=MockReranker(scores={}, fail=True),
+        )
+
+        lexical_result = LexicalSearchResult(
+            results=[
+                FTSResult(note_id=1, rank=0.9),
+                FTSResult(note_id=2, rank=0.8),
+                FTSResult(note_id=3, rank=0.7),
+            ],
+            mode="fts",
+        )
+        with (
+            patch("packages.search.service.search_lexical", return_value=lexical_result),
+            patch.object(
+                service,
+                "get_notes_details",
+                AsyncMock(
+                    return_value={
+                        1: NoteDetail(1, 1, "doc one", [], [], False, 0, 0),
+                        2: NoteDetail(2, 1, "doc two", [], [], False, 0, 0),
+                        3: NoteDetail(3, 1, "doc three", [], [], False, 0, 0),
+                    }
+                ),
+            ),
+        ):
+            result = await service.search("ambiguous query", fts_only=True, limit=3)
+
+        assert [r.note_id for r in result.results] == [1, 2, 3]
+        assert result.rerank_applied is False
 
 
 class TestSearchResult:

@@ -400,6 +400,8 @@ async def _search_async(
                 tags_str = ", ".join(detail.tags) if detail and detail.tags else "none"
                 console.print(f"  Note {r.note_id}:")
                 console.print(f"    RRF: {r.rrf_score:.4f}")
+                if r.rerank_score is not None:
+                    console.print(f"    Rerank: {r.rerank_score:.4f} (rank {r.rerank_rank})")
                 if r.semantic_score is not None:
                     console.print(f"    Semantic: {r.semantic_score:.4f} (rank {r.semantic_rank})")
                 if r.fts_score is not None:

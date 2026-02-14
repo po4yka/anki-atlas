@@ -1,7 +1,8 @@
-"""Full-text search using PostgreSQL."""
+"""Lexical search using PostgreSQL FTS + trigram fallbacks."""
 
-from dataclasses import dataclass
-from typing import Any
+import re
+from dataclasses import dataclass, field
+from typing import Any, Literal
 
 from psycopg import AsyncConnection
 
@@ -11,11 +12,23 @@ from packages.common.database import get_connection
 
 @dataclass
 class FTSResult:
-    """Result from full-text search."""
+    """Result from lexical search."""
 
     note_id: int
-    rank: float  # ts_rank score
+    rank: float
     headline: str | None = None  # Optional highlighted snippet
+    source: Literal["fts", "fuzzy", "autocomplete"] = "fts"
+
+
+@dataclass
+class LexicalSearchResult:
+    """Result bundle for lexical search with fallback metadata."""
+
+    results: list[FTSResult]
+    mode: Literal["fts", "fuzzy", "autocomplete", "none"] = "none"
+    used_fallback: bool = False
+    query_suggestions: list[str] = field(default_factory=list)
+    autocomplete_suggestions: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -38,7 +51,21 @@ async def search_fts(
     limit: int = 50,
     settings: Settings | None = None,
 ) -> list[FTSResult]:
-    """Search notes using PostgreSQL full-text search.
+    """Search notes lexically and return results only.
+
+    This compatibility wrapper keeps legacy callers unchanged.
+    """
+    lexical = await search_lexical(query, filters, limit, settings)
+    return lexical.results
+
+
+async def search_lexical(
+    query: str,
+    filters: SearchFilters | None = None,
+    limit: int = 50,
+    settings: Settings | None = None,
+) -> LexicalSearchResult:
+    """Search notes with FTS, fuzzy fallback, and autocomplete fallback.
 
     Args:
         query: Search query string.
@@ -47,15 +74,42 @@ async def search_fts(
         settings: Application settings.
 
     Returns:
-        List of FTSResult ordered by relevance.
+        LexicalSearchResult with results and fallback diagnostics.
     """
     if not query.strip():
-        return []
+        return LexicalSearchResult(results=[], mode="none")
 
     settings = settings or get_settings()
 
     async with get_connection(settings) as conn:
-        return await _execute_fts_query(conn, query, filters, limit)
+        fts_results = await _execute_fts_query(conn, query, filters, limit)
+        if fts_results:
+            return LexicalSearchResult(results=fts_results, mode="fts")
+
+        fuzzy_results = await _execute_fuzzy_query(conn, query, filters, limit)
+        query_suggestions = await _fetch_query_suggestions(conn, query, filters, limit=5)
+        autocomplete_suggestions = await _fetch_autocomplete_suggestions(
+            conn, query, filters, limit=5
+        )
+
+        if fuzzy_results:
+            return LexicalSearchResult(
+                results=fuzzy_results,
+                mode="fuzzy",
+                used_fallback=True,
+                query_suggestions=query_suggestions,
+                autocomplete_suggestions=autocomplete_suggestions,
+            )
+
+        autocomplete_results = await _execute_autocomplete_query(conn, query, filters, limit)
+        mode: Literal["autocomplete", "none"] = "autocomplete" if autocomplete_results else "none"
+        return LexicalSearchResult(
+            results=autocomplete_results,
+            mode=mode,
+            used_fallback=bool(autocomplete_results),
+            query_suggestions=query_suggestions,
+            autocomplete_suggestions=autocomplete_suggestions,
+        )
 
 
 async def _execute_fts_query(
@@ -123,9 +177,255 @@ async def _execute_fts_query(
             note_id=row["note_id"],
             rank=float(row["rank"]),
             headline=row["headline"],
+            source="fts",
         )
         for row in rows
     ]
+
+
+async def _execute_fuzzy_query(
+    conn: AsyncConnection[dict[str, Any]],
+    query: str,
+    filters: SearchFilters | None,
+    limit: int,
+) -> list[FTSResult]:
+    """Execute trigram-based fuzzy lexical search."""
+    sql_parts = [
+        """
+        SELECT
+            n.note_id,
+            GREATEST(
+                similarity(n.normalized_text, %(query)s),
+                word_similarity(%(query)s, n.normalized_text)
+            ) as rank,
+            NULL::text as headline
+        FROM notes n
+        """
+    ]
+
+    params: dict[str, Any] = {
+        "query": query,
+        "limit": limit,
+        "similarity_threshold": 0.15,
+        "word_similarity_threshold": 0.2,
+    }
+
+    joined = filters is not None and _needs_card_join(filters)
+    if joined:
+        sql_parts.append(
+            """
+            LEFT JOIN cards c ON c.note_id = n.note_id
+            LEFT JOIN decks d ON d.deck_id = c.deck_id
+            """
+        )
+
+    where_clauses = [
+        "n.deleted_at IS NULL",
+        """(
+            n.normalized_text %% %(query)s
+            OR similarity(n.normalized_text, %(query)s) >= %(similarity_threshold)s
+            OR word_similarity(%(query)s, n.normalized_text) >= %(word_similarity_threshold)s
+        )""",
+    ]
+
+    if filters:
+        _add_filter_clauses(filters, where_clauses, params)
+
+    sql_parts.append("WHERE " + " AND ".join(where_clauses))
+    if joined:
+        sql_parts.append("GROUP BY n.note_id, n.normalized_text")
+    sql_parts.append("ORDER BY rank DESC LIMIT %(limit)s")
+
+    result = await conn.execute("\n".join(sql_parts), params)
+    rows = await result.fetchall()
+
+    return [
+        FTSResult(
+            note_id=row["note_id"],
+            rank=float(row["rank"]),
+            headline=row["headline"],
+            source="fuzzy",
+        )
+        for row in rows
+    ]
+
+
+async def _execute_autocomplete_query(
+    conn: AsyncConnection[dict[str, Any]],
+    query: str,
+    filters: SearchFilters | None,
+    limit: int,
+) -> list[FTSResult]:
+    """Execute autocomplete fallback query when FTS and fuzzy both miss."""
+    prefix = _extract_query_prefix(query)
+    if len(prefix) < 2:
+        return []
+
+    sql_parts = [
+        """
+        SELECT
+            n.note_id,
+            similarity(n.normalized_text, %(prefix)s) as rank,
+            NULL::text as headline
+        FROM notes n
+        """
+    ]
+
+    params: dict[str, Any] = {
+        "prefix": prefix,
+        "prefix_like": f"{prefix}%",
+        "limit": limit,
+    }
+
+    joined = filters is not None and _needs_card_join(filters)
+    if joined:
+        sql_parts.append(
+            """
+            LEFT JOIN cards c ON c.note_id = n.note_id
+            LEFT JOIN decks d ON d.deck_id = c.deck_id
+            """
+        )
+
+    where_clauses = [
+        "n.deleted_at IS NULL",
+        """
+        EXISTS (
+            SELECT 1
+            FROM regexp_split_to_table(n.normalized_text, E'\\s+') AS token
+            WHERE lower(token) LIKE %(prefix_like)s
+        )
+        """,
+    ]
+    if filters:
+        _add_filter_clauses(filters, where_clauses, params)
+
+    sql_parts.append("WHERE " + " AND ".join(where_clauses))
+    if joined:
+        sql_parts.append("GROUP BY n.note_id, n.normalized_text")
+    sql_parts.append("ORDER BY rank DESC LIMIT %(limit)s")
+
+    result = await conn.execute("\n".join(sql_parts), params)
+    rows = await result.fetchall()
+
+    return [
+        FTSResult(
+            note_id=row["note_id"],
+            rank=float(row["rank"]),
+            headline=row["headline"],
+            source="autocomplete",
+        )
+        for row in rows
+    ]
+
+
+async def _fetch_query_suggestions(
+    conn: AsyncConnection[dict[str, Any]],
+    query: str,
+    filters: SearchFilters | None,
+    limit: int,
+) -> list[str]:
+    """Suggest nearest known phrases for typo-prone queries."""
+    sql_parts = [
+        """
+        SELECT
+            LEFT(n.normalized_text, 80) as suggestion,
+            n.normalized_text <-> %(query)s as distance
+        FROM notes n
+        """
+    ]
+
+    params: dict[str, Any] = {"query": query, "limit": limit}
+    joined = filters is not None and _needs_card_join(filters)
+    if joined:
+        sql_parts.append(
+            """
+            LEFT JOIN cards c ON c.note_id = n.note_id
+            LEFT JOIN decks d ON d.deck_id = c.deck_id
+            """
+        )
+
+    where_clauses = [
+        "n.deleted_at IS NULL",
+        "n.normalized_text <> ''",
+    ]
+    if filters:
+        _add_filter_clauses(filters, where_clauses, params)
+
+    sql_parts.append("WHERE " + " AND ".join(where_clauses))
+    if joined:
+        sql_parts.append("GROUP BY n.note_id, n.normalized_text")
+    sql_parts.append("ORDER BY distance ASC LIMIT %(limit)s")
+
+    result = await conn.execute("\n".join(sql_parts), params)
+    rows = await result.fetchall()
+    return [str(row["suggestion"]) for row in rows if row.get("suggestion")]
+
+
+async def _fetch_autocomplete_suggestions(
+    conn: AsyncConnection[dict[str, Any]],
+    query: str,
+    filters: SearchFilters | None,
+    limit: int,
+) -> list[str]:
+    """Return likely word completions for the query prefix."""
+    prefix = _extract_query_prefix(query)
+    if len(prefix) < 2:
+        return []
+
+    sql_parts = [
+        """
+        SELECT suggestion
+        FROM (
+            SELECT
+                lower(token) as suggestion,
+                MAX(similarity(lower(token), %(prefix)s)) as score
+            FROM notes n
+            CROSS JOIN LATERAL regexp_split_to_table(n.normalized_text, E'\\s+') AS token
+        """
+    ]
+
+    params: dict[str, Any] = {
+        "prefix": prefix,
+        "prefix_like": f"{prefix}%",
+        "limit": limit,
+    }
+
+    joined = filters is not None and _needs_card_join(filters)
+    if joined:
+        sql_parts.append(
+            """
+            LEFT JOIN cards c ON c.note_id = n.note_id
+            LEFT JOIN decks d ON d.deck_id = c.deck_id
+            """
+        )
+
+    where_clauses = [
+        "n.deleted_at IS NULL",
+        "length(token) >= 2",
+        "lower(token) LIKE %(prefix_like)s",
+    ]
+    if filters:
+        _add_filter_clauses(filters, where_clauses, params)
+
+    sql_parts.append("WHERE " + " AND ".join(where_clauses))
+    sql_parts.append("GROUP BY lower(token)")
+    sql_parts.append(
+        """
+        ) suggestions
+        ORDER BY score DESC, suggestion ASC
+        LIMIT %(limit)s
+        """
+    )
+
+    result = await conn.execute("\n".join(sql_parts), params)
+    rows = await result.fetchall()
+    return [str(row["suggestion"]) for row in rows if row.get("suggestion")]
+
+
+def _extract_query_prefix(query: str) -> str:
+    """Extract trailing token for autocomplete purposes."""
+    tokens = re.findall(r"[a-zA-Z0-9_]+", query.lower())
+    return tokens[-1] if tokens else ""
 
 
 def _needs_card_join(filters: SearchFilters) -> bool:

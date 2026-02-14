@@ -55,8 +55,11 @@ def format_search_result(
             deck = "-"
 
         sources = "+".join(sr.sources) if sr.sources else "-"
+        score_label = f"{sr.rrf_score:.3f}"
+        if getattr(sr, "rerank_score", None) is not None:
+            score_label = f"{score_label} / CE {sr.rerank_score:.3f}"
         lines.append(
-            f"| {i} | {sr.rrf_score:.3f} ({sources}) | {sr.note_id} | {preview} | {tags} | {deck} |"
+            f"| {i} | {score_label} ({sources}) | {sr.note_id} | {preview} | {tags} | {deck} |"
         )
 
     if len(result.results) > 20:

@@ -5,6 +5,8 @@ Searchable hybrid index for Anki collections with agent-friendly tools.
 ## Features
 
 - **Hybrid Search**: Combines semantic (vector) and keyword (FTS) search with RRF fusion
+- **CrossEncoder Reranking**: Optional second-stage reranking of top hybrid candidates
+- **Typo-tolerant Lexical Search**: `pg_trgm` fuzzy matching with autocomplete fallback and suggestions
 - **Topic Coverage**: Analyze what topics your cards cover and identify gaps
 - **Duplicate Detection**: Find near-duplicate cards using embedding similarity
 - **Agent Tools**: MCP server for integration with AI agents (Claude Code, Claude Desktop)
@@ -68,8 +70,13 @@ Key settings:
 | `ANKIATLAS_REDIS_URL` | Redis URL for async jobs | `redis://localhost:6379/0` |
 | `ANKIATLAS_EMBEDDING_PROVIDER` | `openai` or `local` | `openai` |
 | `ANKIATLAS_EMBEDDING_MODEL` | Embedding model name | `text-embedding-3-small` |
+| `ANKIATLAS_RERANK_ENABLED` | Enable CrossEncoder reranking | `false` |
+| `ANKIATLAS_RERANK_MODEL` | CrossEncoder model name | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
+| `ANKIATLAS_RERANK_TOP_N` | Candidates reranked per query | `50` |
 | `ANKIATLAS_ANKI_COLLECTION_PATH` | Path to collection.anki2 | - |
 | `OPENAI_API_KEY` | OpenAI API key (if using openai provider) | - |
+
+Reranking requires `sentence-transformers` (install with `uv sync --extra embeddings-local`).
 
 ## CLI Usage
 
