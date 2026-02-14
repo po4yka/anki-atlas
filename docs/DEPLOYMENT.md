@@ -16,12 +16,15 @@ services:
     environment:
       - ANKIATLAS_POSTGRES_URL=postgresql://ankiatlas:secret@postgres:5432/ankiatlas
       - ANKIATLAS_QDRANT_URL=http://qdrant:6333
+      - ANKIATLAS_REDIS_URL=redis://redis:6379/0
       - ANKIATLAS_DEBUG=false
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
+        condition: service_started
+      redis:
         condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -50,6 +53,9 @@ services:
     environment:
       - QDRANT__SERVICE__HTTP_PORT=6333
 
+  redis:
+    image: redis:7-alpine
+
 volumes:
   postgres_data:
   qdrant_data:
@@ -69,6 +75,7 @@ docker compose up -d
 |----------|-------------|---------|
 | `ANKIATLAS_POSTGRES_URL` | PostgreSQL connection string | `postgresql://user:pass@host:5432/db` |
 | `ANKIATLAS_QDRANT_URL` | Qdrant server URL | `http://localhost:6333` |
+| `ANKIATLAS_REDIS_URL` | Redis URL used by arq workers | `redis://localhost:6379/0` |
 | `OPENAI_API_KEY` | OpenAI API key for embeddings | `sk-...` |
 
 ### Optional
@@ -82,6 +89,9 @@ docker compose up -d
 | `ANKIATLAS_EMBEDDING_DIMENSION` | `1536` | Embedding vector dimension |
 | `ANKIATLAS_QDRANT_QUANTIZATION` | `scalar` | Quantization: none, scalar, binary |
 | `ANKIATLAS_QDRANT_ON_DISK` | `false` | Store vectors on disk |
+| `ANKIATLAS_JOB_QUEUE_NAME` | `ankiatlas_jobs` | arq queue name |
+| `ANKIATLAS_JOB_MAX_RETRIES` | `3` | Max retries for failed jobs |
+| `ANKIATLAS_JOB_RESULT_TTL_SECONDS` | `86400` | Job metadata retention |
 
 ## Health Checks
 
@@ -277,3 +287,18 @@ See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for common issues.
 1. **Connection pool exhaustion:** Increase pool size or add connection limits
 2. **Slow queries:** Check Qdrant index status, ensure filters use indexed fields
 3. **Memory pressure:** Enable quantization, increase container memory
+  worker:
+    image: anki-atlas:latest
+    command: ["arq", "apps.worker.WorkerSettings"]
+    environment:
+      - ANKIATLAS_POSTGRES_URL=postgresql://ankiatlas:secret@postgres:5432/ankiatlas
+      - ANKIATLAS_QDRANT_URL=http://qdrant:6333
+      - ANKIATLAS_REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_started

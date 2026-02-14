@@ -164,10 +164,17 @@ class IndexService:
             )
             for note in notes_to_embed
         ]
+        sparse_vectors = [
+            QdrantRepository.text_to_sparse_vector(note.normalized_text) for note in notes_to_embed
+        ]
 
         # Upsert to Qdrant
         try:
-            upserted = await qdrant.upsert_vectors(vectors, payloads)
+            upserted = await qdrant.upsert_vectors(
+                vectors,
+                payloads,
+                sparse_vectors=sparse_vectors,
+            )
             stats.notes_embedded = upserted
         except Exception as e:
             logger.exception("qdrant_upsert_failed", batch_size=len(vectors))

@@ -1,5 +1,9 @@
 """Qdrant vector database repository."""
 
+import hashlib
+import math
+import re
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -12,6 +16,9 @@ logger = get_logger(module=__name__)
 
 # Collection name for Anki notes
 COLLECTION_NAME = "anki_notes"
+DENSE_VECTOR_NAME = ""
+SPARSE_VECTOR_NAME = "sparse"
+TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 
 
 class DimensionMismatchError(Exception):
@@ -82,6 +89,7 @@ class QdrantRepository:
         self.settings = settings or get_settings()
         self.collection_name = collection_name
         self._client: AsyncQdrantClient | None = None
+        self._supports_sparse: bool | None = None
 
     async def get_client(self) -> AsyncQdrantClient:
         """Get or create Qdrant client."""
@@ -94,6 +102,49 @@ class QdrantRepository:
         if self._client is not None:
             await self._client.close()
             self._client = None
+            self._supports_sparse = None
+
+    @staticmethod
+    def text_to_sparse_vector(text: str) -> models.SparseVector:
+        """Convert text into a hashed sparse vector for Qdrant sparse retrieval."""
+        tokens = TOKEN_PATTERN.findall(text.lower())
+        if not tokens:
+            return models.SparseVector(indices=[], values=[])
+
+        token_counts = Counter(tokens)
+        index_weights: dict[int, float] = {}
+        for token, count in token_counts.items():
+            token_hash = hashlib.blake2b(token.encode("utf-8"), digest_size=4).digest()
+            index = int.from_bytes(token_hash, byteorder="big", signed=False)
+            weight = 1.0 + math.log(float(count))
+            index_weights[index] = index_weights.get(index, 0.0) + weight
+
+        norm = math.sqrt(sum(w * w for w in index_weights.values()))
+        if norm > 0:
+            for index in list(index_weights.keys()):
+                index_weights[index] /= norm
+
+        sorted_pairs = sorted(index_weights.items(), key=lambda item: item[0])
+        return models.SparseVector(
+            indices=[idx for idx, _ in sorted_pairs],
+            values=[float(val) for _, val in sorted_pairs],
+        )
+
+    @staticmethod
+    def _collection_has_sparse(info: models.CollectionInfo) -> bool:
+        """Check whether collection config includes configured sparse vectors."""
+        sparse_cfg = info.config.params.sparse_vectors
+        return isinstance(sparse_cfg, dict) and SPARSE_VECTOR_NAME in sparse_cfg
+
+    async def _collection_supports_sparse(self, *, refresh: bool = False) -> bool:
+        """Return whether current collection is configured with sparse vectors."""
+        if self._supports_sparse is not None and not refresh:
+            return self._supports_sparse
+
+        client = await self.get_client()
+        info = await client.get_collection(self.collection_name)
+        self._supports_sparse = self._collection_has_sparse(info)
+        return self._supports_sparse
 
     async def ensure_collection(self, dimension: int) -> bool:
         """Ensure the collection exists with proper schema.
@@ -116,14 +167,34 @@ class QdrantRepository:
         if exists:
             # Validate dimension matches
             info = await client.get_collection(self.collection_name)
+            self._supports_sparse = self._collection_has_sparse(info)
+
             vectors_config = info.config.params.vectors
             if isinstance(vectors_config, models.VectorParams):
                 actual_dim = vectors_config.size
-                if actual_dim != dimension:
-                    raise DimensionMismatchError(self.collection_name, dimension, actual_dim)
+            elif isinstance(vectors_config, dict):
+                dense_params = vectors_config.get("dense")
+                if dense_params is None:
+                    dense_params = next(iter(vectors_config.values()), None)
+                if not isinstance(dense_params, models.VectorParams):
+                    raise DimensionMismatchError(self.collection_name, dimension, -1)
+                actual_dim = dense_params.size
+            else:
+                actual_dim = -1
+
+            if actual_dim != dimension:
+                raise DimensionMismatchError(self.collection_name, dimension, actual_dim)
+
+            if not self._supports_sparse:
+                logger.warning(
+                    "qdrant_sparse_not_configured",
+                    collection=self.collection_name,
+                    action="fallback_dense_only",
+                )
             return False
 
         await self._create_collection(client, dimension)
+        self._supports_sparse = True
         return True
 
     async def recreate_collection(self, dimension: int) -> None:
@@ -145,6 +216,7 @@ class QdrantRepository:
             await client.delete_collection(self.collection_name)
 
         await self._create_collection(client, dimension)
+        self._supports_sparse = True
 
     async def _create_collection(self, client: AsyncQdrantClient, dimension: int) -> None:
         """Create the collection with optimized settings and payload indexes."""
@@ -182,6 +254,11 @@ class QdrantRepository:
         await client.create_collection(
             collection_name=self.collection_name,
             vectors_config=vectors_config,
+            sparse_vectors_config={
+                SPARSE_VECTOR_NAME: models.SparseVectorParams(
+                    modifier=models.Modifier.IDF,
+                )
+            },
             quantization_config=quantization_config,
             optimizers_config=models.OptimizersConfigDiff(
                 indexing_threshold=10000,
@@ -265,6 +342,7 @@ class QdrantRepository:
         self,
         vectors: list[list[float]],
         payloads: list[NotePayload],
+        sparse_vectors: list[models.SparseVector] | None = None,
     ) -> int:
         """Upsert vectors with payloads.
 
@@ -273,23 +351,42 @@ class QdrantRepository:
         Args:
             vectors: List of embedding vectors.
             payloads: List of payloads (same length as vectors).
+            sparse_vectors: Optional sparse vectors (same length as vectors).
 
         Returns:
             Number of points upserted.
         """
         if not vectors or len(vectors) != len(payloads):
             return 0
+        if sparse_vectors is not None and len(sparse_vectors) != len(vectors):
+            raise ValueError("sparse_vectors length must match vectors length")
 
         client = await self.get_client()
+        use_sparse_vectors = sparse_vectors is not None and await self._collection_supports_sparse()
 
-        points = [
-            models.PointStruct(
-                id=payload.note_id,
-                vector=vector,
-                payload=payload.to_dict(),
-            )
-            for vector, payload in zip(vectors, payloads, strict=True)
-        ]
+        if use_sparse_vectors:
+            points = [
+                models.PointStruct(
+                    id=payload.note_id,
+                    vector={
+                        DENSE_VECTOR_NAME: vector,
+                        SPARSE_VECTOR_NAME: sparse_vector,
+                    },
+                    payload=payload.to_dict(),
+                )
+                for vector, sparse_vector, payload in zip(
+                    vectors, sparse_vectors or [], payloads, strict=True
+                )
+            ]
+        else:
+            points = [
+                models.PointStruct(
+                    id=payload.note_id,
+                    vector=vector,
+                    payload=payload.to_dict(),
+                )
+                for vector, payload in zip(vectors, payloads, strict=True)
+            ]
 
         # Upsert in batches
         batch_size = 100
@@ -328,7 +425,9 @@ class QdrantRepository:
     async def search(
         self,
         query_vector: list[float],
+        query_sparse_vector: models.SparseVector | None = None,
         limit: int = 50,
+        prefetch_limit: int | None = None,
         deck_names: list[str] | None = None,
         deck_names_exclude: list[str] | None = None,
         tags: list[str] | None = None,
@@ -342,7 +441,9 @@ class QdrantRepository:
 
         Args:
             query_vector: Query embedding vector.
+            query_sparse_vector: Optional sparse query vector.
             limit: Maximum number of results.
+            prefetch_limit: Candidate pool size per prefetch branch.
             deck_names: Filter by deck names (any match).
             deck_names_exclude: Exclude notes in these decks.
             tags: Filter by tags (any match).
@@ -431,13 +532,45 @@ class QdrantRepository:
             else None
         )
 
-        results = await client.query_points(
-            collection_name=self.collection_name,
-            query=query_vector,
-            query_filter=query_filter,
-            limit=limit,
-            with_payload=["note_id"],
+        supports_sparse = await self._collection_supports_sparse()
+        use_sparse = (
+            supports_sparse
+            and query_sparse_vector is not None
+            and bool(query_sparse_vector.indices)
+            and bool(query_sparse_vector.values)
         )
+        candidate_limit = max(limit, prefetch_limit or limit * 3)
+
+        if use_sparse:
+            results = await client.query_points(
+                collection_name=self.collection_name,
+                prefetch=[
+                    models.Prefetch(
+                        query=query_vector,
+                        using=DENSE_VECTOR_NAME,
+                        filter=query_filter,
+                        limit=candidate_limit,
+                    ),
+                    models.Prefetch(
+                        query=query_sparse_vector,
+                        using=SPARSE_VECTOR_NAME,
+                        filter=query_filter,
+                        limit=candidate_limit,
+                    ),
+                ],
+                query=models.FusionQuery(fusion=models.Fusion.RRF),
+                limit=limit,
+                with_payload=["note_id"],
+            )
+        else:
+            results = await client.query_points(
+                collection_name=self.collection_name,
+                query=query_vector,
+                query_filter=query_filter,
+                using=DENSE_VECTOR_NAME,
+                limit=limit,
+                with_payload=["note_id"],
+            )
 
         return [(int(hit.payload["note_id"]), hit.score) for hit in results.points if hit.payload]
 
@@ -473,8 +606,16 @@ class QdrantRepository:
         if not points or not points[0].vector:
             return []
 
-        # Vector is list[float] for single-vector collections
-        query_vector = cast("list[float]", points[0].vector)
+        vector_data = points[0].vector
+        if isinstance(vector_data, dict):
+            dense_vector = vector_data.get(DENSE_VECTOR_NAME)
+            if dense_vector is None:
+                dense_vector = vector_data.get("dense")
+            if not isinstance(dense_vector, list):
+                return []
+            query_vector = cast("list[float]", dense_vector)
+        else:
+            query_vector = cast("list[float]", vector_data)
 
         # Build filter conditions
         must_conditions: list[models.Condition] = []
@@ -502,6 +643,7 @@ class QdrantRepository:
             collection_name=self.collection_name,
             query=query_vector,
             query_filter=query_filter,
+            using=DENSE_VECTOR_NAME,
             limit=limit + 1,  # +1 to exclude self
             score_threshold=min_score,
             with_payload=["note_id"],
@@ -529,6 +671,7 @@ class QdrantRepository:
                 "vectors_count": info.indexed_vectors_count,
                 "points_count": info.points_count,
                 "status": info.status.value,
+                "sparse_enabled": self._collection_has_sparse(info),
             }
         except Exception as e:
             logger.warning(

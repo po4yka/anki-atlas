@@ -110,6 +110,16 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -129,6 +139,7 @@ jobs:
         env:
           ANKIATLAS_POSTGRES_URL: postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas
           ANKIATLAS_QDRANT_URL: http://localhost:6333
+          ANKIATLAS_REDIS_URL: redis://localhost:6379/0
         run: |
           set +e
           uv run pytest tests/ -v -m integration

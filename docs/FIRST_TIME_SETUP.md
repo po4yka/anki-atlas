@@ -7,7 +7,7 @@ Step-by-step guide to set up Anki Atlas from scratch.
 Before starting, ensure you have:
 
 - Python 3.11 or later
-- Docker and Docker Compose (for databases)
+- Docker and Docker Compose (for PostgreSQL, Qdrant, Redis)
 - An Anki collection with flashcards
 - OpenAI API key (for embeddings)
 
@@ -60,9 +60,17 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
 volumes:
   postgres_data:
   qdrant_data:
+  redis_data:
 ```
 
 Start the databases:
@@ -93,6 +101,9 @@ ANKIATLAS_POSTGRES_URL=postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas
 
 # Vector store
 ANKIATLAS_QDRANT_URL=http://localhost:6333
+
+# Async jobs
+ANKIATLAS_REDIS_URL=redis://localhost:6379/0
 
 # Embeddings (get your key from https://platform.openai.com/api-keys)
 OPENAI_API_KEY=sk-your-api-key-here
@@ -180,7 +191,11 @@ uv run anki-atlas search "your query here"
 If you want to use the REST API:
 
 ```bash
+# Terminal 1: API
 uv run uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
+
+# Terminal 2: background jobs worker (required for /jobs/* endpoints)
+uv run arq apps.worker.WorkerSettings
 ```
 
 **Verify:** Check API is running:

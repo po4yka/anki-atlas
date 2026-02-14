@@ -1,5 +1,6 @@
 """Tests for indexer service."""
 
+import math
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -391,6 +392,26 @@ class TestDimensionMismatch:
 
         assert exc_info.value.expected == 1536
         assert exc_info.value.actual == 384
+
+
+class TestSparseEncoding:
+    """Tests for sparse vector encoding."""
+
+    def test_text_to_sparse_vector_empty(self) -> None:
+        """Empty text should produce an empty sparse vector."""
+        vector = QdrantRepository.text_to_sparse_vector("")
+        assert vector.indices == []
+        assert vector.values == []
+
+    def test_text_to_sparse_vector_is_normalized_and_deduplicated(self) -> None:
+        """Repeated terms should be merged and L2-normalized."""
+        vector = QdrantRepository.text_to_sparse_vector("Python python java")
+
+        assert len(vector.indices) == 2
+        assert vector.indices == sorted(vector.indices)
+
+        l2_norm = math.sqrt(sum(v * v for v in vector.values))
+        assert abs(l2_norm - 1.0) < 1e-6
 
 
 class TestNoteForIndexing:
