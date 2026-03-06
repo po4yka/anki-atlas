@@ -1,18 +1,23 @@
 """Sync service for Anki collection to PostgreSQL."""
 
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from psycopg import AsyncConnection
-
-from packages.anki.models import AnkiCollection
 from packages.anki.normalizer import build_card_deck_map, build_deck_map, normalize_notes
 from packages.anki.reader import read_anki_collection
 from packages.common.config import Settings, get_settings
 from packages.common.database import get_connection
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from psycopg import AsyncConnection
+
+    from packages.anki.models import AnkiCollection
 
 
 @dataclass
