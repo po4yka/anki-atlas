@@ -83,3 +83,27 @@ class NotFoundError(AnkiAtlasError):
 
 class ConflictError(AnkiAtlasError):
     """Operation conflicts with current state (e.g., dimension mismatch)."""
+
+
+class CardGenerationError(AnkiAtlasError):
+    """Card generation failed."""
+
+
+class CardValidationError(AnkiAtlasError):
+    """Card validation failed."""
+
+
+class ProviderError(AnkiAtlasError):
+    """LLM provider operation failed."""
+
+
+class ObsidianParseError(AnkiAtlasError):
+    """Obsidian note parsing failed."""
+
+
+class SyncConflictError(AnkiAtlasError):
+    """Sync conflict between local and remote state."""
+
+
+class AnkiConnectError(AnkiAtlasError):
+    """AnkiConnect communication failed."""
