@@ -1,0 +1,5 @@
+{
+  "pid": 70075,
+  "started": "2026-03-06T08:47:16.932634Z",
+  "prompt": "Execute migration specs in order. Start with specs/00-foundation/."
+}

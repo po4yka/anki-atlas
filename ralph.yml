@@ -1,0 +1,62 @@
+cli:
+  backend: claude
+
+event_loop:
+  completion_promise: "LOOP_COMPLETE"
+  max_iterations: 200
+  max_runtime_seconds: 28800  # 8 hours
+  idle_timeout_secs: 1800
+  prompt_file: PROMPT.md
+  checkpoint_interval: 1       # git checkpoint after each spec
+
+core:
+  specs_dir: ./specs/
+
+features:
+  preflight:
+    enabled: true
+    strict: false
+
+hats:
+  analyzer:
+    name: Analyzer
+    description: Read the next spec, study source code, and plan implementation
+    triggers: [spec.start, review.changes_requested]
+    publishes: [implementation.ready]
+    instructions: |
+      1. Read the next incomplete spec from specs/ (ordered by filename)
+      2. Study source code paths referenced in the spec
+      3. Plan the implementation: target files, imports, test approach
+      4. Write plan to SCRATCHPAD.md
+      5. Emit implementation.ready
+
+  implementer:
+    name: Implementer
+    description: Execute the plan by migrating code, writing tests, and committing
+    triggers: [implementation.ready]
+    publishes: [implementation.done]
+    instructions: |
+      1. Read SCRATCHPAD.md for the plan
+      2. Read source modules from the source repo paths in the spec
+      3. Create/modify files in anki-atlas following its conventions:
+         - Python 3.13+, mypy strict, ruff, double quotes, 100 char lines
+         - Packages in packages/, apps in apps/
+         - from __future__ import annotations in every file
+      4. Add tests in tests/
+      5. Run: make check (must pass)
+      6. Commit: feat(<package>): migrate <component> from <source>
+      7. Emit implementation.done
+
+  verifier:
+    name: Verifier
+    description: Run make check, verify imports, and gate spec completion
+    triggers: [implementation.done]
+    publishes: [spec.done, review.changes_requested]
+    instructions: |
+      1. Run: make check
+      2. Verify new code is importable
+      3. Verify existing tests still pass
+      4. Check no circular imports between packages
+      5. If issues found: emit review.changes_requested with details
+      6. If clean: mark spec done in SCRATCHPAD.md, emit spec.done
+      7. If ALL specs complete: emit LOOP_COMPLETE

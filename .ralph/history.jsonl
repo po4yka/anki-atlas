@@ -1,0 +1,2 @@
+{"ts":"2026-03-06T08:47:17.012621Z","type":{"kind":"loop_started","prompt":"Execute migration specs in order. Start with specs/00-foundation/."}}
+{"ts":"2026-03-06T10:36:41.678468Z","type":{"kind":"loop_completed","reason":"completion_promise"}}
