@@ -204,10 +204,10 @@ def format_duplicates_result(
         if cluster.duplicates:
             lines.append("**Duplicates:**")
             for dup in cluster.duplicates[:5]:
-                sim_pct = dup["similarity"] * 100
+                sim_pct = dup.similarity * 100
                 lines.append(
-                    f"- Note {dup['note_id']} ({sim_pct:.0f}% similar): "
-                    f"{_truncate(dup['text'], 80)}"
+                    f"- Note {dup.note_id} ({sim_pct:.0f}% similar): "
+                    f"{_truncate(dup.text, 80)}"
                 )
             if len(cluster.duplicates) > 5:
                 lines.append(f"- *...and {len(cluster.duplicates) - 5} more*")

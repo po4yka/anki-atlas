@@ -577,16 +577,16 @@ async def _duplicates_async(
                 # Show all duplicates
                 for dup in cluster.duplicates:
                     console.print(
-                        f"  Duplicate: [yellow]{dup['note_id']}[/yellow] (sim={dup['similarity']:.3f})"
+                        f"  Duplicate: [yellow]{dup.note_id}[/yellow] (sim={dup.similarity:.3f})"
                     )
-                    console.print(f"    {dup['text'][:80]}...")
+                    console.print(f"    {dup.text[:80]}...")
             else:
                 # Show summary
                 top_dup = cluster.duplicates[0]
                 console.print(
-                    f"  Top match: [yellow]{top_dup['note_id']}[/yellow] (sim={top_dup['similarity']:.3f})"
+                    f"  Top match: [yellow]{top_dup.note_id}[/yellow] (sim={top_dup.similarity:.3f})"
                 )
-                console.print(f"    {top_dup['text'][:80]}...")
+                console.print(f"    {top_dup.text[:80]}...")
                 console.print(f"  ... and {len(cluster.duplicates) - 1} more duplicates")
 
         # Summary

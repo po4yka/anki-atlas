@@ -595,11 +595,11 @@ def create_app() -> FastAPI:
                 tags=c.tags,
                 duplicates=[
                     DuplicateNoteItem(
-                        note_id=d["note_id"],
-                        similarity=d["similarity"],
-                        text=d["text"],
-                        deck_names=d["deck_names"],
-                        tags=d["tags"],
+                        note_id=d.note_id,
+                        similarity=d.similarity,
+                        text=d.text,
+                        deck_names=d.deck_names,
+                        tags=d.tags,
                     )
                     for d in c.duplicates
                 ],

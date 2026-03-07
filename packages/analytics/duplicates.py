@@ -19,13 +19,24 @@ class DuplicatePair:
     similarity: float
 
 
+@dataclass(frozen=True, slots=True)
+class DuplicateDetail:
+    """A single duplicate note within a cluster."""
+
+    note_id: int
+    similarity: float
+    text: str = ""
+    deck_names: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+
+
 @dataclass
 class DuplicateCluster:
     """A cluster of duplicate notes."""
 
     representative_id: int
     representative_text: str
-    duplicates: list[dict[str, Any]] = field(default_factory=list)
+    duplicates: list[DuplicateDetail] = field(default_factory=list)
     # Metadata
     deck_names: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
@@ -295,17 +306,17 @@ class DuplicateDetector:
             for note_id, similarity in members:
                 detail = note_details.get(note_id, {})
                 cluster.duplicates.append(
-                    {
-                        "note_id": note_id,
-                        "similarity": similarity,
-                        "text": detail.get("text", "")[:200],
-                        "deck_names": detail.get("deck_names", []),
-                        "tags": detail.get("tags", []),
-                    }
+                    DuplicateDetail(
+                        note_id=note_id,
+                        similarity=similarity,
+                        text=detail.get("text", "")[:200],
+                        deck_names=detail.get("deck_names", []),
+                        tags=detail.get("tags", []),
+                    )
                 )
 
             # Sort duplicates by similarity
-            cluster.duplicates.sort(key=lambda d: d["similarity"], reverse=True)
+            cluster.duplicates.sort(key=lambda d: d.similarity, reverse=True)
             result.append(cluster)
 
         return result

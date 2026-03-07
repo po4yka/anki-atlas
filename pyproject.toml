@@ -53,7 +53,6 @@ embeddings-local = [
 ]
 llm = [
     "pydantic-ai-slim>=1.27.0",
-    "langsmith>=0.4.56",
 ]
 obsidian = [
     "python-frontmatter>=1.1.0",
@@ -68,7 +67,6 @@ providers = [
 ]
 card = [
     "nh3>=0.3.2",
-    "genanki>=0.13.1",
     "beautifulsoup4>=4.14.3",
     "pygments>=2.18.0",
 ]
