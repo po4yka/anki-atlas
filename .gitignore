@@ -191,6 +191,12 @@ cython_debug/
 # Ruff stuff:
 .ruff_cache/
 
+# Ralph orchestrator runtime artifacts
+.ralph/
+
+# Firebase
+firebase-debug.log
+
 # PyPI configuration file
 .pypirc
 

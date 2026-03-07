@@ -1,8 +1,0 @@
-{"ts":"2026-03-06T08:47:17.012621Z","type":{"kind":"loop_started","prompt":"Execute migration specs in order. Start with specs/00-foundation/."}}
-{"ts":"2026-03-06T10:36:41.678468Z","type":{"kind":"loop_completed","reason":"completion_promise"}}
-{"ts":"2026-03-06T10:59:05.331005Z","type":{"kind":"loop_started","prompt":"Continue migration. Specs 01-06 are done. Start with specs/02-infra/07-anki-connect-client.md."}}
-{"ts":"2026-03-06T14:00:55.573220Z","type":{"kind":"loop_started","prompt":"Continue migration. Specs 01-06 are done. Start with specs/02-infra/07-anki-connect-client.md."}}
-{"ts":"2026-03-07T04:55:53.252177Z","type":{"kind":"loop_started","prompt":"Continue migration. Specs 01-06 are done. Start with specs/02-infra/07-anki-connect-client.md."}}
-{"ts":"2026-03-07T07:00:50.865162Z","type":{"kind":"loop_completed","reason":"completion_promise"}}
-{"ts":"2026-03-07T07:09:27.269964Z","type":{"kind":"loop_started","prompt":"Specs 01-20 are done. Complete specs 21 and 22 only."}}
-{"ts":"2026-03-07T07:14:35.934774Z","type":{"kind":"loop_completed","reason":"completion_promise"}}
