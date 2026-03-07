@@ -8,8 +8,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
 
 from apps.api.schemas import (
     AsyncIndexRequest,
@@ -89,6 +90,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     await close_pool()
     await close_qdrant_repository()
     await close_job_manager()
+
+
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def require_api_key(
+    api_key: str | None = Depends(_api_key_header),
+) -> None:
+    """Verify API key if ANKIATLAS_API_KEY is configured."""
+    settings = get_settings()
+    if settings.api_key is None:
+        return
+    if not api_key or api_key != settings.api_key:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 def create_app() -> FastAPI:
@@ -192,7 +207,7 @@ def create_app() -> FastAPI:
             },
         }
 
-    @app.post("/sync", response_model=SyncResponse)
+    @app.post("/sync", response_model=SyncResponse, dependencies=[Depends(require_api_key)])
     async def sync(request: SyncRequest) -> SyncResponse:
         """Sync an Anki collection to the database and optionally index."""
         from packages.anki.sync import sync_anki_collection
@@ -205,6 +220,12 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status_code=400,
                 detail=f"Collection not found: {source_path}",
+            )
+
+        if source_path.suffix not in (".anki2", ".anki21"):
+            raise HTTPException(
+                status_code=400,
+                detail="Source must be an Anki collection file (.anki2 or .anki21)",
             )
 
         if request.run_migrations:
@@ -250,7 +271,7 @@ def create_app() -> FastAPI:
 
         return response
 
-    @app.post("/index", response_model=IndexResponse)
+    @app.post("/index", response_model=IndexResponse, dependencies=[Depends(require_api_key)])
     async def index_notes(request: IndexRequest) -> IndexResponse:
         """Index notes from PostgreSQL to vector database."""
         from packages.common.exceptions import EmbeddingModelChanged
@@ -279,7 +300,7 @@ def create_app() -> FastAPI:
                 detail=f"Indexing failed: {e}",
             ) from e
 
-    @app.post("/jobs/sync", response_model=JobAcceptedResponse, status_code=202)
+    @app.post("/jobs/sync", response_model=JobAcceptedResponse, status_code=202, dependencies=[Depends(require_api_key)])
     async def enqueue_sync_job(request: AsyncSyncRequest) -> JobAcceptedResponse:
         """Enqueue async sync/index job and return job ID for polling."""
         source_path = Path(request.source).expanduser().resolve()
@@ -321,7 +342,7 @@ def create_app() -> FastAPI:
             poll_url=f"/jobs/{job.job_id}",
         )
 
-    @app.post("/jobs/index", response_model=JobAcceptedResponse, status_code=202)
+    @app.post("/jobs/index", response_model=JobAcceptedResponse, status_code=202, dependencies=[Depends(require_api_key)])
     async def enqueue_index_job(request: AsyncIndexRequest) -> JobAcceptedResponse:
         """Enqueue async indexing job and return job ID for polling."""
         run_at = request.run_at
@@ -367,7 +388,7 @@ def create_app() -> FastAPI:
 
         return _to_job_status_response(job)
 
-    @app.post("/jobs/{job_id}/cancel", response_model=JobStatusResponse)
+    @app.post("/jobs/{job_id}/cancel", response_model=JobStatusResponse, dependencies=[Depends(require_api_key)])
     async def cancel_job(job_id: str) -> JobStatusResponse:
         """Request cancellation of a background job."""
         try:

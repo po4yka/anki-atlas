@@ -90,6 +90,10 @@ class Settings(BaseSettings):
     # API configuration
     api_host: str = Field(default="0.0.0.0", description="API host")
     api_port: int = Field(default=8000, description="API port")
+    api_key: str | None = Field(
+        default=None,
+        description="API key for authentication. When set, all mutating endpoints require this key.",
+    )
     debug: bool = Field(default=False, description="Debug mode")
 
     # Anki source
