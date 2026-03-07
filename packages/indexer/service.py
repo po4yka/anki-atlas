@@ -330,14 +330,6 @@ async def index_all_notes(
     settings: Settings | None = None,
     force_reindex: bool = False,
 ) -> IndexStats:
-    """Convenience function to index all notes.
-
-    Args:
-        settings: Application settings.
-        force_reindex: If True, re-embed all notes.
-
-    Returns:
-        IndexStats with operation counts.
-    """
+    """Shortcut: create IndexService and index all notes from database."""
     service = IndexService(settings)
     return await service.index_from_database(force_reindex)

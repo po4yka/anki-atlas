@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from packages.common.logging import configure_logging, get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 configure_logging(debug=False, json_output=False)
 logger = get_logger(module=__name__)
@@ -21,6 +26,20 @@ app = typer.Typer(
 )
 
 console = Console()
+
+
+@contextmanager
+def _cli_error_handler(
+    event: str, **log_context: object
+) -> Generator[None]:
+    """Catch exceptions, log them, print a rich error, and exit."""
+    try:
+        yield
+    except Exception as e:
+        logger.exception(event, error_type=type(e).__name__, **log_context)
+        label = event.removeprefix("cli_").removesuffix("_failed").replace("_", " ").capitalize()
+        console.print(f"[red]{label} error:[/red] {e}")
+        raise typer.Exit(1) from None
 
 
 @app.command()
@@ -80,18 +99,14 @@ async def _sync_async(
     # Run migrations if requested
     if run_migrations:
         console.print("Running database migrations...")
-        try:
+        with _cli_error_handler("cli_migration_failed"):
             result = await db_migrate()
             if result.applied:
                 console.print(f"[green]Applied migrations:[/green] {', '.join(result.applied)}")
-        except Exception as e:
-            logger.exception("cli_migration_failed", error_type=type(e).__name__)
-            console.print(f"[red]Migration error:[/red] {e}")
-            raise typer.Exit(1) from None
 
     # Run sync to PostgreSQL
     console.print("Syncing collection to PostgreSQL...")
-    try:
+    with _cli_error_handler("cli_sync_failed", source=str(source_path)):
         sync_stats = await sync_anki_collection(source_path)
 
         table = Table(title="PostgreSQL Sync")
@@ -108,16 +123,16 @@ async def _sync_async(
 
         console.print(table)
 
-    except Exception as e:
-        logger.exception("cli_sync_failed", source=str(source_path), error_type=type(e).__name__)
-        console.print(f"[red]Sync error:[/red] {e}")
-        raise typer.Exit(1) from None
-
     # Run indexing if requested
     if index:
         console.print("\nIndexing notes to Qdrant...")
-        try:
-            index_stats = await index_all_notes(force_reindex=force_reindex)
+        with _cli_error_handler("cli_indexing_failed"):
+            try:
+                index_stats = await index_all_notes(force_reindex=force_reindex)
+            except EmbeddingModelChanged as e:
+                logger.warning("cli_embedding_model_changed", error=str(e))
+                console.print(f"[yellow]{e}[/yellow]")
+                raise typer.Exit(1) from None
 
             table = Table(title="Vector Index")
             table.add_column("Metric", style="cyan")
@@ -134,15 +149,6 @@ async def _sync_async(
                 for error in index_stats.errors:
                     console.print(f"[yellow]Warning:[/yellow] {error}")
 
-        except EmbeddingModelChanged as e:
-            logger.warning("cli_embedding_model_changed", error=str(e))
-            console.print(f"[yellow]{e}[/yellow]")
-            raise typer.Exit(1) from None
-        except Exception as e:
-            logger.exception("cli_indexing_failed", error_type=type(e).__name__)
-            console.print(f"[red]Indexing error:[/red] {e}")
-            raise typer.Exit(1) from None
-
 
 @app.command()
 def migrate() -> None:
@@ -155,16 +161,12 @@ async def _migrate_async() -> None:
     from packages.common.database import run_migrations
 
     console.print("Running database migrations...")
-    try:
+    with _cli_error_handler("cli_migrate_failed"):
         result = await run_migrations()
         if result.applied:
             console.print(f"[green]Applied migrations:[/green] {', '.join(result.applied)}")
         else:
             console.print("[yellow]No new migrations to apply[/yellow]")
-    except Exception as e:
-        logger.exception("cli_migrate_failed", error_type=type(e).__name__)
-        console.print(f"[red]Migration error:[/red] {e}")
-        raise typer.Exit(1) from None
 
 
 @app.command()
@@ -186,8 +188,13 @@ async def _index_async(force: bool) -> None:
     from packages.indexer.service import index_all_notes
 
     console.print("Indexing notes to Qdrant...")
-    try:
-        stats = await index_all_notes(force_reindex=force)
+    with _cli_error_handler("cli_index_failed", force=force):
+        try:
+            stats = await index_all_notes(force_reindex=force)
+        except EmbeddingModelChanged as e:
+            logger.warning("cli_index_model_changed", error=str(e))
+            console.print(f"[yellow]{e}[/yellow]")
+            raise typer.Exit(1) from None
 
         table = Table(title="Vector Index")
         table.add_column("Metric", style="cyan")
@@ -203,15 +210,6 @@ async def _index_async(force: bool) -> None:
         if stats.errors:
             for error in stats.errors:
                 console.print(f"[yellow]Warning:[/yellow] {error}")
-
-    except EmbeddingModelChanged as e:
-        logger.warning("cli_index_model_changed", error=str(e))
-        console.print(f"[yellow]{e}[/yellow]")
-        raise typer.Exit(1) from None
-    except Exception as e:
-        logger.exception("cli_index_failed", force=force, error_type=type(e).__name__)
-        console.print(f"[red]Indexing error:[/red] {e}")
-        raise typer.Exit(1) from None
 
 
 @app.command()
@@ -250,7 +248,7 @@ async def _topics_async(
 
     service = AnalyticsService()
 
-    try:
+    with _cli_error_handler("cli_topics_failed"):
         # Load taxonomy
         if taxonomy_file:
             yaml_path = Path(taxonomy_file).expanduser().resolve()
@@ -298,11 +296,6 @@ async def _topics_async(
             console.print(f"  Assignments created: {stats.assignments_created}")
             console.print(f"  Topics matched: {stats.topics_matched}")
 
-    except Exception as e:
-        logger.exception("cli_topics_failed", error_type=type(e).__name__)
-        console.print(f"[red]Topics error:[/red] {e}")
-        raise typer.Exit(1) from None
-
 
 @app.command()
 def search(
@@ -343,7 +336,7 @@ async def _search_async(
     if tag:
         console.print(f"  Tag filter: {tag}")
 
-    try:
+    with _cli_error_handler("cli_search_failed", query=query):
         result = await service.search(
             query=query,
             filters=filters,
@@ -412,11 +405,6 @@ async def _search_async(
                     console.print(f"    FTS: {r.fts_score:.4f} (rank {r.fts_rank})")
                 console.print(f"    Tags: {tags_str}")
 
-    except Exception as e:
-        logger.exception("cli_search_failed", query=query, error_type=type(e).__name__)
-        console.print(f"[red]Search error:[/red] {e}")
-        raise typer.Exit(1) from None
-
 
 @app.command()
 def coverage(
@@ -439,7 +427,7 @@ async def _coverage_async(topic: str, include_subtree: bool) -> None:
     if include_subtree:
         console.print("  (including subtree)")
 
-    try:
+    with _cli_error_handler("cli_coverage_failed", topic=topic):
         cov = await service.get_coverage(topic, include_subtree)
 
         if not cov:
@@ -468,11 +456,6 @@ async def _coverage_async(topic: str, include_subtree: bool) -> None:
                 f"\n[dim]Breadth coverage: {breadth:.0%} ({cov.covered_children}/{cov.child_count} children covered)[/dim]"
             )
 
-    except Exception as e:
-        logger.exception("cli_coverage_failed", topic=topic, error_type=type(e).__name__)
-        console.print(f"[red]Coverage error:[/red] {e}")
-        raise typer.Exit(1) from None
-
 
 @app.command()
 def gaps(
@@ -491,7 +474,7 @@ async def _gaps_async(topic: str, min_coverage: int) -> None:
 
     console.print(f"Gaps for: [cyan]{topic}[/cyan] (min_coverage={min_coverage})")
 
-    try:
+    with _cli_error_handler("cli_gaps_failed", topic=topic):
         gaps_list = await service.get_gaps(topic, min_coverage)
 
         if not gaps_list:
@@ -530,11 +513,6 @@ async def _gaps_async(topic: str, min_coverage: int) -> None:
             f"\n[dim]Total gaps: {len(gaps_list)} ({len(missing)} missing, {len(undercovered)} undercovered)[/dim]"
         )
 
-    except Exception as e:
-        logger.exception("cli_gaps_failed", topic=topic, error_type=type(e).__name__)
-        console.print(f"[red]Gaps error:[/red] {e}")
-        raise typer.Exit(1) from None
-
 
 @app.command()
 def duplicates(
@@ -564,7 +542,7 @@ async def _duplicates_async(
     if tag:
         console.print(f"  Tag filter: {tag}")
 
-    try:
+    with _cli_error_handler("cli_duplicates_failed", threshold=threshold):
         detector = DuplicateDetector()
         clusters, stats = await detector.find_duplicates(
             threshold=threshold,
@@ -615,15 +593,6 @@ async def _duplicates_async(
         console.print(
             f"\n[dim]Found {stats.total_duplicates} potential duplicates in {stats.clusters_found} clusters[/dim]"
         )
-
-    except Exception as e:
-        logger.exception(
-            "cli_duplicates_failed",
-            threshold=threshold,
-            error_type=type(e).__name__,
-        )
-        console.print(f"[red]Duplicates error:[/red] {e}")
-        raise typer.Exit(1) from None
 
 
 @app.command(name="generate")

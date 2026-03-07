@@ -355,16 +355,6 @@ async def hybrid_search(
     limit: int = 50,
     settings: Settings | None = None,
 ) -> HybridSearchResult:
-    """Convenience function for hybrid search.
-
-    Args:
-        query: Search query.
-        filters: Optional filters.
-        limit: Maximum results.
-        settings: Application settings.
-
-    Returns:
-        HybridSearchResult with fused results.
-    """
+    """Shortcut: create SearchService and run hybrid search."""
     service = SearchService(settings)
     return await service.search(query, filters, limit)
