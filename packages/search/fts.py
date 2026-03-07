@@ -122,8 +122,8 @@ async def _execute_fts_query(
     limit: int,
 ) -> list[FTSResult]:
     """Execute the FTS query with filters."""
-    # Build the base query
-    sql_parts = [
+    params: dict[str, Any] = {"query": query, "limit": limit}
+    sql = _build_filtered_query(
         """
         SELECT
             n.note_id,
@@ -138,50 +138,20 @@ async def _execute_fts_query(
                 'MaxWords=30, MinWords=15, StartSel=<<, StopSel=>>'
             ) as headline
         FROM notes n
-        """
-    ]
-
-    params: dict[str, Any] = {"query": query, "limit": limit}
-
-    # Add joins for card-based filters
-    if filters and _needs_card_join(filters):
-        sql_parts.append(
-            """
-            LEFT JOIN cards c ON c.note_id = n.note_id
-            LEFT JOIN decks d ON d.deck_id = c.deck_id
-            """
-        )
-
-    # WHERE clause
-    where_clauses = [
-        "n.deleted_at IS NULL",
-        "to_tsvector('english', n.normalized_text) @@ websearch_to_tsquery('english', %(query)s)",
-    ]
-
-    if filters:
-        _add_filter_clauses(filters, where_clauses, params)
-
-    sql_parts.append("WHERE " + " AND ".join(where_clauses))
-
-    # GROUP BY for card joins
-    if filters and _needs_card_join(filters):
-        sql_parts.append("GROUP BY n.note_id, n.normalized_text")
-
-    # ORDER and LIMIT
-    sql_parts.append("ORDER BY rank DESC LIMIT %(limit)s")
-
-    sql = "\n".join(sql_parts)
+        """,
+        filters,
+        [
+            "n.deleted_at IS NULL",
+            "to_tsvector('english', n.normalized_text) @@ websearch_to_tsquery('english', %(query)s)",
+        ],
+        params,
+        "ORDER BY rank DESC LIMIT %(limit)s",
+    )
 
     result = await conn.execute(sql, params)
     rows = await result.fetchall()
-
     return [
-        FTSResult(
-            note_id=row["note_id"],
-            rank=float(row["rank"]),
-            headline=row["headline"],
-            source="fts",
-        )
+        FTSResult(note_id=row["note_id"], rank=float(row["rank"]), headline=row["headline"], source="fts")
         for row in rows
     ]
 
@@ -193,7 +163,13 @@ async def _execute_fuzzy_query(
     limit: int,
 ) -> list[FTSResult]:
     """Execute trigram-based fuzzy lexical search."""
-    sql_parts = [
+    params: dict[str, Any] = {
+        "query": query,
+        "limit": limit,
+        "similarity_threshold": 0.15,
+        "word_similarity_threshold": 0.2,
+    }
+    sql = _build_filtered_query(
         """
         SELECT
             n.note_id,
@@ -203,52 +179,24 @@ async def _execute_fuzzy_query(
             ) as rank,
             NULL::text as headline
         FROM notes n
-        """
-    ]
-
-    params: dict[str, Any] = {
-        "query": query,
-        "limit": limit,
-        "similarity_threshold": 0.15,
-        "word_similarity_threshold": 0.2,
-    }
-
-    joined = filters is not None and _needs_card_join(filters)
-    if joined:
-        sql_parts.append(
-            """
-            LEFT JOIN cards c ON c.note_id = n.note_id
-            LEFT JOIN decks d ON d.deck_id = c.deck_id
-            """
-        )
-
-    where_clauses = [
-        "n.deleted_at IS NULL",
-        """(
+        """,
+        filters,
+        [
+            "n.deleted_at IS NULL",
+            """(
             n.normalized_text %% %(query)s
             OR similarity(n.normalized_text, %(query)s) >= %(similarity_threshold)s
             OR word_similarity(%(query)s, n.normalized_text) >= %(word_similarity_threshold)s
         )""",
-    ]
+        ],
+        params,
+        "ORDER BY rank DESC LIMIT %(limit)s",
+    )
 
-    if filters:
-        _add_filter_clauses(filters, where_clauses, params)
-
-    sql_parts.append("WHERE " + " AND ".join(where_clauses))
-    if joined:
-        sql_parts.append("GROUP BY n.note_id, n.normalized_text")
-    sql_parts.append("ORDER BY rank DESC LIMIT %(limit)s")
-
-    result = await conn.execute("\n".join(sql_parts), params)
+    result = await conn.execute(sql, params)
     rows = await result.fetchall()
-
     return [
-        FTSResult(
-            note_id=row["note_id"],
-            rank=float(row["rank"]),
-            headline=row["headline"],
-            source="fuzzy",
-        )
+        FTSResult(note_id=row["note_id"], rank=float(row["rank"]), headline=row["headline"], source="fuzzy")
         for row in rows
     ]
 
@@ -264,59 +212,34 @@ async def _execute_autocomplete_query(
     if len(prefix) < 2:
         return []
 
-    sql_parts = [
+    params: dict[str, Any] = {"prefix": prefix, "prefix_like": f"{prefix}%", "limit": limit}
+    sql = _build_filtered_query(
         """
         SELECT
             n.note_id,
             similarity(n.normalized_text, %(prefix)s) as rank,
             NULL::text as headline
         FROM notes n
-        """
-    ]
-
-    params: dict[str, Any] = {
-        "prefix": prefix,
-        "prefix_like": f"{prefix}%",
-        "limit": limit,
-    }
-
-    joined = filters is not None and _needs_card_join(filters)
-    if joined:
-        sql_parts.append(
+        """,
+        filters,
+        [
+            "n.deleted_at IS NULL",
             """
-            LEFT JOIN cards c ON c.note_id = n.note_id
-            LEFT JOIN decks d ON d.deck_id = c.deck_id
-            """
-        )
-
-    where_clauses = [
-        "n.deleted_at IS NULL",
-        """
         EXISTS (
             SELECT 1
             FROM regexp_split_to_table(n.normalized_text, E'\\s+') AS token
             WHERE lower(token) LIKE %(prefix_like)s
         )
         """,
-    ]
-    if filters:
-        _add_filter_clauses(filters, where_clauses, params)
+        ],
+        params,
+        "ORDER BY rank DESC LIMIT %(limit)s",
+    )
 
-    sql_parts.append("WHERE " + " AND ".join(where_clauses))
-    if joined:
-        sql_parts.append("GROUP BY n.note_id, n.normalized_text")
-    sql_parts.append("ORDER BY rank DESC LIMIT %(limit)s")
-
-    result = await conn.execute("\n".join(sql_parts), params)
+    result = await conn.execute(sql, params)
     rows = await result.fetchall()
-
     return [
-        FTSResult(
-            note_id=row["note_id"],
-            rank=float(row["rank"]),
-            headline=row["headline"],
-            source="autocomplete",
-        )
+        FTSResult(note_id=row["note_id"], rank=float(row["rank"]), headline=row["headline"], source="autocomplete")
         for row in rows
     ]
 
@@ -328,38 +251,21 @@ async def _fetch_query_suggestions(
     limit: int,
 ) -> list[str]:
     """Suggest nearest known phrases for typo-prone queries."""
-    sql_parts = [
+    params: dict[str, Any] = {"query": query, "limit": limit}
+    sql = _build_filtered_query(
         """
         SELECT
             LEFT(n.normalized_text, 80) as suggestion,
             n.normalized_text <-> %(query)s as distance
         FROM notes n
-        """
-    ]
+        """,
+        filters,
+        ["n.deleted_at IS NULL", "n.normalized_text <> ''"],
+        params,
+        "ORDER BY distance ASC LIMIT %(limit)s",
+    )
 
-    params: dict[str, Any] = {"query": query, "limit": limit}
-    joined = filters is not None and _needs_card_join(filters)
-    if joined:
-        sql_parts.append(
-            """
-            LEFT JOIN cards c ON c.note_id = n.note_id
-            LEFT JOIN decks d ON d.deck_id = c.deck_id
-            """
-        )
-
-    where_clauses = [
-        "n.deleted_at IS NULL",
-        "n.normalized_text <> ''",
-    ]
-    if filters:
-        _add_filter_clauses(filters, where_clauses, params)
-
-    sql_parts.append("WHERE " + " AND ".join(where_clauses))
-    if joined:
-        sql_parts.append("GROUP BY n.note_id, n.normalized_text")
-    sql_parts.append("ORDER BY distance ASC LIMIT %(limit)s")
-
-    result = await conn.execute("\n".join(sql_parts), params)
+    result = await conn.execute(sql, params)
     rows = await result.fetchall()
     return [str(row["suggestion"]) for row in rows if row.get("suggestion")]
 
@@ -386,23 +292,12 @@ async def _fetch_autocomplete_suggestions(
             CROSS JOIN LATERAL regexp_split_to_table(n.normalized_text, E'\\s+') AS token
         """
     ]
-
-    params: dict[str, Any] = {
-        "prefix": prefix,
-        "prefix_like": f"{prefix}%",
-        "limit": limit,
-    }
-
+    params: dict[str, Any] = {"prefix": prefix, "prefix_like": f"{prefix}%", "limit": limit}
     joined = filters is not None and _needs_card_join(filters)
     if joined:
-        sql_parts.append(
-            """
-            LEFT JOIN cards c ON c.note_id = n.note_id
-            LEFT JOIN decks d ON d.deck_id = c.deck_id
-            """
-        )
+        sql_parts.append(_CARD_JOIN_SQL)
 
-    where_clauses = [
+    where_clauses: list[str] = [
         "n.deleted_at IS NULL",
         "length(token) >= 2",
         "lower(token) LIKE %(prefix_like)s",
@@ -444,13 +339,50 @@ def _needs_card_join(filters: SearchFilters) -> bool:
     )
 
 
+_CARD_JOIN_SQL = """
+LEFT JOIN cards c ON c.note_id = n.note_id
+LEFT JOIN decks d ON d.deck_id = c.deck_id
+"""
+
+
+def _build_filtered_query(
+    select_sql: str,
+    filters: SearchFilters | None,
+    where_clauses: list[str],
+    params: dict[str, Any],
+    order_sql: str,
+    *,
+    group_by_sql: str = "GROUP BY n.note_id, n.normalized_text",
+) -> str:
+    """Build a filtered SQL query with optional card join.
+
+    Args:
+        select_sql: The SELECT ... FROM notes n portion.
+        filters: Optional search filters.
+        where_clauses: Base WHERE conditions (mutated to add filter clauses).
+        params: Query parameters dict (mutated to add filter params).
+        order_sql: ORDER BY and LIMIT clause.
+        group_by_sql: GROUP BY clause (used when card join is present).
+    """
+    sql_parts = [select_sql]
+    joined = filters is not None and _needs_card_join(filters)
+    if joined:
+        sql_parts.append(_CARD_JOIN_SQL)
+    if filters:
+        _add_filter_clauses(filters, where_clauses, params)
+    sql_parts.append("WHERE " + " AND ".join(where_clauses))
+    if joined:
+        sql_parts.append(group_by_sql)
+    sql_parts.append(order_sql)
+    return "\n".join(sql_parts)
+
+
 def _add_filter_clauses(
     filters: SearchFilters,
     where_clauses: list[str],
     params: dict[str, Any],
 ) -> None:
     """Add filter conditions to WHERE clause."""
-    # Tag filters
     if filters.tags:
         where_clauses.append("n.tags && %(tags)s")
         params["tags"] = filters.tags
@@ -459,12 +391,10 @@ def _add_filter_clauses(
         where_clauses.append("NOT (n.tags && %(tags_exclude)s)")
         params["tags_exclude"] = filters.tags_exclude
 
-    # Model filter
     if filters.model_ids:
         where_clauses.append("n.model_id = ANY(%(model_ids)s)")
         params["model_ids"] = filters.model_ids
 
-    # Deck filters (require card join)
     if filters.deck_names:
         where_clauses.append("d.name = ANY(%(deck_names)s)")
         params["deck_names"] = filters.deck_names
@@ -473,7 +403,6 @@ def _add_filter_clauses(
         where_clauses.append("d.name IS NULL OR NOT (d.name = ANY(%(deck_names_exclude)s))")
         params["deck_names_exclude"] = filters.deck_names_exclude
 
-    # Card stat filters
     if filters.min_ivl is not None:
         where_clauses.append("c.ivl >= %(min_ivl)s")
         params["min_ivl"] = filters.min_ivl
