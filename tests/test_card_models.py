@@ -158,8 +158,8 @@ class TestCard:
     def test_with_tags(self) -> None:
         card = _make_card()
         card2 = card.with_tags(["python", "basics"])
-        assert card2.tags == ["python", "basics"]
-        assert card.tags == []
+        assert card2.tags == ("python", "basics")
+        assert card.tags == ()
 
     def test_manifest_lang_mismatch_raises(self) -> None:
         manifest = _make_manifest(lang="ru", slug="python-decorators-1-ru")

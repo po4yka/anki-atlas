@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Final
 
@@ -110,75 +110,19 @@ class CardManifest:
 
     def with_guid(self, guid: str) -> CardManifest:
         """Create new manifest with Anki GUID."""
-        return CardManifest(
-            slug=self.slug,
-            slug_base=self.slug_base,
-            lang=self.lang,
-            source_path=self.source_path,
-            source_anchor=self.source_anchor,
-            note_id=self.note_id,
-            note_title=self.note_title,
-            card_index=self.card_index,
-            guid=guid,
-            hash6=self.hash6,
-            obsidian_uri=self.obsidian_uri,
-            difficulty=self.difficulty,
-            cognitive_load=self.cognitive_load,
-        )
+        return replace(self, guid=guid)
 
     def with_hash(self, hash6: str) -> CardManifest:
         """Create new manifest with content hash."""
-        return CardManifest(
-            slug=self.slug,
-            slug_base=self.slug_base,
-            lang=self.lang,
-            source_path=self.source_path,
-            source_anchor=self.source_anchor,
-            note_id=self.note_id,
-            note_title=self.note_title,
-            card_index=self.card_index,
-            guid=self.guid,
-            hash6=hash6,
-            obsidian_uri=self.obsidian_uri,
-            difficulty=self.difficulty,
-            cognitive_load=self.cognitive_load,
-        )
+        return replace(self, hash6=hash6)
 
     def with_obsidian_uri(self, obsidian_uri: str) -> CardManifest:
         """Create new manifest with Obsidian URI."""
-        return CardManifest(
-            slug=self.slug,
-            slug_base=self.slug_base,
-            lang=self.lang,
-            source_path=self.source_path,
-            source_anchor=self.source_anchor,
-            note_id=self.note_id,
-            note_title=self.note_title,
-            card_index=self.card_index,
-            guid=self.guid,
-            hash6=self.hash6,
-            obsidian_uri=obsidian_uri,
-            difficulty=self.difficulty,
-            cognitive_load=self.cognitive_load,
-        )
+        return replace(self, obsidian_uri=obsidian_uri)
 
     def with_fsrs_metadata(self, difficulty: float, cognitive_load: str) -> CardManifest:
         """Create new manifest with FSRS metadata."""
-        return CardManifest(
-            slug=self.slug,
-            slug_base=self.slug_base,
-            lang=self.lang,
-            source_path=self.source_path,
-            source_anchor=self.source_anchor,
-            note_id=self.note_id,
-            note_title=self.note_title,
-            card_index=self.card_index,
-            guid=self.guid,
-            hash6=self.hash6,
-            obsidian_uri=self.obsidian_uri,
-            difficulty=difficulty,
-            cognitive_load=cognitive_load,
-        )
+        return replace(self, difficulty=difficulty, cognitive_load=cognitive_load)
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,7 +134,7 @@ class Card:
     apf_html: str
     manifest: CardManifest
     note_type: str
-    tags: list[str] = field(default_factory=list)
+    tags: tuple[str, ...] = ()
     anki_guid: str | None = None
 
     def __post_init__(self) -> None:
@@ -256,52 +200,18 @@ class Card:
         """Create new Card with Anki GUID (immutable pattern)."""
         if not guid or not guid.strip():
             raise CardValidationError("guid cannot be empty")
-        new_manifest = self.manifest.with_guid(guid)
-        return Card(
-            slug=self.slug,
-            language=self.language,
-            apf_html=self.apf_html,
-            manifest=new_manifest,
-            note_type=self.note_type,
-            tags=list(self.tags),
-            anki_guid=guid,
-        )
+        return replace(self, manifest=self.manifest.with_guid(guid), anki_guid=guid)
 
     def update_content(self, new_apf_html: str) -> Card:
         """Create new Card with updated content and recalculated hash."""
         if not new_apf_html or not new_apf_html.strip():
             raise CardValidationError("new_apf_html cannot be empty")
-        new_card = Card(
-            slug=self.slug,
-            language=self.language,
-            apf_html=new_apf_html,
-            manifest=self.manifest,
-            note_type=self.note_type,
-            tags=list(self.tags),
-            anki_guid=self.anki_guid,
-        )
-        new_manifest = self.manifest.with_hash(new_card.content_hash)
-        return Card(
-            slug=self.slug,
-            language=self.language,
-            apf_html=new_apf_html,
-            manifest=new_manifest,
-            note_type=self.note_type,
-            tags=list(self.tags),
-            anki_guid=self.anki_guid,
-        )
+        updated = replace(self, apf_html=new_apf_html)
+        return replace(updated, manifest=self.manifest.with_hash(updated.content_hash))
 
-    def with_tags(self, tags: list[str]) -> Card:
+    def with_tags(self, tags: tuple[str, ...] | list[str]) -> Card:
         """Create new Card with updated tags."""
-        return Card(
-            slug=self.slug,
-            language=self.language,
-            apf_html=self.apf_html,
-            manifest=self.manifest,
-            note_type=self.note_type,
-            tags=list(tags),
-            anki_guid=self.anki_guid,
-        )
+        return replace(self, tags=tuple(tags))
 
 
 class SyncActionType(Enum):
@@ -324,22 +234,14 @@ class SyncAction:
 
     def __post_init__(self) -> None:
         """Validate sync action invariants."""
-        errors: list[str] = []
-
-        if not isinstance(self.action_type, SyncActionType):
-            errors.append(f"action_type must be SyncActionType, got {type(self.action_type)}")
-
-        if not isinstance(self.card, Card):
-            errors.append(f"card must be Card instance, got {type(self.card)}")
-
         if (
             self.action_type in (SyncActionType.UPDATE, SyncActionType.DELETE)
             and not self.anki_guid
         ):
-            errors.append(f"anki_guid is required for {self.action_type.value} actions")
-
-        if errors:
-            raise CardValidationError(f"SyncAction validation failed: {'; '.join(errors)}")
+            raise CardValidationError(
+                f"SyncAction validation failed: "
+                f"anki_guid is required for {self.action_type.value} actions"
+            )
 
     @property
     def is_destructive(self) -> bool:
