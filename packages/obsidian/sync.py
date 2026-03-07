@@ -31,7 +31,7 @@ class CardGeneratorProtocol(Protocol):
 class SyncResult:
     """Workflow-level sync result with counts and errors."""
 
-    created: int = 0
+    generated: int = 0
     updated: int = 0
     skipped: int = 0
     failed: int = 0
@@ -40,7 +40,7 @@ class SyncResult:
     def merge(self, other: SyncResult) -> SyncResult:
         """Combine two results."""
         return SyncResult(
-            created=self.created + other.created,
+            generated=self.generated + other.generated,
             updated=self.updated + other.updated,
             skipped=self.skipped + other.skipped,
             failed=self.failed + other.failed,
@@ -165,7 +165,7 @@ class ObsidianSyncWorkflow:
         )
 
         return SyncResult(
-            created=len(all_cards),
+            generated=len(all_cards),
             skipped=skipped,
             failed=failed,
             errors=tuple(all_errors),

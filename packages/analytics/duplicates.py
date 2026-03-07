@@ -10,7 +10,7 @@ from packages.common.database import get_connection
 from packages.indexer.qdrant import QdrantRepository, get_qdrant_repository
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class DuplicatePair:
     """A pair of duplicate notes."""
 

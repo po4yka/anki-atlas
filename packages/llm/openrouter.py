@@ -10,8 +10,7 @@ import httpx
 
 from packages.common.exceptions import ProviderError
 from packages.common.logging import get_logger
-
-from .base import BaseLLMProvider, LLMResponse
+from packages.llm.base import BaseLLMProvider, LLMResponse
 
 logger = get_logger(module=__name__)
 

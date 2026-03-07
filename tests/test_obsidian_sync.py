@@ -62,14 +62,14 @@ class FailingGenerator:
 class TestSyncResult:
     def test_defaults(self) -> None:
         r = SyncResult()
-        assert r.created == 0
+        assert r.generated == 0
         assert r.errors == ()
 
     def test_merge(self) -> None:
-        a = SyncResult(created=1, failed=1, errors=("err1",))
-        b = SyncResult(created=2, skipped=3, errors=("err2",))
+        a = SyncResult(generated=1, failed=1, errors=("err1",))
+        b = SyncResult(generated=2, skipped=3, errors=("err2",))
         merged = a.merge(b)
-        assert merged.created == 3
+        assert merged.generated == 3
         assert merged.failed == 1
         assert merged.skipped == 3
         assert merged.errors == ("err1", "err2")
@@ -178,7 +178,7 @@ class TestRun:
         cards = [_make_card("c1")]
         wf = ObsidianSyncWorkflow(generator=FakeGenerator(cards))
         result = wf.run(tmp_path)
-        assert result.created == 2  # 1 card per note, 2 notes
+        assert result.generated == 2  # 1 card per note, 2 notes
         assert result.failed == 0
         assert result.errors == ()
 
@@ -186,7 +186,7 @@ class TestRun:
         (tmp_path / "a.md").write_text("# A\nbody")
         wf = ObsidianSyncWorkflow(generator=FailingGenerator())
         result = wf.run(tmp_path)
-        assert result.created == 0
+        assert result.generated == 0
         assert result.failed == 1
         assert len(result.errors) == 1
 
@@ -205,5 +205,5 @@ class TestRun:
     def test_run_empty_vault(self, tmp_path: Path) -> None:
         wf = ObsidianSyncWorkflow(generator=FakeGenerator())
         result = wf.run(tmp_path)
-        assert result.created == 0
+        assert result.generated == 0
         assert result.failed == 0
