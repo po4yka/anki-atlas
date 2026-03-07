@@ -10,8 +10,26 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
+from apps.api.schemas import (
+    AsyncIndexRequest,
+    AsyncSyncRequest,
+    DuplicateClusterItem,
+    DuplicateNoteItem,
+    DuplicatesResponse,
+    IndexRequest,
+    IndexResponse,
+    JobAcceptedResponse,
+    JobStatusResponse,
+    SearchRequest,
+    SearchResponse,
+    SearchResultItem,
+    SyncRequest,
+    SyncResponse,
+    TopicCoverageResponse,
+    TopicGapItem,
+    TopicGapsResponse,
+)
 from packages.common.config import get_settings
 from packages.common.database import check_connection, close_pool, run_migrations
 from packages.common.exceptions import (
@@ -41,222 +59,6 @@ if TYPE_CHECKING:
 logger = get_logger(module=__name__)
 
 
-class SyncRequest(BaseModel):
-    """Request body for sync endpoint."""
-
-    source: str
-    run_migrations: bool = True
-    index: bool = True
-    force_reindex: bool = False
-
-
-class SyncResponse(BaseModel):
-    """Response from sync endpoint."""
-
-    status: str
-    decks_upserted: int
-    models_upserted: int
-    notes_upserted: int
-    notes_deleted: int
-    cards_upserted: int
-    card_stats_upserted: int
-    duration_ms: int
-    # Indexing stats (optional)
-    notes_embedded: int | None = None
-    notes_skipped: int | None = None
-    index_errors: list[str] | None = None
-
-
-class IndexRequest(BaseModel):
-    """Request body for index endpoint."""
-
-    force_reindex: bool = False
-
-
-class IndexResponse(BaseModel):
-    """Response from index endpoint."""
-
-    status: str
-    notes_processed: int
-    notes_embedded: int
-    notes_skipped: int
-    notes_deleted: int
-    errors: list[str]
-
-
-class AsyncSyncRequest(BaseModel):
-    """Request body for async sync job."""
-
-    source: str
-    run_migrations: bool = True
-    index: bool = True
-    force_reindex: bool = False
-    run_at: datetime | None = None
-
-
-class AsyncIndexRequest(BaseModel):
-    """Request body for async index job."""
-
-    force_reindex: bool = False
-    run_at: datetime | None = None
-
-
-class JobAcceptedResponse(BaseModel):
-    """Response from async job enqueue."""
-
-    job_id: str
-    status: str
-    job_type: str
-    created_at: datetime
-    scheduled_for: datetime | None = None
-    poll_url: str
-
-
-class JobStatusResponse(BaseModel):
-    """Response with background job status/progress."""
-
-    job_id: str
-    job_type: str
-    status: str
-    progress: float
-    message: str | None = None
-    attempts: int
-    max_retries: int
-    cancel_requested: bool
-    created_at: datetime | None = None
-    scheduled_for: datetime | None = None
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
-    result: dict[str, Any] | None = None
-    error: str | None = None
-
-
-class SearchRequest(BaseModel):
-    """Request body for search endpoint."""
-
-    query: str
-    deck_names: list[str] | None = None
-    deck_names_exclude: list[str] | None = None
-    tags: list[str] | None = None
-    tags_exclude: list[str] | None = None
-    model_ids: list[int] | None = None
-    min_ivl: int | None = None
-    max_lapses: int | None = None
-    min_reps: int | None = None
-    top_k: int = 20
-    semantic_weight: float = 1.0
-    fts_weight: float = 1.0
-
-
-class SearchResultItem(BaseModel):
-    """A single search result."""
-
-    note_id: int
-    rrf_score: float
-    semantic_score: float | None = None
-    semantic_rank: int | None = None
-    fts_score: float | None = None
-    fts_rank: int | None = None
-    headline: str | None = None
-    rerank_score: float | None = None
-    rerank_rank: int | None = None
-    sources: list[str]
-    # Optional enriched data
-    normalized_text: str | None = None
-    tags: list[str] | None = None
-    deck_names: list[str] | None = None
-
-
-class SearchResponse(BaseModel):
-    """Response from search endpoint."""
-
-    query: str
-    results: list[SearchResultItem]
-    stats: dict[str, int]
-    filters_applied: dict[str, Any]
-    lexical: dict[str, Any] | None = None
-    rerank: dict[str, Any] | None = None
-
-
-class TopicItem(BaseModel):
-    """A topic in the taxonomy."""
-
-    topic_id: int
-    path: str
-    label: str
-    description: str | None = None
-    note_count: int = 0
-    avg_confidence: float = 0.0
-    mature_count: int = 0
-    depth: int = 0
-
-
-class TopicCoverageResponse(BaseModel):
-    """Coverage metrics for a topic."""
-
-    topic_id: int
-    path: str
-    label: str
-    note_count: int
-    subtree_count: int
-    child_count: int
-    covered_children: int
-    mature_count: int
-    avg_confidence: float
-    weak_notes: int
-    avg_lapses: float
-
-
-class TopicGapItem(BaseModel):
-    """A gap in topic coverage."""
-
-    topic_id: int
-    path: str
-    label: str
-    description: str | None
-    gap_type: str
-    note_count: int
-    threshold: int
-
-
-class TopicGapsResponse(BaseModel):
-    """Response with topic gaps."""
-
-    root_path: str
-    min_coverage: int
-    gaps: list[TopicGapItem]
-    missing_count: int
-    undercovered_count: int
-
-
-class DuplicateNoteItem(BaseModel):
-    """A duplicate note in a cluster."""
-
-    note_id: int
-    similarity: float
-    text: str
-    deck_names: list[str]
-    tags: list[str]
-
-
-class DuplicateClusterItem(BaseModel):
-    """A cluster of duplicate notes."""
-
-    representative_id: int
-    representative_text: str
-    deck_names: list[str]
-    tags: list[str]
-    duplicates: list[DuplicateNoteItem]
-    size: int
-
-
-class DuplicatesResponse(BaseModel):
-    """Response from duplicates endpoint."""
-
-    clusters: list[DuplicateClusterItem]
-    stats: dict[str, Any]
-
-
 def _to_job_status_response(job: JobRecord) -> JobStatusResponse:
     """Map internal job record to API response."""
     return JobStatusResponse(
@@ -280,12 +82,10 @@ def _to_job_status_response(job: JobRecord) -> JobStatusResponse:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Application lifespan handler for startup/shutdown."""
-    # Startup
     settings = get_settings()
     configure_logging(debug=settings.debug, json_output=not settings.debug)
     app.state.settings = settings
     yield
-    # Shutdown
     await close_pool()
     await close_qdrant_repository()
     await close_job_manager()
@@ -306,13 +106,11 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def correlation_id_middleware(request: Request, call_next: Any) -> Any:
         """Add correlation ID to request context for tracing."""
-        # Use existing header or generate new ID
         correlation_id = request.headers.get("X-Request-ID")
         set_correlation_id(correlation_id)
 
         try:
             response = await call_next(request)
-            # Include correlation ID in response headers
             from packages.common.logging import get_correlation_id
 
             response.headers["X-Request-ID"] = get_correlation_id() or ""
@@ -323,7 +121,6 @@ def create_app() -> FastAPI:
     @app.exception_handler(AnkiAtlasError)
     async def ankiatlas_exception_handler(request: Request, exc: AnkiAtlasError) -> JSONResponse:
         """Handle application-specific exceptions with appropriate status codes."""
-        # Map exception types to HTTP status codes
         if isinstance(exc, NotFoundError):
             status_code = 404
         elif isinstance(exc, ConflictError):
@@ -333,7 +130,6 @@ def create_app() -> FastAPI:
         else:
             status_code = 500
 
-        # Log with context
         logger.error(
             "request_failed",
             error_type=type(exc).__name__,
@@ -343,7 +139,6 @@ def create_app() -> FastAPI:
             **exc.context,
         )
 
-        # Return safe error response (no internal details in production)
         return JSONResponse(
             status_code=status_code,
             content={
@@ -355,11 +150,7 @@ def create_app() -> FastAPI:
 
     @app.get("/health", response_class=JSONResponse)
     async def health() -> dict[str, Any]:
-        """Health check endpoint.
-
-        Returns basic status and configuration info.
-        Does not check database connectivity (use /ready for that).
-        """
+        """Health check endpoint."""
         return {
             "status": "healthy",
             "version": "0.1.0",
@@ -375,7 +166,6 @@ def create_app() -> FastAPI:
         """Readiness check - verifies all dependencies are available."""
         postgres_ok = await check_connection()
 
-        # Check Qdrant connectivity
         try:
             qdrant = await get_qdrant_repository()
             qdrant_ok = await qdrant.health_check()
@@ -383,7 +173,6 @@ def create_app() -> FastAPI:
             logger.warning("ready_check_qdrant_failed", error=str(e), error_type=type(e).__name__)
             qdrant_ok = False
 
-        # Check Redis connectivity (for async jobs)
         try:
             manager = await asyncio.wait_for(get_job_manager(), timeout=1.0)
             redis = await asyncio.wait_for(manager.connect(), timeout=1.0)
@@ -405,14 +194,7 @@ def create_app() -> FastAPI:
 
     @app.post("/sync", response_model=SyncResponse)
     async def sync(request: SyncRequest) -> SyncResponse:
-        """Sync an Anki collection to the database and optionally index.
-
-        Args:
-            request: Sync request with source path and options.
-
-        Returns:
-            Sync and indexing statistics.
-        """
+        """Sync an Anki collection to the database and optionally index."""
         from packages.anki.sync import sync_anki_collection
         from packages.indexer.service import EmbeddingModelChanged, index_all_notes
 
@@ -424,7 +206,6 @@ def create_app() -> FastAPI:
                 detail=f"Collection not found: {source_path}",
             )
 
-        # Run migrations if requested
         if request.run_migrations:
             try:
                 await run_migrations()
@@ -434,7 +215,6 @@ def create_app() -> FastAPI:
                     detail=f"Migration failed: {e}",
                 ) from e
 
-        # Run sync to PostgreSQL
         try:
             stats = await sync_anki_collection(source_path)
         except Exception as e:
@@ -454,7 +234,6 @@ def create_app() -> FastAPI:
             duration_ms=stats.duration_ms,
         )
 
-        # Run indexing if requested
         if request.index:
             try:
                 index_stats = await index_all_notes(force_reindex=request.force_reindex)
@@ -472,14 +251,7 @@ def create_app() -> FastAPI:
 
     @app.post("/index", response_model=IndexResponse)
     async def index_notes(request: IndexRequest) -> IndexResponse:
-        """Index notes from PostgreSQL to vector database.
-
-        Args:
-            request: Index request with options.
-
-        Returns:
-            Indexing statistics.
-        """
+        """Index notes from PostgreSQL to vector database."""
         from packages.indexer.service import EmbeddingModelChanged, index_all_notes
 
         try:
@@ -626,14 +398,7 @@ def create_app() -> FastAPI:
 
     @app.post("/search", response_model=SearchResponse)
     async def search(request: SearchRequest) -> SearchResponse:
-        """Search notes using hybrid semantic + keyword search.
-
-        Args:
-            request: Search request with query, filters, and options.
-
-        Returns:
-            Search results with score breakdown and statistics.
-        """
+        """Search notes using hybrid semantic + keyword search."""
         from packages.search import SearchFilters, SearchService
 
         filters = SearchFilters(
@@ -656,11 +421,9 @@ def create_app() -> FastAPI:
             fts_weight=request.fts_weight,
         )
 
-        # Fetch note details for enrichment
         note_ids = [r.note_id for r in result.results]
         notes_details = await service.get_notes_details(note_ids)
 
-        # Build response items
         items: list[SearchResultItem] = []
         for r in result.results:
             detail = notes_details.get(r.note_id)
@@ -709,14 +472,7 @@ def create_app() -> FastAPI:
     async def list_topics(
         root: str | None = None,
     ) -> dict[str, Any]:
-        """Get taxonomy tree with coverage info.
-
-        Args:
-            root: Optional root path to filter.
-
-        Returns:
-            List of topics with coverage metrics.
-        """
+        """Get taxonomy tree with coverage info."""
         from packages.analytics import AnalyticsService
 
         service = AnalyticsService()
@@ -732,15 +488,7 @@ def create_app() -> FastAPI:
         topic_path: str,
         include_subtree: bool = True,
     ) -> TopicCoverageResponse:
-        """Get coverage metrics for a topic.
-
-        Args:
-            topic_path: Topic path (e.g., programming/python).
-            include_subtree: Include child topics in metrics.
-
-        Returns:
-            Coverage metrics.
-        """
+        """Get coverage metrics for a topic."""
         from packages.analytics import AnalyticsService
 
         service = AnalyticsService()
@@ -768,15 +516,7 @@ def create_app() -> FastAPI:
         topic_path: str,
         min_coverage: int = 1,
     ) -> TopicGapsResponse:
-        """Find gaps in topic coverage.
-
-        Args:
-            topic_path: Root topic path.
-            min_coverage: Minimum notes for a topic to be considered covered.
-
-        Returns:
-            List of missing or undercovered topics.
-        """
+        """Find gaps in topic coverage."""
         from packages.analytics import AnalyticsService
 
         service = AnalyticsService()
@@ -813,17 +553,7 @@ def create_app() -> FastAPI:
         deck: str | None = None,
         tag: str | None = None,
     ) -> DuplicatesResponse:
-        """Find near-duplicate notes using embedding similarity.
-
-        Args:
-            threshold: Minimum similarity threshold (0-1).
-            max_clusters: Maximum clusters to return.
-            deck: Optional deck name filter.
-            tag: Optional tag filter.
-
-        Returns:
-            Clusters of duplicate notes with statistics.
-        """
+        """Find near-duplicate notes using embedding similarity."""
         from packages.analytics import DuplicateDetector
 
         detector = DuplicateDetector()
