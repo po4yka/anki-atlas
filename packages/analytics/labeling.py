@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
-
-import math
 
 from packages.common.database import get_connection
 from packages.indexer.service_base import ServiceBase

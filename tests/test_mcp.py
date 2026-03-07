@@ -6,6 +6,7 @@ and are tested thoroughly.
 """
 
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -91,7 +92,7 @@ class MockTopicGap:
 class MockDuplicateCluster:
     representative_id: int
     representative_text: str
-    duplicates: list[dict[str, Any]] = field(default_factory=list)
+    duplicates: list[Any] = field(default_factory=list)
     deck_names: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
 
@@ -381,11 +382,11 @@ class TestFormatDuplicatesResult:
                 representative_id=1,
                 representative_text="What is photosynthesis?",
                 duplicates=[
-                    {
-                        "note_id": 2,
-                        "similarity": 0.95,
-                        "text": "Explain photosynthesis",
-                    }
+                    SimpleNamespace(
+                        note_id=2,
+                        similarity=0.95,
+                        text="Explain photosynthesis",
+                    )
                 ],
             )
         ]
@@ -411,7 +412,7 @@ class TestFormatDuplicatesResult:
                 representative_id=1,
                 representative_text="Main concept",
                 duplicates=[
-                    {"note_id": i, "similarity": 0.9, "text": f"Duplicate {i}"}
+                    SimpleNamespace(note_id=i, similarity=0.9, text=f"Duplicate {i}")
                     for i in range(2, 10)
                 ],
             )
