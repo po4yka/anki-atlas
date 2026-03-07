@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
+import math
 
 from packages.common.database import get_connection
 from packages.indexer.service_base import ServiceBase
@@ -39,9 +39,10 @@ class LabelingStats:
 
 def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
     """Compute cosine similarity between two vectors."""
-    a = np.array(vec1)
-    b = np.array(vec2)
-    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+    dot = sum(a * b for a, b in zip(vec1, vec2, strict=True))
+    norm1 = math.sqrt(sum(a * a for a in vec1))
+    norm2 = math.sqrt(sum(b * b for b in vec2))
+    return dot / (norm1 * norm2)
 
 
 class TopicLabeler(ServiceBase):
