@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from packages.common.exceptions import JobBackendUnavailableError
 from packages.jobs.service import (
     ArqJobManager,
-    JobBackendUnavailableError,
     JobRecord,
     JobStatus,
     JobType,

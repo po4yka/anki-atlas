@@ -19,10 +19,7 @@ from packages.anki.models import (
     AnkiRevlogEntry,
     CardStats,
 )
-
-
-class AnkiReaderError(Exception):
-    """Error reading Anki collection."""
+from packages.common.exceptions import AnkiReaderError
 
 
 class AnkiReader:

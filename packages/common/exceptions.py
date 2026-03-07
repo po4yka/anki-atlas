@@ -107,3 +107,24 @@ class SyncConflictError(AnkiAtlasError):
 
 class AnkiConnectError(AnkiAtlasError):
     """AnkiConnect communication failed."""
+
+
+class AnkiReaderError(AnkiAtlasError):
+    """Error reading Anki collection."""
+
+
+class DimensionMismatchError(VectorStoreError):
+    """Raised when requested dimension doesn't match existing collection."""
+
+    def __init__(self, collection: str, expected: int, actual: int) -> None:
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            f"Collection '{collection}' has dimension {actual}, "
+            f"but provider requires {expected}. "
+            f"Use --force-reindex to recreate the collection."
+        )
+
+
+class JobBackendUnavailableError(AnkiAtlasError):
+    """Raised when Redis/arq backend is unavailable."""

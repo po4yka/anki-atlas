@@ -12,6 +12,7 @@ from uuid import uuid4
 from arq.connections import ArqRedis, RedisSettings, create_pool
 
 from packages.common.config import Settings, get_settings
+from packages.common.exceptions import JobBackendUnavailableError
 from packages.common.logging import get_logger
 
 logger = get_logger(module=__name__)
@@ -30,10 +31,6 @@ JobStatus = Literal[
 
 JOB_KEY_PREFIX = "ankiatlas:job:"
 TERMINAL_STATUSES: set[JobStatus] = {"succeeded", "failed", "cancelled"}
-
-
-class JobBackendUnavailableError(RuntimeError):
-    """Raised when Redis/arq backend is unavailable."""
 
 
 def _utcnow() -> datetime:

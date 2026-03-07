@@ -12,6 +12,7 @@ from typing import Any, cast
 from qdrant_client import AsyncQdrantClient, models
 
 from packages.common.config import Settings, get_settings
+from packages.common.exceptions import DimensionMismatchError
 from packages.common.logging import get_logger
 
 logger = get_logger(module=__name__)
@@ -21,19 +22,6 @@ COLLECTION_NAME = "anki_notes"
 DENSE_VECTOR_NAME = ""
 SPARSE_VECTOR_NAME = "sparse"
 TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
-
-
-class DimensionMismatchError(Exception):
-    """Raised when requested dimension doesn't match existing collection."""
-
-    def __init__(self, collection: str, expected: int, actual: int) -> None:
-        self.expected = expected
-        self.actual = actual
-        super().__init__(
-            f"Collection '{collection}' has dimension {actual}, "
-            f"but provider requires {expected}. "
-            f"Use --force-reindex to recreate the collection."
-        )
 
 
 @dataclass(frozen=True, slots=True)
