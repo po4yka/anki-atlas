@@ -189,7 +189,7 @@ def create_app() -> FastAPI:
             qdrant_ok = False
 
         try:
-            manager = await asyncio.wait_for(get_job_manager(), timeout=1.0)
+            manager = get_job_manager()
             redis = await asyncio.wait_for(manager.connect(), timeout=1.0)
             redis_ok = bool(await asyncio.wait_for(redis.ping(), timeout=1.0))
         except Exception as e:
@@ -315,7 +315,7 @@ def create_app() -> FastAPI:
             run_at = run_at.replace(tzinfo=UTC)
 
         try:
-            manager = await get_job_manager()
+            manager = get_job_manager()
             job = await manager.enqueue_sync_job(
                 payload={
                     "source": str(source_path),
@@ -350,7 +350,7 @@ def create_app() -> FastAPI:
             run_at = run_at.replace(tzinfo=UTC)
 
         try:
-            manager = await get_job_manager()
+            manager = get_job_manager()
             job = await manager.enqueue_index_job(
                 payload={
                     "force_reindex": request.force_reindex,
@@ -378,7 +378,7 @@ def create_app() -> FastAPI:
     async def get_job_status(job_id: str) -> JobStatusResponse:
         """Get status/progress for a background job."""
         try:
-            manager = await get_job_manager()
+            manager = get_job_manager()
             job = await manager.get_job(job_id)
         except JobBackendUnavailableError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -392,7 +392,7 @@ def create_app() -> FastAPI:
     async def cancel_job(job_id: str) -> JobStatusResponse:
         """Request cancellation of a background job."""
         try:
-            manager = await get_job_manager()
+            manager = get_job_manager()
             job = await manager.cancel_job(job_id)
         except JobBackendUnavailableError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc

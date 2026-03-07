@@ -88,7 +88,7 @@ def fake_manager(monkeypatch: pytest.MonkeyPatch) -> FakeJobManager:
     """Patch API to use fake async job manager."""
     manager = FakeJobManager()
 
-    async def _get_job_manager() -> FakeJobManager:
+    def _get_job_manager() -> FakeJobManager:
         return manager
 
     monkeypatch.setattr("apps.api.main.get_job_manager", _get_job_manager)

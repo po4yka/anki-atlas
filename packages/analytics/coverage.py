@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from packages.analytics.taxonomy import get_topic_by_path
 from packages.common.config import Settings, get_settings
@@ -38,7 +38,7 @@ class TopicGap:
     path: str
     label: str
     description: str | None
-    gap_type: str  # "missing" or "undercovered"
+    gap_type: Literal["missing", "undercovered"]
     note_count: int
     threshold: int
     # Nearest notes that might cover this topic
@@ -187,7 +187,9 @@ async def get_topic_gaps(
         )
 
         async for row in result:
-            gap_type = "missing" if row["note_count"] == 0 else "undercovered"
+            gap_type: Literal["missing", "undercovered"] = (
+                "missing" if row["note_count"] == 0 else "undercovered"
+            )
             gaps.append(
                 TopicGap(
                     topic_id=row["topic_id"],

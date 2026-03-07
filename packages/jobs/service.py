@@ -272,7 +272,7 @@ class ArqJobManager:
 _job_manager_holder: dict[str, ArqJobManager] = {}
 
 
-async def get_job_manager(settings: Settings | None = None) -> ArqJobManager:
+def get_job_manager(settings: Settings | None = None) -> ArqJobManager:
     """Get cached job manager."""
     if "instance" not in _job_manager_holder:
         _job_manager_holder["instance"] = ArqJobManager(settings)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-@dataclass
+@dataclass(slots=True)
 class SearchResult:
     """A search result with score breakdown."""
 
@@ -30,7 +30,7 @@ class SearchResult:
         return sources
 
 
-@dataclass
+@dataclass(slots=True)
 class FusionStats:
     """Statistics about the fusion operation."""
 
