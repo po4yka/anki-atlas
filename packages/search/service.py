@@ -198,7 +198,7 @@ class SearchService(ServiceBase):
         limit: int,
     ) -> list[tuple[int, float]]:
         """Perform semantic search using embeddings."""
-        provider = await self.get_embedding_provider()
+        provider = self.get_embedding_provider()
         qdrant = await self.get_qdrant_repository()
 
         # Embed the query

@@ -109,7 +109,7 @@ class SearchRequest(BaseModel):
     min_ivl: int | None = None
     max_lapses: int | None = None
     min_reps: int | None = None
-    top_k: int = 20
+    limit: int = 20
     semantic_weight: float = 1.0
     fts_weight: float = 1.0
 

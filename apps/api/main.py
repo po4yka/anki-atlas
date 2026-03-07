@@ -374,7 +374,7 @@ def create_app() -> FastAPI:
             poll_url=f"/jobs/{job.job_id}",
         )
 
-    @app.get("/jobs/{job_id}", response_model=JobStatusResponse)
+    @app.get("/jobs/{job_id}", response_model=JobStatusResponse, dependencies=[Depends(require_api_key)])
     async def get_job_status(job_id: str) -> JobStatusResponse:
         """Get status/progress for a background job."""
         try:
@@ -439,7 +439,7 @@ def create_app() -> FastAPI:
         result = await service.search(
             query=request.query,
             filters=filters,
-            limit=request.top_k,
+            limit=request.limit,
             semantic_weight=request.semantic_weight,
             fts_weight=request.fts_weight,
         )

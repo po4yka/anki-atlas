@@ -59,7 +59,7 @@ class TopicLabeler(ServiceBase):
         Returns:
             Dictionary mapping topic path to embedding vector.
         """
-        provider = await self.get_embedding_provider()
+        provider = self.get_embedding_provider()
 
         # Build texts to embed (use description or label)
         topic_texts: list[tuple[str, str]] = []
@@ -149,7 +149,7 @@ class TopicLabeler(ServiceBase):
         max_topics_per_note: int,
     ) -> list[TopicAssignment]:
         """Label a batch of notes."""
-        provider = await self.get_embedding_provider()
+        provider = self.get_embedding_provider()
 
         # Fetch notes
         result = await conn.execute(
@@ -250,7 +250,7 @@ class TopicLabeler(ServiceBase):
         Returns:
             List of topic assignments.
         """
-        provider = await self.get_embedding_provider()
+        provider = self.get_embedding_provider()
 
         # Get topic embeddings if not provided
         if topic_embeddings is None:

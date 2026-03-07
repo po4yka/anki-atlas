@@ -20,7 +20,7 @@ class ServiceBase:
         self._embedding_provider = embedding_provider
         self._qdrant_repository = qdrant_repository
 
-    async def get_embedding_provider(self) -> EmbeddingProvider:
+    def get_embedding_provider(self) -> EmbeddingProvider:
         """Get or create embedding provider."""
         if self._embedding_provider is None:
             self._embedding_provider = get_embedding_provider(self.settings)

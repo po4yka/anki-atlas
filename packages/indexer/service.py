@@ -77,7 +77,7 @@ class IndexService(ServiceBase):
         if not notes:
             return stats
 
-        provider = await self.get_embedding_provider()
+        provider = self.get_embedding_provider()
         qdrant = await self.get_qdrant_repository()
 
         # Ensure collection exists
@@ -199,7 +199,7 @@ class IndexService(ServiceBase):
         """
         total_stats = IndexStats()
 
-        provider = await self.get_embedding_provider()
+        provider = self.get_embedding_provider()
         current_version = self._embedding_version(provider)
         stored_version = await self._get_stored_embedding_version()
 
@@ -311,7 +311,7 @@ class IndexService(ServiceBase):
 
     async def _update_index_metadata(self) -> None:
         """Update index metadata in sync_metadata table."""
-        provider = await self.get_embedding_provider()
+        provider = self.get_embedding_provider()
         version = self._embedding_version(provider)
 
         async with get_connection(self.settings) as conn:
@@ -327,8 +327,8 @@ class IndexService(ServiceBase):
 
 
 async def index_all_notes(
-    settings: Settings | None = None,
     force_reindex: bool = False,
+    settings: Settings | None = None,
 ) -> IndexStats:
     """Shortcut: create IndexService and index all notes from database."""
     service = IndexService(settings)
