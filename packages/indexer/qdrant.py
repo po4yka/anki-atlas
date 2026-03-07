@@ -9,10 +9,12 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any, cast
 
+import httpx
 from qdrant_client import AsyncQdrantClient, models
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
 from packages.common.config import Settings, get_settings
-from packages.common.exceptions import DimensionMismatchError
+from packages.common.exceptions import DimensionMismatchError, VectorStoreError
 from packages.common.logging import get_logger
 
 logger = get_logger(module=__name__)
@@ -663,14 +665,14 @@ class QdrantRepository:
                 "status": info.status.value,
                 "sparse_enabled": self._collection_has_sparse(info),
             }
-        except Exception as e:
-            logger.warning(
-                "qdrant_collection_info_failed",
-                collection=self.collection_name,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            return None
+        except UnexpectedResponse as e:
+            if e.status_code == 404:
+                return None
+            msg = f"Qdrant collection info failed: {e}"
+            raise VectorStoreError(msg) from e
+        except (ResponseHandlingException, httpx.RequestError) as e:
+            msg = f"Qdrant collection info failed: {e}"
+            raise VectorStoreError(msg) from e
 
     async def health_check(self) -> bool:
         """Check if Qdrant is reachable and healthy.
@@ -680,10 +682,9 @@ class QdrantRepository:
         """
         try:
             client = await self.get_client()
-            # Simple health check - get collections list
             await client.get_collections()
             return True
-        except Exception as e:
+        except (UnexpectedResponse, ResponseHandlingException, httpx.RequestError) as e:
             logger.warning(
                 "qdrant_health_check_failed",
                 error=str(e),

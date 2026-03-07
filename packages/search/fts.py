@@ -48,20 +48,6 @@ class SearchFilters:
     min_reps: int | None = None
 
 
-async def search_fts(
-    query: str,
-    filters: SearchFilters | None = None,
-    limit: int = 50,
-    settings: Settings | None = None,
-) -> list[FTSResult]:
-    """Search notes lexically and return results only.
-
-    This compatibility wrapper keeps legacy callers unchanged.
-    """
-    lexical = await search_lexical(query, filters, limit, settings)
-    return lexical.results
-
-
 async def search_lexical(
     query: str,
     filters: SearchFilters | None = None,

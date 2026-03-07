@@ -6,7 +6,6 @@ from packages.search.fts import (
     FTSResult,
     LexicalSearchResult,
     SearchFilters,
-    search_fts,
     search_lexical,
 )
 from packages.search.fusion import FusionStats, SearchResult, reciprocal_rank_fusion
@@ -31,6 +30,5 @@ __all__ = [
     "SearchService",
     "hybrid_search",
     "reciprocal_rank_fusion",
-    "search_fts",
     "search_lexical",
 ]

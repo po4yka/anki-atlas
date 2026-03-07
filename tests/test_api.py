@@ -241,27 +241,3 @@ class TestCorrelationIdMiddleware:
         request_id = response.headers.get("X-Request-ID")
         assert request_id is not None
         assert len(request_id) > 0
-
-
-# Legacy test functions for backwards compatibility
-def test_health_endpoint(client: TestClient) -> None:
-    """Test /health returns healthy status."""
-    response = client.get("/health")
-    assert response.status_code == 200
-
-    data = response.json()
-    assert data["status"] == "healthy"
-    assert data["version"] == "0.1.0"
-    assert "services" in data
-
-
-def test_ready_endpoint(client: TestClient) -> None:
-    """Test /ready returns status (may be not_ready without db)."""
-    response = client.get("/ready")
-    assert response.status_code == 200
-
-    data = response.json()
-    assert data["status"] in ("ready", "not_ready")
-    assert "checks" in data
-    assert "postgres" in data["checks"]
-    assert "qdrant" in data["checks"]
