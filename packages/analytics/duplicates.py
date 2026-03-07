@@ -162,7 +162,7 @@ class DuplicateDetector:
             where_sql = " AND ".join(where_clauses)
 
             result = await conn.execute(
-                f"SELECT note_id FROM notes n WHERE {where_sql} ORDER BY note_id",
+                f"SELECT note_id FROM notes n WHERE {where_sql} ORDER BY note_id",  # nosec B608
                 params,
             )
 

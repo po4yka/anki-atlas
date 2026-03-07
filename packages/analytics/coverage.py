@@ -296,7 +296,7 @@ async def get_coverage_tree(
 
         result = await conn.execute(
             f"""
-            SELECT
+            SELECT  -- nosec B608: where_sql is built from code, not user input
                 t.topic_id,
                 t.path,
                 t.label,
