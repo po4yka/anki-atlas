@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from packages.analytics.coverage import TopicCoverage, TopicGap
+    from packages.analytics.duplicates import DuplicateCluster, DuplicateStats
+    from packages.anki.sync.core import SyncStats
+    from packages.search.service import HybridSearchResult, NoteDetail
+    from packages.validation.pipeline import ValidationResult
+    from packages.validation.quality import QualityScore
 
 
 def format_search_result(
-    result: Any,
-    note_details: dict[int, Any],
+    result: HybridSearchResult,
+    note_details: dict[int, NoteDetail],
 ) -> str:
     """Format search results as markdown.
 
@@ -70,7 +78,7 @@ def format_search_result(
     return "\n".join(lines)
 
 
-def format_coverage_result(coverage: Any) -> str:
+def format_coverage_result(coverage: TopicCoverage) -> str:
     """Format topic coverage as markdown.
 
     Args:
@@ -111,7 +119,7 @@ def format_coverage_result(coverage: Any) -> str:
     return "\n".join(lines)
 
 
-def format_gaps_result(gaps: list[Any], topic_path: str) -> str:
+def format_gaps_result(gaps: list[TopicGap], topic_path: str) -> str:
     """Format topic gaps as markdown.
 
     Args:
@@ -162,8 +170,8 @@ def format_gaps_result(gaps: list[Any], topic_path: str) -> str:
 
 
 def format_duplicates_result(
-    clusters: list[Any],
-    stats: Any,
+    clusters: list[DuplicateCluster],
+    stats: DuplicateStats,
 ) -> str:
     """Format duplicate detection results as markdown.
 
@@ -219,7 +227,7 @@ def format_duplicates_result(
     return "\n".join(lines)
 
 
-def format_sync_result(stats: Any) -> str:
+def format_sync_result(stats: SyncStats) -> str:
     """Format sync results as markdown.
 
     Args:
@@ -298,8 +306,8 @@ def format_generate_result(
 
 
 def format_validate_result(
-    result: Any,
-    quality: Any | None = None,
+    result: ValidationResult,
+    quality: QualityScore | None = None,
 ) -> str:
     """Format validation result as markdown.
 

@@ -139,10 +139,12 @@ def _create_anki_renderer() -> Any:
             )
 
         def block_code(self, code: str, info: str | None = None) -> str:
+            from pygments.util import ClassNotFound
+
             lang = info.split()[0] if info else None
             try:
                 lexer = get_lexer_by_name(lang, stripall=True) if lang else guess_lexer(code)
-            except Exception:
+            except ClassNotFound:
                 lang_class = f"language-{lang}" if lang else "language-text"
                 escaped_code = escape(code.strip())
                 return f'<pre><code class="{lang_class}">{escaped_code}</code></pre>\n'
@@ -280,23 +282,23 @@ def _basic_markdown_to_html(md_content: str) -> str:
 
 
 def sanitize_html(html_str: str) -> str:
-    """Sanitize HTML using nh3."""
+    """Sanitize HTML using nh3.
+
+    Raises:
+        RuntimeError: If sanitization fails (never returns unsanitized HTML).
+    """
     if not html_str:
         return html_str
 
-    try:
-        nh3 = _get_nh3()
-        sanitized: str = nh3.clean(
-            html_str,
-            tags=ALLOWED_TAGS,
-            attributes=ALLOWED_ATTRIBUTES,
-            link_rel="noopener noreferrer",
-            strip_comments=False,
-        )
-        return sanitized
-    except Exception as e:
-        logger.warning("html_sanitization_failed", error=str(e))
-        return html_str
+    nh3 = _get_nh3()
+    sanitized: str = nh3.clean(
+        html_str,
+        tags=ALLOWED_TAGS,
+        attributes=ALLOWED_ATTRIBUTES,
+        link_rel="noopener noreferrer",
+        strip_comments=False,
+    )
+    return sanitized
 
 
 def convert_apf_field_to_html(field_content: str) -> str:
@@ -359,6 +361,8 @@ def convert_apf_markdown_to_html(apf_markdown: str) -> str:
 
 def highlight_code(code: str, language: str | None = None) -> str:
     """Highlight code using Pygments."""
+    from pygments.util import ClassNotFound
+
     try:
         _highlight_fn, HtmlFormatter, get_lexer_by_name, guess_lexer = _get_pygments()
 
@@ -370,7 +374,7 @@ def highlight_code(code: str, language: str | None = None) -> str:
         )
         result: str = _highlight_fn(code, lexer, formatter)
         return result
-    except Exception:
+    except ClassNotFound:
         escaped = escape(code)
         lang_class = f"language-{language}" if language else "language-text"
         return f'<pre><code class="{lang_class}">{escaped}</code></pre>'

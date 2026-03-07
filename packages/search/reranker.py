@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any, Protocol
 
+from packages.common.exceptions import ConfigurationError
+
 if TYPE_CHECKING:
     from sentence_transformers import CrossEncoder
 
@@ -39,10 +41,11 @@ class CrossEncoderReranker:
             try:
                 from sentence_transformers import CrossEncoder
             except ImportError as e:
-                raise ImportError(
+                msg = (
                     "sentence-transformers not installed. "
                     "Install with: uv sync --extra embeddings-local"
-                ) from e
+                )
+                raise ConfigurationError(msg) from e
             self._model = CrossEncoder(self.model_name)
         return self._model
 
