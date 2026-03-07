@@ -116,6 +116,7 @@ class VaultAnalyzer:
                 if content.startswith("---"):
                     notes_with_fm += 1
             except (OSError, UnicodeDecodeError):
+                logger.debug("skip_frontmatter_check", path=str(note_path))
                 continue
 
         # Count unique directories

@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from packages.common.config import Settings, get_settings
 from packages.common.database import get_connection
 from packages.common.logging import get_logger
-from packages.indexer.embeddings import EmbeddingProvider, get_embedding_provider
-from packages.indexer.qdrant import QdrantRepository, get_qdrant_repository
+from packages.indexer.qdrant import QdrantRepository
+from packages.indexer.service_base import ServiceBase
+
+if TYPE_CHECKING:
+    from packages.common.config import Settings
+    from packages.indexer.embeddings import EmbeddingProvider
 from packages.search.fts import SearchFilters, search_lexical
 from packages.search.fusion import FusionStats, SearchResult, reciprocal_rank_fusion
 from packages.search.reranker import CrossEncoderReranker, Reranker
@@ -49,7 +52,7 @@ class NoteDetail:
     reps: int
 
 
-class SearchService:
+class SearchService(ServiceBase):
     """Service for hybrid search across Anki notes."""
 
     def __init__(
@@ -59,31 +62,9 @@ class SearchService:
         qdrant_repository: QdrantRepository | None = None,
         reranker: Reranker | None = None,
     ) -> None:
-        """Initialize search service.
-
-        Args:
-            settings: Application settings.
-            embedding_provider: Embedding provider for semantic search.
-            qdrant_repository: Qdrant repository for vector search.
-            reranker: Optional reranker implementation.
-        """
-        self.settings = settings or get_settings()
-        self._embedding_provider = embedding_provider
-        self._qdrant_repository = qdrant_repository
+        super().__init__(settings, embedding_provider, qdrant_repository)
         self._reranker = reranker
         self._reranker_unavailable_logged = False
-
-    async def get_embedding_provider(self) -> EmbeddingProvider:
-        """Get or create embedding provider."""
-        if self._embedding_provider is None:
-            self._embedding_provider = get_embedding_provider(self.settings)
-        return self._embedding_provider
-
-    async def get_qdrant_repository(self) -> QdrantRepository:
-        """Get or create Qdrant repository."""
-        if self._qdrant_repository is None:
-            self._qdrant_repository = await get_qdrant_repository(self.settings)
-        return self._qdrant_repository
 
     async def get_reranker(self) -> Reranker:
         """Get or create reranker."""

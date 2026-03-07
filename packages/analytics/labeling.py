@@ -7,15 +7,14 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from packages.common.config import Settings, get_settings
 from packages.common.database import get_connection
-from packages.indexer.embeddings import EmbeddingProvider, get_embedding_provider
-from packages.indexer.qdrant import QdrantRepository, get_qdrant_repository
+from packages.indexer.service_base import ServiceBase
 
 if TYPE_CHECKING:
     from psycopg import AsyncConnection
 
     from packages.analytics.taxonomy import Taxonomy
+    from packages.common.config import Settings
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,37 +44,8 @@ def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
-class TopicLabeler:
+class TopicLabeler(ServiceBase):
     """Service for labeling notes with topics."""
-
-    def __init__(
-        self,
-        settings: Settings | None = None,
-        embedding_provider: EmbeddingProvider | None = None,
-        qdrant_repository: QdrantRepository | None = None,
-    ) -> None:
-        """Initialize labeler.
-
-        Args:
-            settings: Application settings.
-            embedding_provider: Embedding provider.
-            qdrant_repository: Qdrant repository.
-        """
-        self.settings = settings or get_settings()
-        self._embedding_provider = embedding_provider
-        self._qdrant_repository = qdrant_repository
-
-    async def get_embedding_provider(self) -> EmbeddingProvider:
-        """Get or create embedding provider."""
-        if self._embedding_provider is None:
-            self._embedding_provider = get_embedding_provider(self.settings)
-        return self._embedding_provider
-
-    async def get_qdrant_repository(self) -> QdrantRepository:
-        """Get or create Qdrant repository."""
-        if self._qdrant_repository is None:
-            self._qdrant_repository = await get_qdrant_repository(self.settings)
-        return self._qdrant_repository
 
     async def embed_topics(
         self,

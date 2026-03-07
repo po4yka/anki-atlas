@@ -271,7 +271,7 @@ def _basic_markdown_to_html(md_content: str) -> str:
     html_str = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", html_str)
 
     html_str = re.sub(r"^- (.+)$", r"<li>\1</li>", html_str, flags=re.MULTILINE)
-    html_str = re.sub(r"(<li>.*</li>\n?)+", r"<ul>\g<0></ul>", html_str)
+    html_str = re.sub(r"(<li>[^<]*</li>\n?)+", r"<ul>\g<0></ul>", html_str)
 
     html_str = html_str.replace("\n\n", "</p><p>")
     html_str = f"<p>{html_str}</p>"

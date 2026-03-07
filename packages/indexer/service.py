@@ -6,15 +6,17 @@ import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from packages.common.config import Settings, get_settings
 from packages.common.database import get_connection
 from packages.common.exceptions import EmbeddingModelChanged
 from packages.common.logging import get_logger
-from packages.indexer.embeddings import EmbeddingProvider, get_embedding_provider
-from packages.indexer.qdrant import NotePayload, QdrantRepository, get_qdrant_repository
+from packages.indexer.qdrant import NotePayload, QdrantRepository
+from packages.indexer.service_base import ServiceBase
 
 if TYPE_CHECKING:
     from psycopg import AsyncConnection
+
+    from packages.common.config import Settings
+    from packages.indexer.embeddings import EmbeddingProvider
 
 logger = get_logger(module=__name__)
 
@@ -46,40 +48,11 @@ class IndexStats:
     errors: list[str] = field(default_factory=list)
 
 
-class IndexService:
+class IndexService(ServiceBase):
     """Service for indexing notes to vector database."""
 
     # Version for tracking changes that require re-indexing
     NORMALIZATION_VERSION = "1"
-
-    def __init__(
-        self,
-        settings: Settings | None = None,
-        embedding_provider: EmbeddingProvider | None = None,
-        qdrant_repository: QdrantRepository | None = None,
-    ) -> None:
-        """Initialize index service.
-
-        Args:
-            settings: Application settings.
-            embedding_provider: Embedding provider (uses default if None).
-            qdrant_repository: Qdrant repository (uses default if None).
-        """
-        self.settings = settings or get_settings()
-        self._embedding_provider = embedding_provider
-        self._qdrant_repository = qdrant_repository
-
-    async def get_embedding_provider(self) -> EmbeddingProvider:
-        """Get or create embedding provider."""
-        if self._embedding_provider is None:
-            self._embedding_provider = get_embedding_provider(self.settings)
-        return self._embedding_provider
-
-    async def get_qdrant_repository(self) -> QdrantRepository:
-        """Get or create Qdrant repository."""
-        if self._qdrant_repository is None:
-            self._qdrant_repository = await get_qdrant_repository(self.settings)
-        return self._qdrant_repository
 
     def _embedding_version(self, provider: EmbeddingProvider) -> str:
         """Get current embedding version string."""

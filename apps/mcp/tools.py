@@ -7,7 +7,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from apps.mcp.server import mcp
+from apps.mcp.instance import mcp
 from packages.common.exceptions import (
     DatabaseConnectionError,
     VectorStoreConnectionError,

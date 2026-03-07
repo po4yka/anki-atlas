@@ -102,8 +102,8 @@ class ObsidianSyncWorkflow:
             self._report("scan", i + 1, total)
             try:
                 parsed.append(parse_note(note_path, vault_root=vault_path))
-            except Exception:
-                logger.warning("scan.parse_failed", path=str(note_path))
+            except Exception as exc:
+                logger.warning("scan.parse_failed", path=str(note_path), error=str(exc))
         logger.info("scan.complete", notes=len(parsed), vault=str(vault_path))
         return parsed
 
