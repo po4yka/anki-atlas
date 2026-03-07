@@ -196,7 +196,8 @@ def create_app() -> FastAPI:
     async def sync(request: SyncRequest) -> SyncResponse:
         """Sync an Anki collection to the database and optionally index."""
         from packages.anki.sync import sync_anki_collection
-        from packages.indexer.service import EmbeddingModelChanged, index_all_notes
+        from packages.common.exceptions import EmbeddingModelChanged
+        from packages.indexer.service import index_all_notes
 
         source_path = Path(request.source).expanduser().resolve()
 
@@ -252,7 +253,8 @@ def create_app() -> FastAPI:
     @app.post("/index", response_model=IndexResponse)
     async def index_notes(request: IndexRequest) -> IndexResponse:
         """Index notes from PostgreSQL to vector database."""
-        from packages.indexer.service import EmbeddingModelChanged, index_all_notes
+        from packages.common.exceptions import EmbeddingModelChanged
+        from packages.indexer.service import index_all_notes
 
         try:
             stats = await index_all_notes(force_reindex=request.force_reindex)

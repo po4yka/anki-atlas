@@ -85,6 +85,18 @@ class ConflictError(AnkiAtlasError):
     """Operation conflicts with current state (e.g., dimension mismatch)."""
 
 
+class EmbeddingModelChanged(ConflictError):
+    """Raised when embedding model changed since last indexing."""
+
+    def __init__(self, stored: str, current: str) -> None:
+        self.stored_version = stored
+        self.current_version = current
+        super().__init__(
+            f"Embedding model changed: '{stored}' -> '{current}'. "
+            f"Use --force-reindex to re-embed all notes with the new model."
+        )
+
+
 class CardGenerationError(AnkiAtlasError):
     """Card generation failed."""
 

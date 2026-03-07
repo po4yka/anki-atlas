@@ -66,7 +66,8 @@ async def _sync_async(
     """Async sync implementation."""
     from packages.anki.sync import sync_anki_collection
     from packages.common.database import run_migrations as db_migrate
-    from packages.indexer.service import EmbeddingModelChanged, index_all_notes
+    from packages.common.exceptions import EmbeddingModelChanged
+    from packages.indexer.service import index_all_notes
 
     source_path = Path(source).expanduser().resolve()
 
@@ -181,7 +182,8 @@ def index(
 
 async def _index_async(force: bool) -> None:
     """Async index implementation."""
-    from packages.indexer.service import EmbeddingModelChanged, index_all_notes
+    from packages.common.exceptions import EmbeddingModelChanged
+    from packages.indexer.service import index_all_notes
 
     console.print("Indexing notes to Qdrant...")
     try:

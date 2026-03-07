@@ -79,7 +79,8 @@ async def _cancel_if_requested(redis: Any, job_id: str) -> bool:
 async def job_sync(ctx: dict[str, Any], job_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Background task: sync Anki collection and optionally index vectors."""
     from packages.anki.sync import sync_anki_collection
-    from packages.indexer.service import EmbeddingModelChanged, index_all_notes
+    from packages.common.exceptions import EmbeddingModelChanged
+    from packages.indexer.service import index_all_notes
 
     settings = get_settings()
     redis = ctx["redis"]

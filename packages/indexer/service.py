@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from packages.common.config import Settings, get_settings
 from packages.common.database import get_connection
+from packages.common.exceptions import EmbeddingModelChanged
 from packages.common.logging import get_logger
 from packages.indexer.embeddings import EmbeddingProvider, get_embedding_provider
 from packages.indexer.qdrant import NotePayload, QdrantRepository, get_qdrant_repository
@@ -16,18 +17,6 @@ if TYPE_CHECKING:
     from psycopg import AsyncConnection
 
 logger = get_logger(module=__name__)
-
-
-class EmbeddingModelChanged(Exception):
-    """Raised when embedding model changed since last indexing."""
-
-    def __init__(self, stored: str, current: str) -> None:
-        self.stored_version = stored
-        self.current_version = current
-        super().__init__(
-            f"Embedding model changed: '{stored}' -> '{current}'. "
-            f"Use --force-reindex to re-embed all notes with the new model."
-        )
 
 
 @dataclass(frozen=True, slots=True)
