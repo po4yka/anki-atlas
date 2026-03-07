@@ -7,13 +7,13 @@ import os
 from typing import Any, Final
 
 import httpx
-import structlog
 
 from packages.common.exceptions import ProviderError
+from packages.common.logging import get_logger
 
 from .base import BaseLLMProvider, LLMResponse
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(module=__name__)
 
 _DEFAULT_BASE_URL: Final = "https://openrouter.ai/api/v1"
 _DEFAULT_TIMEOUT: Final = 180.0

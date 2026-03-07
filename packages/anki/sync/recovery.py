@@ -6,14 +6,14 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import structlog
+from packages.common.logging import get_logger
 
 if TYPE_CHECKING:
     from types import TracebackType
 
     from packages.anki.sync.state import CardState, StateDB
 
-log = structlog.get_logger()
+logger = get_logger(module=__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,7 +40,7 @@ class CardTransaction:
     def commit(self) -> None:
         """Mark transaction as committed (no rollback needed)."""
         self._committed = True
-        log.debug("transaction.committed", actions=len(self._actions))
+        logger.debug("transaction.committed", actions=len(self._actions))
 
     def rollback(self) -> tuple[RollbackAction, ...]:
         """Roll back uncommitted actions.
@@ -60,7 +60,7 @@ class CardTransaction:
                     succeeded=True,
                 )
             )
-            log.info("transaction.rollback", action=action_type, target=target_id)
+            logger.info("transaction.rollback", action=action_type, target=target_id)
 
         return tuple(results)
 
@@ -100,7 +100,7 @@ class CardRecovery:
         in_db_not_anki = db_slugs - anki_slugs
         in_anki_not_db = anki_slugs - db_slugs
         if in_db_not_anki or in_anki_not_db:
-            log.warning(
+            logger.warning(
                 "recovery.orphaned_found",
                 in_db_not_anki=len(in_db_not_anki),
                 in_anki_not_db=len(in_anki_not_db),
@@ -120,5 +120,5 @@ class CardRecovery:
         all_states = self._state_db.get_all()
         stale = tuple(s for s in all_states if 0 < s.synced_at < cutoff)
         if stale:
-            log.info("recovery.stale_found", count=len(stale), max_age_days=max_age_days)
+            logger.info("recovery.stale_found", count=len(stale), max_age_days=max_age_days)
         return stale

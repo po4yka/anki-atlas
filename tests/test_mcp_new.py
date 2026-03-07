@@ -161,7 +161,12 @@ class TestFormatTagAuditResult:
         from apps.mcp.formatters import format_tag_audit_result
 
         results = [
-            ("Math/calculus", ["Use '::' for hierarchy, not '/'"], "math-calculus", ["math::calculus"]),
+            (
+                "Math/calculus",
+                ["Use '::' for hierarchy, not '/'"],
+                "math-calculus",
+                ["math::calculus"],
+            ),
             ("cs::algorithms", [], None, []),
         ]
         output = format_tag_audit_result(results)

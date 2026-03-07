@@ -8,9 +8,9 @@ import uuid
 from dataclasses import dataclass
 from enum import StrEnum
 
-import structlog
+from packages.common.logging import get_logger
 
-log = structlog.get_logger()
+logger = get_logger(module=__name__)
 
 
 class SyncPhase(StrEnum):
@@ -41,9 +41,15 @@ class SyncProgress:
     updated_at: float = 0.0
 
 
-_VALID_STATS = frozenset({
-    "notes_processed", "cards_created", "cards_updated", "cards_deleted", "errors",
-})
+_VALID_STATS = frozenset(
+    {
+        "notes_processed",
+        "cards_created",
+        "cards_updated",
+        "cards_deleted",
+        "errors",
+    }
+)
 
 
 class ProgressTracker:
@@ -67,7 +73,7 @@ class ProgressTracker:
         with self._lock:
             self._phase = phase
             self._updated_at = time.time()
-        log.info("sync.phase_changed", session_id=self._session_id, phase=phase.value)
+        logger.info("sync.phase_changed", session_id=self._session_id, phase=phase.value)
 
     def set_total(self, total: int) -> None:
         """Set total number of notes to process."""

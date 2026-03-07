@@ -210,12 +210,18 @@ class TestRAGService:
     def test_get_context_deduplication(self) -> None:
         results = [
             SearchResult(
-                chunk_id="c1", content="a", score=0.1,
-                source_file="same.md", metadata={"title": "T"},
+                chunk_id="c1",
+                content="a",
+                score=0.1,
+                source_file="same.md",
+                metadata={"title": "T"},
             ),
             SearchResult(
-                chunk_id="c2", content="b", score=0.2,
-                source_file="same.md", metadata={"title": "T"},
+                chunk_id="c2",
+                content="b",
+                score=0.2,
+                source_file="same.md",
+                metadata={"title": "T"},
             ),
         ]
         svc = RAGService(_mock_store(results))
@@ -234,8 +240,11 @@ class TestRAGService:
 
     def test_get_few_shot_examples(self) -> None:
         sr = SearchResult(
-            chunk_id="c1", content="example content", score=0.1,
-            source_file="ex.md", metadata={"topic": "math", "difficulty": "hard"},
+            chunk_id="c1",
+            content="example content",
+            score=0.1,
+            source_file="ex.md",
+            metadata={"topic": "math", "difficulty": "hard"},
         )
         svc = RAGService(_mock_store([sr]))
         examples = svc.get_few_shot_examples([0.1], k=2)
@@ -246,8 +255,11 @@ class TestRAGService:
     def test_get_few_shot_respects_k(self) -> None:
         results = [
             SearchResult(
-                chunk_id=f"c{i}", content=f"content {i}", score=0.1,
-                source_file=f"f{i}.md", metadata={},
+                chunk_id=f"c{i}",
+                content=f"content {i}",
+                score=0.1,
+                source_file=f"f{i}.md",
+                metadata={},
             )
             for i in range(10)
         ]

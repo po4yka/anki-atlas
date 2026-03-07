@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import structlog
-
 from packages.common.exceptions import CardValidationError
+from packages.common.logging import get_logger
 from packages.generator.prompts import (
     post_validation_system,
     post_validation_user,
@@ -18,7 +17,7 @@ from packages.validation import Severity, ValidationIssue, ValidationResult
 if TYPE_CHECKING:
     from packages.generator.agents.models import GeneratedCard, GenerationDeps
 
-log = structlog.get_logger()
+logger = get_logger(module=__name__)
 
 
 class PreValidatorAgent:
@@ -101,7 +100,7 @@ class PreValidatorAgent:
                 )
             )
 
-        log.info(
+        logger.info(
             "pre_validation_complete",
             is_valid=output.is_valid,
             error_type=output.error_type,
@@ -193,7 +192,7 @@ class PostValidatorAgent:
                 )
             )
 
-        log.info(
+        logger.info(
             "post_validation_complete",
             is_valid=output.is_valid,
             issue_count=len(issues),

@@ -7,11 +7,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-import structlog
-
 from packages.common.exceptions import ProviderError
+from packages.common.logging import get_logger
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(module=__name__)
 
 
 @dataclass(frozen=True, slots=True)

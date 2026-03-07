@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING, Any, Final
 if TYPE_CHECKING:
     from pathlib import Path
 
-import structlog
 
 from packages.common.exceptions import ObsidianParseError
+from packages.common.logging import get_logger
 from packages.obsidian.frontmatter import parse_frontmatter
 
-log = structlog.get_logger(__name__)
+logger = get_logger(module=__name__)
 
 MAX_FILE_SIZE: Final[int] = 10 * 1024 * 1024  # 10 MB
 
@@ -139,7 +139,7 @@ def parse_note(path: Path, *, vault_root: Path | None = None) -> ParsedNote:
     title = _extract_title(frontmatter, body)
     sections = _split_sections(body)
 
-    log.debug("parsed_note", path=str(resolved), title=title, sections=len(sections))
+    logger.debug("parsed_note", path=str(resolved), title=title, sections=len(sections))
 
     return ParsedNote(
         path=resolved,
@@ -187,12 +187,12 @@ def discover_notes(
                 resolved = md_path.resolve()
                 resolved.relative_to(resolved_root)
             except (ValueError, OSError):
-                log.debug("skipping_outside_vault", path=str(md_path))
+                logger.debug("skipping_outside_vault", path=str(md_path))
                 continue
 
             if resolved.is_file():
                 notes.append(resolved)
 
     notes.sort()
-    log.info("discovered_notes", count=len(notes), vault=str(resolved_root))
+    logger.info("discovered_notes", count=len(notes), vault=str(resolved_root))
     return notes

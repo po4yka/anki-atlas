@@ -5,14 +5,13 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-import structlog
-
 from packages.common.exceptions import ProviderError
+from packages.common.logging import get_logger
 
 if TYPE_CHECKING:
     from .base import BaseLLMProvider
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(module=__name__)
 
 
 class ProviderType(StrEnum):

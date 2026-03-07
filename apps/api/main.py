@@ -1,11 +1,12 @@
 """Anki Atlas API - FastAPI application."""
 
+from __future__ import annotations
+
 import asyncio
-from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -33,6 +34,9 @@ from packages.jobs import (
     close_job_manager,
     get_job_manager,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 logger = get_logger(module=__name__)
 

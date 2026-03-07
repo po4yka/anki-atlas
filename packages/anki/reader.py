@@ -1,5 +1,7 @@
 """Anki collection SQLite reader."""
 
+from __future__ import annotations
+
 import json
 import shutil
 import sqlite3
@@ -39,7 +41,7 @@ class AnkiReader:
         self._temp_path: Path | None = None
         self._conn: sqlite3.Connection | None = None
 
-    def __enter__(self) -> "AnkiReader":
+    def __enter__(self) -> AnkiReader:
         """Copy database to temp and open connection."""
         # Copy to temp file to avoid locking issues
         self._temp_path = Path(tempfile.mktemp(suffix=".anki2"))

@@ -11,12 +11,12 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
-import structlog
 
 from packages.card.slug import SlugService
 from packages.common.exceptions import DatabaseError, MigrationError
+from packages.common.logging import get_logger
 
-log = structlog.get_logger()
+logger = get_logger(module=__name__)
 
 SCHEMA_VERSION: Final[int] = 2
 
@@ -186,7 +186,7 @@ class CardRegistry:
                 (SCHEMA_VERSION,),
             )
             conn.commit()
-            log.info("card_registry.schema_created", version=SCHEMA_VERSION)
+            logger.info("card_registry.schema_created", version=SCHEMA_VERSION)
         except sqlite3.Error as e:
             raise MigrationError(
                 f"Failed to create schema: {e}",
@@ -205,7 +205,7 @@ class CardRegistry:
                 conn.execute(_CREATE_NOTES_TABLE)
                 for idx in _NOTE_INDEXES:
                     conn.execute(idx)
-                log.info("card_registry.migrated", from_version=current, to_version=2)
+                logger.info("card_registry.migrated", from_version=current, to_version=2)
 
             conn.execute(
                 "UPDATE schema_version SET version = ? WHERE id = 1",

@@ -1,5 +1,6 @@
-# Topic labeling, coverage scoring, dedupe
+from __future__ import annotations
 
+# Topic labeling, coverage scoring, dedupe
 from packages.analytics.coverage import (
     TopicCoverage,
     TopicGap,

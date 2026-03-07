@@ -1,13 +1,17 @@
 """Topic taxonomy management."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
 from packages.common.config import Settings, get_settings
 from packages.common.database import get_connection
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass
@@ -18,7 +22,7 @@ class Topic:
     label: str  # Human-readable label
     description: str | None = None
     topic_id: int | None = None  # Database ID (set after insert)
-    children: list["Topic"] = field(default_factory=list)
+    children: list[Topic] = field(default_factory=list)
 
     @property
     def parent_path(self) -> str | None:

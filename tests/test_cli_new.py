@@ -75,9 +75,7 @@ class TestValidateCommand:
 
     def test_valid_card(self, tmp_path: Path) -> None:
         card_file = tmp_path / "cards.txt"
-        card_file.write_text(
-            "What is the capital of France?\n---\nParis is the capital of France."
-        )
+        card_file.write_text("What is the capital of France?\n---\nParis is the capital of France.")
         result = runner.invoke(app, ["validate", str(card_file)])
         assert result.exit_code == 0
         assert "PASS" in result.output
@@ -91,9 +89,7 @@ class TestValidateCommand:
 
     def test_quality_flag(self, tmp_path: Path) -> None:
         card_file = tmp_path / "cards.txt"
-        card_file.write_text(
-            "What is the capital of France?\n---\nParis is the capital of France."
-        )
+        card_file.write_text("What is the capital of France?\n---\nParis is the capital of France.")
         result = runner.invoke(app, ["validate", str(card_file), "--quality"])
         assert result.exit_code == 0
         assert "overall=" in result.output

@@ -6,12 +6,11 @@ import hashlib
 import time
 from typing import TYPE_CHECKING
 
-import structlog
-
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
 from packages.common.exceptions import CardGenerationError
+from packages.common.logging import get_logger
 from packages.generator.agents.models import (
     GeneratedCard,
     GenerationDeps,
@@ -19,7 +18,7 @@ from packages.generator.agents.models import (
 )
 from packages.generator.prompts import card_generation_system, card_generation_user
 
-log = structlog.get_logger()
+logger = get_logger(module=__name__)
 
 
 class GeneratorAgent:
@@ -107,7 +106,7 @@ class GeneratorAgent:
             for c in result.output.cards
         )
 
-        log.info(
+        logger.info(
             "cards_generated",
             count=len(cards),
             model=self._model_name,

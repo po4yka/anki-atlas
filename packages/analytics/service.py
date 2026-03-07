@@ -1,8 +1,9 @@
 """Analytics service for topic coverage and gap analysis."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from packages.analytics.coverage import (
     TopicCoverage,
@@ -21,6 +22,9 @@ from packages.analytics.taxonomy import (
     sync_taxonomy_to_database,
 )
 from packages.common.config import Settings, get_settings
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass

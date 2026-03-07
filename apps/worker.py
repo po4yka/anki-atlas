@@ -1,5 +1,7 @@
 """arq worker configuration for background jobs."""
 
+from __future__ import annotations
+
 from typing import ClassVar
 
 from packages.common.config import get_settings

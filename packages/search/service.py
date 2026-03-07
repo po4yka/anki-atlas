@@ -1,5 +1,7 @@
 """Hybrid search service combining semantic and FTS."""
 
+from __future__ import annotations
+
 from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any

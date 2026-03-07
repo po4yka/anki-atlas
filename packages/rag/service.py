@@ -11,12 +11,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-import structlog
+from packages.common.logging import get_logger
 
 if TYPE_CHECKING:
     from packages.rag.store import SearchResult, VaultVectorStore
 
-log = structlog.get_logger(__name__)
+logger = get_logger(module=__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,9 +93,7 @@ class RAGService:
         Returns:
             DuplicateCheckResult with confidence and similar items.
         """
-        results = self._store.search(
-            query_embedding, k=k, min_similarity=threshold
-        )
+        results = self._store.search(query_embedding, k=k, min_similarity=threshold)
         confidence = max((r.similarity for r in results), default=0.0)
         return DuplicateCheckResult(
             is_duplicate=len(results) > 0,
@@ -152,7 +150,7 @@ class RAGService:
             if len(concepts) >= k:
                 break
 
-        log.debug("context_retrieved", results=len(concepts))
+        logger.debug("context_retrieved", results=len(concepts))
         return concepts
 
     def get_few_shot_examples(
@@ -197,5 +195,5 @@ class RAGService:
             if len(examples) >= k:
                 break
 
-        log.debug("few_shot_examples_retrieved", count=len(examples))
+        logger.debug("few_shot_examples_retrieved", count=len(examples))
         return examples

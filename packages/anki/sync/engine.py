@@ -6,14 +6,13 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import structlog
-
 from packages.anki.sync.progress import ProgressTracker, SyncPhase
+from packages.common.logging import get_logger
 
 if TYPE_CHECKING:
     from packages.anki.sync.state import StateDB
 
-log = structlog.get_logger()
+logger = get_logger(module=__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +69,7 @@ class SyncEngine:
         """
         start = time.monotonic()
         session = self._progress.snapshot().session_id
-        log.info("sync.started", session_id=session, dry_run=dry_run)
+        logger.info("sync.started", session_id=session, dry_run=dry_run)
 
         try:
             self._progress.set_phase(SyncPhase.SCANNING)
@@ -84,7 +83,7 @@ class SyncEngine:
         except Exception:
             self._progress.complete(success=False)
             self._errors += 1
-            log.exception("sync.failed", session_id=session)
+            logger.exception("sync.failed", session_id=session)
             raise
 
         elapsed_ms = int((time.monotonic() - start) * 1000)
@@ -96,15 +95,15 @@ class SyncEngine:
             errors=self._errors,
             duration_ms=elapsed_ms,
         )
-        log.info("sync.completed", session_id=session, result=result)
+        logger.info("sync.completed", session_id=session, result=result)
         return result
 
     def _scan(self) -> None:
         """Scan for changes (subclasses or callers populate state)."""
         existing = self._state_db.get_all()
         self._progress.set_total(len(existing))
-        log.debug("sync.scan_complete", card_count=len(existing))
+        logger.debug("sync.scan_complete", card_count=len(existing))
 
     def _apply(self) -> None:
         """Apply changes (subclasses override for actual operations)."""
-        log.debug("sync.apply_complete")
+        logger.debug("sync.apply_complete")

@@ -1,5 +1,7 @@
 """CLI entry point for Anki Atlas MCP server."""
 
+from __future__ import annotations
+
 
 def main() -> None:
     """Run the MCP server with stdio transport."""

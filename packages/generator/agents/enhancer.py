@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import structlog
-
 from packages.common.exceptions import CardGenerationError
+from packages.common.logging import get_logger
 from packages.generator.agents.models import (
     GeneratedCard,
     GenerationDeps,
@@ -18,7 +17,7 @@ from packages.generator.prompts import (
     enhancement_user,
 )
 
-log = structlog.get_logger()
+logger = get_logger(module=__name__)
 
 
 class EnhancerAgent:
@@ -89,10 +88,10 @@ class EnhancerAgent:
         output = result.output
 
         if not output.improvements:
-            log.debug("no_enhancements_suggested", slug=card.slug)
+            logger.debug("no_enhancements_suggested", slug=card.slug)
             return card
 
-        log.info(
+        logger.info(
             "card_enhanced",
             slug=card.slug,
             improvements=output.improvements,
@@ -182,7 +181,7 @@ class EnhancerAgent:
             for p in output.plans
         )
 
-        log.info(
+        logger.info(
             "split_analysis_complete",
             should_split=output.should_split,
             card_count=output.card_count,

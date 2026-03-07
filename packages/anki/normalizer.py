@@ -1,10 +1,13 @@
 """HTML to text normalization for Anki fields."""
 
+from __future__ import annotations
+
 import html
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from packages.anki.models import AnkiNote
+if TYPE_CHECKING:
+    from packages.anki.models import AnkiNote
 
 # Regex patterns
 CLOZE_PATTERN = re.compile(r"\{\{c\d+::([^}]+?)(?:::[^}]+)?\}\}")

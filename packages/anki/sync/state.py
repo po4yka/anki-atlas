@@ -7,13 +7,13 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import structlog
+from packages.common.logging import get_logger
 
 if TYPE_CHECKING:
     from pathlib import Path
     from types import TracebackType
 
-log = structlog.get_logger()
+logger = get_logger(module=__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +37,7 @@ class StateDB:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._create_tables()
-        log.debug("state_db.opened", path=str(db_path))
+        logger.debug("state_db.opened", path=str(db_path))
 
     def _create_tables(self) -> None:
         self._conn.execute(
@@ -80,8 +80,12 @@ class StateDB:
         ).fetchall()
         return tuple(
             CardState(
-                slug=r[0], content_hash=r[1], anki_guid=r[2],
-                note_type=r[3], source_path=r[4], synced_at=r[5],
+                slug=r[0],
+                content_hash=r[1],
+                anki_guid=r[2],
+                note_type=r[3],
+                source_path=r[4],
+                synced_at=r[5],
             )
             for r in rows
         )
@@ -124,8 +128,12 @@ class StateDB:
         ).fetchall()
         return tuple(
             CardState(
-                slug=r[0], content_hash=r[1], anki_guid=r[2],
-                note_type=r[3], source_path=r[4], synced_at=r[5],
+                slug=r[0],
+                content_hash=r[1],
+                anki_guid=r[2],
+                note_type=r[3],
+                source_path=r[4],
+                synced_at=r[5],
             )
             for r in rows
         )
@@ -133,7 +141,7 @@ class StateDB:
     def close(self) -> None:
         """Close database connection."""
         self._conn.close()
-        log.debug("state_db.closed", path=str(self._db_path))
+        logger.debug("state_db.closed", path=str(self._db_path))
 
     def __enter__(self) -> StateDB:
         return self

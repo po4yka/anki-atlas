@@ -45,9 +45,7 @@ class FeedbackCollector:
             "total_feedback": len(self._filter(topic)),
         }
 
-    def common_issues(
-        self, topic: str | None = None, *, limit: int = 5
-    ) -> tuple[str, ...]:
+    def common_issues(self, topic: str | None = None, *, limit: int = 5) -> tuple[str, ...]:
         """Get most frequent issues."""
         entries = self._filter(topic)
         counter: Counter[str] = Counter()

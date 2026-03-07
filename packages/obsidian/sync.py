@@ -6,8 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
-import structlog
-
+from packages.common.logging import get_logger
 from packages.obsidian.parser import ParsedNote, discover_notes, parse_note
 
 if TYPE_CHECKING:
@@ -17,7 +16,7 @@ if TYPE_CHECKING:
     from packages.generator.agents.models import GeneratedCard
     from packages.validation.pipeline import ValidationPipeline
 
-log = structlog.get_logger(__name__)
+logger = get_logger(module=__name__)
 
 ProgressCallback = Callable[[str, int, int], None]
 
@@ -104,8 +103,8 @@ class ObsidianSyncWorkflow:
             try:
                 parsed.append(parse_note(note_path, vault_root=vault_path))
             except Exception:
-                log.warning("scan.parse_failed", path=str(note_path))
-        log.info("scan.complete", notes=len(parsed), vault=str(vault_path))
+                logger.warning("scan.parse_failed", path=str(note_path))
+        logger.info("scan.complete", notes=len(parsed), vault=str(vault_path))
         return parsed
 
     def process_note(self, note: ParsedNote) -> NoteResult:
@@ -114,7 +113,7 @@ class ObsidianSyncWorkflow:
         try:
             cards = self._generator.generate(note)
         except Exception as exc:
-            log.warning("process.generate_failed", path=str(note.path), error=str(exc))
+            logger.warning("process.generate_failed", path=str(note.path), error=str(exc))
             result.errors.append(f"Generation failed for {note.path}: {exc}")
             return result
 
@@ -129,7 +128,7 @@ class ObsidianSyncWorkflow:
             else:
                 msgs = "; ".join(i.message for i in vr.errors())
                 result.errors.append(f"Validation failed for card {card.slug}: {msgs}")
-                log.debug("process.validation_failed", slug=card.slug, errors=msgs)
+                logger.debug("process.validation_failed", slug=card.slug, errors=msgs)
 
         return result
 
@@ -158,7 +157,7 @@ class ObsidianSyncWorkflow:
             elif nr.errors:
                 skipped += len(nr.errors)
 
-        log.info(
+        logger.info(
             "run.complete",
             total_notes=total,
             total_cards=len(all_cards),

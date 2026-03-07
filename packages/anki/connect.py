@@ -14,11 +14,11 @@ from __future__ import annotations
 from typing import Any, Final, cast
 
 import httpx
-import structlog
 
 from packages.common.exceptions import AnkiConnectError
+from packages.common.logging import get_logger
 
-logger = structlog.get_logger()
+logger = get_logger(module=__name__)
 
 ANKI_CONNECT_URL: Final[str] = "http://localhost:8765"
 ANKI_CONNECT_VERSION: Final[int] = 6

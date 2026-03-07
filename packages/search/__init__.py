@@ -1,5 +1,7 @@
 """Hybrid search module for Anki notes."""
 
+from __future__ import annotations
+
 from packages.search.fts import (
     FTSResult,
     LexicalSearchResult,

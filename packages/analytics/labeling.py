@@ -1,16 +1,21 @@
 """Note-topic labeling using embedding similarity."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from psycopg import AsyncConnection
 
-from packages.analytics.taxonomy import Taxonomy
 from packages.common.config import Settings, get_settings
 from packages.common.database import get_connection
 from packages.indexer.embeddings import EmbeddingProvider, get_embedding_provider
 from packages.indexer.qdrant import QdrantRepository, get_qdrant_repository
+
+if TYPE_CHECKING:
+    from psycopg import AsyncConnection
+
+    from packages.analytics.taxonomy import Taxonomy
 
 
 @dataclass

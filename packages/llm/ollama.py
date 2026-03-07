@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import Any, Final
 
 import httpx
-import structlog
 
 from packages.common.exceptions import ProviderError
+from packages.common.logging import get_logger
 
 from .base import BaseLLMProvider, LLMResponse
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(module=__name__)
 
 _DEFAULT_BASE_URL: Final = "http://localhost:11434"
 _DEFAULT_TIMEOUT: Final = 300.0

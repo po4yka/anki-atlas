@@ -1,11 +1,16 @@
 """CLI command: generate flashcards from an Obsidian note."""
 
-from pathlib import Path
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import typer
 from rich.console import Console
 
 from packages.common.logging import get_logger
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = get_logger(module=__name__)
 console = Console()

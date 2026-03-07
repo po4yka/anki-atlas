@@ -138,7 +138,9 @@ class TestProcessNote:
         note = _make_note(tmp_path / "n.md")
 
         class PassValidator:
-            def validate(self, *, front: str, back: str, tags: tuple[str, ...] = (), **_kw: Any) -> ValidationResult:  # noqa: ARG002
+            def validate(
+                self, *, front: str, back: str, tags: tuple[str, ...] = (), **_kw: Any  # noqa: ARG002
+            ) -> ValidationResult:
                 return ValidationResult.ok()
 
         pipeline = ValidationPipeline([PassValidator()])
@@ -151,7 +153,9 @@ class TestProcessNote:
         note = _make_note(tmp_path / "n.md")
 
         class FailValidator:
-            def validate(self, *, front: str, back: str, tags: tuple[str, ...] = (), **_kw: Any) -> ValidationResult:  # noqa: ARG002
+            def validate(
+                self, *, front: str, back: str, tags: tuple[str, ...] = (), **_kw: Any  # noqa: ARG002
+            ) -> ValidationResult:
                 return ValidationResult(
                     issues=(ValidationIssue(severity=Severity.ERROR, message="bad card"),)
                 )

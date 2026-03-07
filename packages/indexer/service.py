@@ -1,16 +1,19 @@
 """Index service for embedding and storing note vectors."""
 
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass, field
-from typing import Any
-
-from psycopg import AsyncConnection
+from typing import TYPE_CHECKING, Any
 
 from packages.common.config import Settings, get_settings
 from packages.common.database import get_connection
 from packages.common.logging import get_logger
 from packages.indexer.embeddings import EmbeddingProvider, get_embedding_provider
 from packages.indexer.qdrant import NotePayload, QdrantRepository, get_qdrant_repository
+
+if TYPE_CHECKING:
+    from psycopg import AsyncConnection
 
 logger = get_logger(module=__name__)
 

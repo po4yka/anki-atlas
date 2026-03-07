@@ -460,14 +460,14 @@ async def ankiatlas_obsidian_sync(
         )
 
         if not dry_run:
-            result += "\n\n*Full sync requires a configured card generator. Use dry_run=True to preview.*"
+            result += (
+                "\n\n*Full sync requires a configured card generator. Use dry_run=True to preview.*"
+            )
 
         return result
 
     except Exception as e:
-        logger.exception(
-            "obsidian_sync_failed", vault_path=vault_path, error_type=type(e).__name__
-        )
+        logger.exception("obsidian_sync_failed", vault_path=vault_path, error_type=type(e).__name__)
         return _format_error(e, "obsidian sync")
 
 

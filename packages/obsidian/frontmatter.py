@@ -9,11 +9,10 @@ import re
 from io import StringIO
 from typing import Any
 
-import structlog
-
 from packages.common.exceptions import ObsidianParseError
+from packages.common.logging import get_logger
 
-log = structlog.get_logger(__name__)
+logger = get_logger(module=__name__)
 
 
 def _get_frontmatter_lib() -> Any:
@@ -77,7 +76,7 @@ def parse_frontmatter(content: str) -> dict[str, Any]:
     try:
         preprocessed = _preprocess_yaml_frontmatter(content)
     except Exception:
-        log.debug("yaml_preprocessing_failed")
+        logger.debug("yaml_preprocessing_failed")
         preprocessed = content
 
     try:

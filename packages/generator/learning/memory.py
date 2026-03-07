@@ -38,9 +38,7 @@ class GenerationMemory:
         if len(self._outcomes) > self._max_entries:
             self._outcomes = self._outcomes[-self._max_entries :]
 
-    def outcomes_for_topic(
-        self, topic: str, *, limit: int = 10
-    ) -> tuple[GenerationOutcome, ...]:
+    def outcomes_for_topic(self, topic: str, *, limit: int = 10) -> tuple[GenerationOutcome, ...]:
         """Get recent outcomes for a topic, newest first."""
         matches = [o for o in reversed(self._outcomes) if o.topic == topic]
         return tuple(matches[:limit])

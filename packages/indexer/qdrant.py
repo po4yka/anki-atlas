@@ -1,5 +1,7 @@
 """Qdrant vector database repository."""
 
+from __future__ import annotations
+
 import hashlib
 import math
 import re

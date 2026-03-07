@@ -6,14 +6,13 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import structlog
-
 if TYPE_CHECKING:
     from pathlib import Path
 
+from packages.common.logging import get_logger
 from packages.obsidian.parser import discover_notes
 
-log = structlog.get_logger(__name__)
+logger = get_logger(module=__name__)
 
 # Matches [[target]] and [[target|alias]]
 _WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
@@ -54,7 +53,7 @@ class VaultAnalyzer:
             try:
                 content = note_path.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
-                log.debug("skip_unreadable", path=str(note_path))
+                logger.debug("skip_unreadable", path=str(note_path))
                 continue
 
             stem = note_path.stem
@@ -62,7 +61,7 @@ class VaultAnalyzer:
             self._links[stem] = [link.strip() for link in links]
 
         self._scanned = True
-        log.info("vault_scanned", notes=len(self._notes), vault=str(self.vault_path))
+        logger.info("vault_scanned", notes=len(self._notes), vault=str(self.vault_path))
 
     def get_wikilinks(self, path: Path) -> list[str]:
         """Get wikilinks from a specific note.

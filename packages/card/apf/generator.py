@@ -11,11 +11,10 @@ from dataclasses import dataclass
 from html import escape
 from typing import Any
 
-import structlog
-
 from packages.card.apf.validator import validate_card_html
+from packages.common.logging import get_logger
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(module=__name__)
 
 
 @dataclass(frozen=True, slots=True)

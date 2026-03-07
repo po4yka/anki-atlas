@@ -1,5 +1,6 @@
-# Embedding, qdrant upsert, incremental sync
+from __future__ import annotations
 
+# Embedding, qdrant upsert, incremental sync
 from packages.indexer.embeddings import (
     EmbeddingProvider,
     LocalEmbeddingProvider,

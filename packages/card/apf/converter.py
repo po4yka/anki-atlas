@@ -11,12 +11,12 @@ import re
 from html import escape
 from typing import TYPE_CHECKING, Any, Final
 
-import structlog
+from packages.common.logging import get_logger
 
 if TYPE_CHECKING:
     import mistune
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(module=__name__)
 
 # Allowed HTML tags for Anki cards (used by nh3 sanitizer)
 ALLOWED_TAGS: Final[frozenset[str]] = frozenset(

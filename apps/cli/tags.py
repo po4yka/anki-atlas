@@ -1,12 +1,17 @@
 """CLI command: tag audit and normalization."""
 
-from pathlib import Path
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from packages.common.logging import get_logger
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = get_logger(module=__name__)
 console = Console()
@@ -24,7 +29,9 @@ def tag_audit(
         console.print(f"[red]Error:[/red] File not found: {resolved}")
         raise typer.Exit(1)
 
-    tags = [line.strip() for line in resolved.read_text(encoding="utf-8").splitlines() if line.strip()]
+    tags = [
+        line.strip() for line in resolved.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
     if not tags:
         console.print("[yellow]No tags found in file[/yellow]")

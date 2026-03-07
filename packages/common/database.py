@@ -1,10 +1,11 @@
 """PostgreSQL database connection and utilities."""
 
-from collections.abc import AsyncGenerator
+from __future__ import annotations
+
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 from psycopg import AsyncConnection
@@ -13,6 +14,9 @@ from psycopg_pool import AsyncConnectionPool
 
 from packages.common.config import Settings, get_settings
 from packages.common.logging import get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 logger = get_logger(module=__name__)
 

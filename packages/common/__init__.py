@@ -1,5 +1,6 @@
-# Common utilities
+from __future__ import annotations
 
+# Common utilities
 from packages.common.exceptions import (
     AnkiAtlasError,
     AnkiConnectError,

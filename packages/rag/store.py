@@ -9,14 +9,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-import structlog
-
 from packages.common.exceptions import VectorStoreError
+from packages.common.logging import get_logger
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-log = structlog.get_logger(__name__)
+logger = get_logger(module=__name__)
 
 COLLECTION_NAME = "obsidian_vault"
 
@@ -80,7 +79,7 @@ class VaultVectorStore:
             name=collection_name,
             metadata={"hnsw:space": "cosine"},
         )
-        log.info(
+        logger.info(
             "vector_store_initialized",
             path=str(persist_directory),
             existing=self._collection.count(),
@@ -117,7 +116,7 @@ class VaultVectorStore:
             embeddings=[embeddings[i] for i in new_idx],
             metadatas=[metadatas[i] for i in new_idx] if metadatas else None,
         )
-        log.debug("chunks_added", count=len(new_idx))
+        logger.debug("chunks_added", count=len(new_idx))
         return len(new_idx)
 
     def delete_by_source(self, source_file: str) -> int:
@@ -129,7 +128,7 @@ class VaultVectorStore:
             return 0
 
         self._collection.delete(ids=results["ids"])
-        log.info("chunks_deleted", source_file=source_file, count=len(results["ids"]))
+        logger.info("chunks_deleted", source_file=source_file, count=len(results["ids"]))
         return len(results["ids"])
 
     def reset(self) -> None:
@@ -139,7 +138,7 @@ class VaultVectorStore:
             name=self._collection.name,
             metadata={"hnsw:space": "cosine"},
         )
-        log.info("vector_store_reset")
+        logger.info("vector_store_reset")
 
     # ------------------------------------------------------------------
     # Queries
@@ -190,7 +189,7 @@ class VaultVectorStore:
                     )
                 )
 
-        log.debug("search_completed", results=len(out))
+        logger.debug("search_completed", results=len(out))
         return out
 
     def count(self) -> int:

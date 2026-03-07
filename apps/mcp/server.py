@@ -1,5 +1,7 @@
 """FastMCP server for Anki Atlas tools."""
 
+from __future__ import annotations
+
 import sys
 
 from mcp.server.fastmcp import FastMCP

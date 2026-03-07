@@ -13,9 +13,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-import structlog
+from packages.common.logging import get_logger
 
-log = structlog.get_logger(__name__)
+logger = get_logger(module=__name__)
 
 
 class ChunkType(StrEnum):
@@ -157,7 +157,7 @@ class DocumentChunker:
                 )
             )
 
-        log.debug("content_chunked", source=source_file, chunks=len(chunks))
+        logger.debug("content_chunked", source=source_file, chunks=len(chunks))
         return chunks
 
     def chunk_file(self, file_path: Path) -> list[DocumentChunk]:
@@ -172,7 +172,7 @@ class DocumentChunker:
         try:
             content = file_path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as e:
-            log.warning("chunk_file_read_error", path=str(file_path), error=str(e))
+            logger.warning("chunk_file_read_error", path=str(file_path), error=str(e))
             return []
 
         return self.chunk_content(content, str(file_path))
@@ -182,9 +182,7 @@ class DocumentChunker:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _base_metadata(
-        frontmatter: dict[str, Any], source_file: str
-    ) -> dict[str, Any]:
+    def _base_metadata(frontmatter: dict[str, Any], source_file: str) -> dict[str, Any]:
         meta: dict[str, Any] = {"source_file": source_file}
         for key in ("title", "topic", "difficulty", "tags"):
             if key in frontmatter:
