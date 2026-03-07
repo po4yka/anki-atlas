@@ -294,9 +294,9 @@ async def get_coverage_tree(
             where_clause = "WHERE t.path = %(path)s OR t.path LIKE %(path_prefix)s"
             params = {"path": root_path, "path_prefix": f"{root_path}/%"}
 
-        result = await conn.execute(
+        result = await conn.execute(  # nosec B608
             f"""
-            SELECT  -- nosec B608: where_sql is built from code, not user input
+            SELECT
                 t.topic_id,
                 t.path,
                 t.label,
