@@ -622,5 +622,52 @@ async def _duplicates_async(
         raise typer.Exit(1) from None
 
 
+@app.command(name="generate")
+def generate_cmd(
+    input_file: Path = typer.Argument(..., help="Path to an Obsidian markdown note"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without generating"),
+) -> None:
+    """Parse an Obsidian note and preview card generation."""
+    from apps.cli.generate import generate
+
+    generate(input_file=input_file, dry_run=dry_run)
+
+
+@app.command(name="validate")
+def validate_cmd(
+    input_file: Path = typer.Argument(..., help="File with card front/back (--- separated)"),
+    quality: bool = typer.Option(False, "--quality", "-q", help="Run quality assessment"),
+) -> None:
+    """Validate flashcard content from a file."""
+    from apps.cli.validate import validate
+
+    validate(input_file=input_file, quality=quality)
+
+
+@app.command(name="obsidian-sync")
+def obsidian_sync_cmd(
+    vault: Path = typer.Argument(..., help="Path to Obsidian vault"),
+    source_dirs: str | None = typer.Option(
+        None, "--source-dirs", "-s", help="Comma-separated subdirectories to scan"
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Scan only, do not generate/sync"),
+) -> None:
+    """Scan an Obsidian vault and preview or sync cards."""
+    from apps.cli.obsidian import obsidian_sync
+
+    obsidian_sync(vault=vault, source_dirs=source_dirs, dry_run=dry_run)
+
+
+@app.command(name="tag-audit")
+def tag_audit_cmd(
+    input_file: Path = typer.Argument(..., help="File with tags, one per line"),
+    fix: bool = typer.Option(False, "--fix", "-f", help="Show normalized tags"),
+) -> None:
+    """Audit tags for convention violations and suggest fixes."""
+    from apps.cli.tags import tag_audit
+
+    tag_audit(input_file=input_file, fix=fix)
+
+
 if __name__ == "__main__":
     app()
