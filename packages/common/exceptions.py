@@ -1,30 +1,12 @@
-"""Custom exception hierarchy for Anki Atlas.
-
-This module defines application-specific exceptions that provide:
-- Clear error categorization for debugging
-- Consistent HTTP status code mapping in API
-- Structured logging context
-"""
+"""Custom exception hierarchy for Anki Atlas."""
 
 from __future__ import annotations
 
 
 class AnkiAtlasError(Exception):
-    """Base exception for all application errors.
-
-    All custom exceptions inherit from this to enable:
-    - Centralized exception handling in API middleware
-    - Consistent error logging patterns
-    - Type-safe error catching
-    """
+    """Base exception for all application errors."""
 
     def __init__(self, message: str, *, context: dict[str, object] | None = None) -> None:
-        """Initialize error with message and optional context.
-
-        Args:
-            message: Human-readable error description.
-            context: Additional key-value pairs for structured logging.
-        """
         super().__init__(message)
         self.context = context or {}
 

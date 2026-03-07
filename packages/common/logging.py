@@ -15,23 +15,12 @@ correlation_id_var: ContextVar[str | None] = ContextVar("correlation_id", defaul
 
 
 def get_correlation_id() -> str | None:
-    """Get the current correlation ID from context.
-
-    Returns:
-        Current correlation ID or None if not set.
-    """
+    """Get the current correlation ID from context."""
     return correlation_id_var.get()
 
 
 def set_correlation_id(correlation_id: str | None = None) -> str:
-    """Set correlation ID in context, generating one if not provided.
-
-    Args:
-        correlation_id: Optional ID to set. If None, generates a new UUID.
-
-    Returns:
-        The correlation ID that was set.
-    """
+    """Set correlation ID in context, generating one if not provided."""
     if correlation_id is None:
         correlation_id = str(uuid4())
     correlation_id_var.set(correlation_id)
@@ -117,13 +106,6 @@ def configure_logging(
 
 
 def get_logger(**initial_context: object) -> structlog.stdlib.BoundLogger:
-    """Return a bound structlog logger.
-
-    Args:
-        **initial_context: Key-value pairs bound to every log entry from this logger.
-
-    Returns:
-        A ``BoundLogger`` instance.
-    """
+    """Return a bound structlog logger with the given initial context."""
     logger: structlog.stdlib.BoundLogger = structlog.get_logger(**initial_context)
     return logger

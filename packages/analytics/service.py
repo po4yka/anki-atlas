@@ -40,22 +40,10 @@ class AnalyticsService:
     """Service for topic analytics."""
 
     def __init__(self, settings: Settings | None = None) -> None:
-        """Initialize analytics service.
-
-        Args:
-            settings: Application settings.
-        """
         self.settings = settings or get_settings()
 
     async def load_taxonomy(self, yaml_path: Path | None = None) -> Taxonomy:
-        """Load taxonomy from YAML file or database.
-
-        Args:
-            yaml_path: Path to YAML file. If None, loads from database.
-
-        Returns:
-            Loaded taxonomy.
-        """
+        """Load taxonomy from YAML or database, syncing to DB if from YAML."""
         if yaml_path:
             taxonomy = load_taxonomy_from_yaml(yaml_path)
             # Sync to database
@@ -69,15 +57,7 @@ class AnalyticsService:
         taxonomy: Taxonomy | None = None,
         min_confidence: float = 0.3,
     ) -> LabelingStats:
-        """Label all notes with topics.
-
-        Args:
-            taxonomy: Taxonomy to use. If None, loads from database.
-            min_confidence: Minimum confidence threshold.
-
-        Returns:
-            Labeling statistics.
-        """
+        """Label all notes with topics, loading taxonomy from DB if not provided."""
         if taxonomy is None:
             taxonomy = await load_taxonomy_from_database(self.settings)
 
@@ -88,15 +68,6 @@ class AnalyticsService:
         topic_path: str,
         include_subtree: bool = True,
     ) -> TopicCoverage | None:
-        """Get coverage metrics for a topic.
-
-        Args:
-            topic_path: Topic path.
-            include_subtree: Include child topics.
-
-        Returns:
-            Coverage metrics or None.
-        """
         return await get_topic_coverage(topic_path, include_subtree, self.settings)
 
     async def get_gaps(
@@ -104,15 +75,6 @@ class AnalyticsService:
         topic_path: str,
         min_coverage: int = 1,
     ) -> list[TopicGap]:
-        """Get gaps in topic coverage.
-
-        Args:
-            topic_path: Root topic path.
-            min_coverage: Minimum notes for coverage.
-
-        Returns:
-            List of gaps.
-        """
         return await get_topic_gaps(topic_path, min_coverage, self.settings)
 
     async def get_weak_notes(
@@ -120,15 +82,6 @@ class AnalyticsService:
         topic_path: str,
         max_results: int = 20,
     ) -> list[WeakNote]:
-        """Get weak notes in a topic.
-
-        Args:
-            topic_path: Topic path.
-            max_results: Maximum results.
-
-        Returns:
-            List of weak notes.
-        """
         return await get_weak_notes(topic_path, max_results, settings=self.settings)
 
     async def get_full_analysis(
@@ -136,15 +89,6 @@ class AnalyticsService:
         topic_path: str,
         min_coverage: int = 1,
     ) -> AnalyticsResult:
-        """Get full analysis for a topic.
-
-        Args:
-            topic_path: Topic path.
-            min_coverage: Minimum coverage threshold.
-
-        Returns:
-            Complete analytics result.
-        """
         coverage = await self.get_coverage(topic_path)
         gaps = await self.get_gaps(topic_path, min_coverage)
         weak = await self.get_weak_notes(topic_path)
@@ -159,12 +103,4 @@ class AnalyticsService:
         self,
         root_path: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Get taxonomy tree with coverage info.
-
-        Args:
-            root_path: Optional root to filter.
-
-        Returns:
-            List of topics with coverage data.
-        """
         return await get_coverage_tree(root_path, self.settings)
