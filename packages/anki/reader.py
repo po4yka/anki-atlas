@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -41,7 +42,9 @@ class AnkiReader:
     def __enter__(self) -> AnkiReader:
         """Copy database to temp and open connection."""
         # Copy to temp file to avoid locking issues
-        self._temp_path = Path(tempfile.mktemp(suffix=".anki2"))
+        fd, tmp = tempfile.mkstemp(suffix=".anki2")
+        os.close(fd)
+        self._temp_path = Path(tmp)
         shutil.copy2(self.collection_path, self._temp_path)
 
         self._conn = sqlite3.connect(str(self._temp_path))

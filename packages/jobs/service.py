@@ -269,20 +269,18 @@ class ArqJobManager:
         return record
 
 
-_job_manager: ArqJobManager | None = None
+_job_manager_holder: dict[str, ArqJobManager] = {}
 
 
 async def get_job_manager(settings: Settings | None = None) -> ArqJobManager:
     """Get cached job manager."""
-    global _job_manager
-    if _job_manager is None:
-        _job_manager = ArqJobManager(settings)
-    return _job_manager
+    if "instance" not in _job_manager_holder:
+        _job_manager_holder["instance"] = ArqJobManager(settings)
+    return _job_manager_holder["instance"]
 
 
 async def close_job_manager() -> None:
     """Close cached job manager resources."""
-    global _job_manager
-    if _job_manager is not None:
-        await _job_manager.close()
-        _job_manager = None
+    manager = _job_manager_holder.pop("instance", None)
+    if manager is not None:
+        await manager.close()

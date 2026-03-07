@@ -90,7 +90,7 @@ ALLOWED_ATTRIBUTES: Final[dict[str, set[str]]] = _build_allowed_attributes()
 # Lazy imports
 # ---------------------------------------------------------------------------
 
-_MISTUNE_CONVERTER: mistune.Markdown | None = None
+_MISTUNE_CONVERTER: dict[str, mistune.Markdown] = {}
 
 
 def _get_mistune() -> Any:
@@ -173,10 +173,9 @@ def _create_mistune_converter() -> mistune.Markdown:
 
 def _get_mistune_converter() -> mistune.Markdown:
     """Get or create cached mistune converter."""
-    global _MISTUNE_CONVERTER
-    if _MISTUNE_CONVERTER is None:
-        _MISTUNE_CONVERTER = _create_mistune_converter()
-    return _MISTUNE_CONVERTER
+    if "instance" not in _MISTUNE_CONVERTER:
+        _MISTUNE_CONVERTER["instance"] = _create_mistune_converter()
+    return _MISTUNE_CONVERTER["instance"]
 
 
 # ---------------------------------------------------------------------------

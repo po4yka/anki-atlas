@@ -313,7 +313,7 @@ class MockEmbeddingProvider(EmbeddingProvider):
         embeddings: list[list[float]] = []
         for text in texts:
             # Use hash to generate deterministic "embedding"
-            text_hash = hashlib.md5(text.encode()).digest()
+            text_hash = hashlib.md5(text.encode(), usedforsecurity=False).digest()
             # Repeat hash to fill dimension
             repeated = (text_hash * ((self._dimension // 16) + 1))[: self._dimension]
             # Convert bytes to floats in [-1, 1]

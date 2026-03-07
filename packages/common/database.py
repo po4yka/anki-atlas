@@ -20,35 +20,34 @@ if TYPE_CHECKING:
 
 logger = get_logger(module=__name__)
 
-# Module-level pool (initialized on first use)
-_pool: AsyncConnectionPool[AsyncConnection[dict[str, Any]]] | None = None
+# Module-level pool holder (initialized on first use)
+_pool_holder: dict[str, AsyncConnectionPool[AsyncConnection[dict[str, Any]]]] = {}
 
 
 async def get_pool(
     settings: Settings | None = None,
 ) -> AsyncConnectionPool[AsyncConnection[dict[str, Any]]]:
     """Get or create the connection pool."""
-    global _pool
-    if _pool is None:
+    if "pool" not in _pool_holder:
         if settings is None:
             settings = get_settings()
-        _pool = AsyncConnectionPool(
+        pool: AsyncConnectionPool[AsyncConnection[dict[str, Any]]] = AsyncConnectionPool(
             conninfo=settings.postgres_url,
             min_size=2,
             max_size=10,
             open=False,
             kwargs={"row_factory": dict_row},
         )
-        await _pool.open()
-    return _pool
+        await pool.open()
+        _pool_holder["pool"] = pool
+    return _pool_holder["pool"]
 
 
 async def close_pool() -> None:
     """Close the connection pool."""
-    global _pool
-    if _pool is not None:
-        await _pool.close()
-        _pool = None
+    pool = _pool_holder.pop("pool", None)
+    if pool is not None:
+        await pool.close()
 
 
 @asynccontextmanager
