@@ -1,1 +1,3 @@
-# Anki Atlas applications
+"""Anki Atlas application entry points."""
+
+from __future__ import annotations
