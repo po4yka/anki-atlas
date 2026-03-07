@@ -71,7 +71,7 @@ def validate_markdown(content: str) -> MarkdownValidationResult:
 
     errors.extend(_validate_code_fences(content))
     errors.extend(_validate_formatting_markers(content))
-    warnings.extend(_check_common_issues(content))
+    warnings.extend(_check_html_and_long_lines(content))
 
     return MarkdownValidationResult(
         is_valid=len(errors) == 0,
@@ -127,7 +127,7 @@ def _remove_code_blocks(content: str) -> str:
     return result
 
 
-def _check_common_issues(content: str) -> list[str]:
+def _check_html_and_long_lines(content: str) -> list[str]:
     """Check for common Markdown issues."""
     warnings: list[str] = []
 
