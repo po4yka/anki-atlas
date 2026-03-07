@@ -139,7 +139,9 @@ class Settings(BaseSettings):
             raise ValueError("redis_url must be a Redis URL")
         return v
 
-    @field_validator("job_result_ttl_seconds", "job_max_retries", "rerank_top_n", "rerank_batch_size")
+    @field_validator(
+        "job_result_ttl_seconds", "job_max_retries", "rerank_top_n", "rerank_batch_size"
+    )
     @classmethod
     def validate_positive_int(cls, v: int) -> int:
         """Validate integer settings that must be positive."""

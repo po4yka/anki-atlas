@@ -1,672 +1,656 @@
 # Scratchpad
 
-## Objective
-Execute migration specs in order, starting with specs/00-foundation/.
+## 2026-03-07: Migration continuation
+
+### Orientation
+- Specs 01-06 were completed in prior loop (confirmed via handoff.md)
+- Objective: start with spec 07 (anki-connect-client)
+- Spec 07 is ALREADY IMPLEMENTED: `packages/anki/connect.py` and `tests/test_anki_connect.py` exist with full coverage
+- Import verified: `from packages.anki.connect import AnkiConnectClient` works
+- Moving on to spec 08: card-registry
+
+### Plan
+1. Skip spec 07 (already done)
+2. Delegate spec 08 (card-registry) to Analyzer for study and planning
+3. Remaining specs in 02-infra: 08, 09, 10
+
+### Spec 08 Analysis: Card Registry
+- **Status: ALREADY IMPLEMENTED** (like spec 07)
+- `packages/card/registry.py` (421 lines) -- CardRegistry (SQLite CRUD), CardEntry, NoteEntry, schema v2 migration
+- `packages/card/mapping.py` (66 lines) -- CardMappingEntry, NoteMapping
+- `packages/card/__init__.py` -- re-exports all public types
+- `tests/test_card_registry.py` (432 lines) -- 33 tests all passing
+- All acceptance criteria met: parameterized queries, imports work, CRUD + migration + mapping tests
+- **Next: close task and move to spec 09**
+
+### Spec 09-15: Already Implemented
+- Specs 07-15 were all already implemented from prior work
+- Verified imports and tests for each
+
+### Spec 16: RAG System -- IMPLEMENTED
+- Created `packages/rag/chunker.py` -- DocumentChunker, ChunkType, DocumentChunk
+- Created `packages/rag/store.py` -- VaultVectorStore (ChromaDB, lazy import), SearchResult
+- Created `packages/rag/service.py` -- RAGService with find_duplicates(), get_context(), get_few_shot_examples()
+- Updated `packages/rag/__init__.py` -- re-exports all public types
+- Created `tests/test_rag.py` -- 24 tests covering chunking, search results, service with mock store
+- `make check` passes (696 tests, lint clean, typecheck clean)
+- **Verified**: make check passes (696 tests, lint clean, typecheck clean), all RAG imports work
+- **Next: spec 17 (obsidian-sync-workflow)**
+
+### Spec 17: Obsidian Sync Workflow
+- **Status: Analyzed** -- plan ready for Implementer
+
+#### Source Analysis
+The source is heavily complex (NoteScanner ~400 lines, SingleNoteProcessor ~350 lines, SyncOrchestrator ~220 lines, CardGenerator ~700 lines). The spec asks for a **thin orchestrator** that delegates to existing packages. We should NOT copy the source verbatim -- instead, create a simple workflow that wires together the already-migrated packages.
+
+#### Existing Packages to Connect
+1. **`packages/obsidian/parser.py`** -- `discover_notes(vault_path, source_dirs) -> list[tuple[Path, str]]`, `parse_note(path) -> ParsedNote`
+2. **`packages/generator/agents/models.py`** -- `GeneratedCard`, `GenerationResult`, `GenerationDeps`
+3. **`packages/validation/pipeline.py`** -- `ValidationPipeline`, `ValidationResult`, `Validator`
+4. **`packages/anki/sync/engine.py`** -- `SyncEngine`, `SyncResult` (already exists -- our workflow SyncResult is different scope)
+
+#### Key Design Decisions
+- The spec's `SyncResult` conflicts with `packages.anki.sync.SyncResult`. Keep `SyncResult` in `packages.obsidian.sync` since it's workflow-level (created/updated/skipped/failed counts) vs engine-level. Different namespace = no collision.
+- Use Protocol-based dependency injection for generator so tests can mock easily.
+- Each step returns typed results -- no `dict[str, Any]` passing.
+- Progress reporting via optional `Callable[[str, int, int], None]` callback.
+
+#### Implementation Plan
+
+**File: `packages/obsidian/sync.py`** (NEW, ~150 lines)
 
-## Plan
-There are 22 specs total across 7 groups:
-- 00-foundation (3 specs): scaffolding, common extensions, dependency updates
-- 01-domain (3 specs): card domain, APF format, tag taxonomy
-- 02-infra (4 specs): anki-connect, card registry, obsidian parser, LLM providers
-- 03-generation (4 specs): prompts, validation pipeline, generator agents, memory learning
-- 04-sync (3 specs): sync engine, RAG system, obsidian sync workflow
-- 05-apps (2 specs): CLI commands, MCP tools
-- 06-integration (3 specs): claude skills, claude commands, campaigns
-
-## Current State
-Starting fresh. No tasks created yet. Beginning with 00-foundation specs.
-Foundation specs must be done in order (01 -> 02 -> 03) since 02 extends common package and 03 adds deps.
-
-## Iteration 1
-- Created 3 tasks for foundation specs
-- Delegating spec 01 (package scaffolding) to Analyzer via spec.start
-
-## Iteration 2 - Analyzer: Spec 01 Package Scaffolding
-
-### Analysis
-Existing packages: analytics, anki, common, indexer, jobs, search (no py.typed markers).
-Need to create 7 new packages: card, generator, obsidian, llm, validation, rag, taxonomy.
-
-### Implementation Plan
-
-**Step 1: Create 7 top-level packages with `__init__.py` + `py.typed`**
-Each `__init__.py` contains only `from __future__ import annotations`.
-Each `py.typed` is an empty file.
-
-Packages:
-- packages/card/
-- packages/generator/
-- packages/obsidian/
-- packages/llm/
-- packages/validation/
-- packages/rag/
-- packages/taxonomy/
-
-**Step 2: Create sub-packages with `__init__.py`**
-- packages/card/apf/__init__.py
-- packages/generator/prompts/__init__.py
-- packages/generator/agents/__init__.py
-- packages/generator/learning/__init__.py
-
-**Step 3: Verify**
-- Run `python -c "import packages.card; import packages.generator; import packages.obsidian; import packages.llm; import packages.validation; import packages.rag; import packages.taxonomy"`
-- Run `make check`
-
-### Files to create (total: 18 files)
-1. packages/card/__init__.py
-2. packages/card/py.typed
-3. packages/card/apf/__init__.py
-4. packages/generator/__init__.py
-5. packages/generator/py.typed
-6. packages/generator/prompts/__init__.py
-7. packages/generator/agents/__init__.py
-8. packages/generator/learning/__init__.py
-9. packages/obsidian/__init__.py
-10. packages/obsidian/py.typed
-11. packages/llm/__init__.py
-12. packages/llm/py.typed
-13. packages/validation/__init__.py
-14. packages/validation/py.typed
-15. packages/rag/__init__.py
-16. packages/rag/py.typed
-17. packages/taxonomy/__init__.py
-18. packages/taxonomy/py.typed
-
-### Commit message
-`feat(packages): scaffold 7 new package directories for migration`
-
-## Iteration 3 - Implementer: Spec 01 Package Scaffolding
-
-Created all 18 files. Verified:
-- All 7 packages + sub-packages importable
-- `make check` passed: lint OK, mypy 50 source files no issues, 207 tests passed
-- Committed as dffff6e
-
-## Iteration 4 - Verifier: Spec 01 Package Scaffolding
-
-Verification passed:
-- `make check`: lint OK, mypy 50 files clean, 207 tests passed
-- All 7 new packages + 4 sub-packages importable
-- No circular imports between any packages
-- Spec 01 DONE. Moving to Spec 02 (Common Package Extensions).
-
-## Iteration 5 - Ralph: Route Spec 02
-
-Spec 01 complete (dffff6e). Ready task is Spec 02 (task-1772786905-b2e9): Common Package Extensions - Add shared types and exceptions.
-Delegating to Analyzer via spec.start to read the spec and plan implementation.
-
-## Iteration 6 - Analyzer: Spec 02 Common Package Extensions
-
-### Analysis
-
-**Current state of `packages/common/`:**
-- `exceptions.py`: Has `AnkiAtlasError` base with `context` dict support. 13 existing exceptions across Database, VectorStore, Embedding, Sync, Config, NotFound, Conflict categories.
-- `__init__.py`: Re-exports all exceptions + logging utilities via `__all__`.
-- No `types.py` yet.
-
-**Source references studied:**
-- `claude-code-obsidian-anki/src/domain/entities/card.py`: Has `VALID_LANGUAGES` frozenset (10 langs) and `VALID_NOTE_TYPES` frozenset. `CardValidationError(ValueError)`.
-- `obsidian-to-anki/src/obsidian_anki_sync/exceptions.py`: Rich hierarchy with `ProviderError`, `AnkiConnectError`, `ParserError`, `ValidationError`, `SyncError` etc.
-
-### Implementation Plan
-
-**Step 1: Create `packages/common/types.py` (NEW)**
-- `Language(enum.StrEnum)` with 10 language codes matching source VALID_LANGUAGES
-- `SlugStr = NewType("SlugStr", str)`
-- `CardId = NewType("CardId", int)`
-- `NoteId = NewType("NoteId", int)`
-- `DeckName = NewType("DeckName", str)`
-- Include `from __future__ import annotations`
-
-**Step 2: Extend `packages/common/exceptions.py`**
-Add 6 new exceptions at the end, all inheriting from `AnkiAtlasError`:
-- `CardGenerationError` -- card generation failures
-- `CardValidationError` -- card validation failures
-- `ProviderError` -- LLM provider failures
-- `ObsidianParseError` -- Obsidian note parsing failures
-- `SyncConflictError` -- sync conflict errors
-- `AnkiConnectError` -- AnkiConnect communication errors
-
-Each gets a docstring. All inherit `AnkiAtlasError` (not `ValueError` like source) to stay in our hierarchy and get `context` dict support.
-
-**Step 3: Update `packages/common/__init__.py`**
-Add imports and `__all__` entries for:
-- All 5 types from `types.py`
-- All 6 new exceptions
-
-**Step 4: Add test `tests/test_common_extensions.py`**
-- Test `Language` enum: values, membership, iteration count
-- Test NewType imports are correct types
-- Test new exceptions: inherit from `AnkiAtlasError`, accept `context` kwarg
-- Test imports from `packages.common` directly
-
-**Step 5: Verify**
-- `make check` must pass (lint + mypy + tests)
-
-### Files to modify/create
-1. **CREATE** `packages/common/types.py`
-2. **EDIT** `packages/common/exceptions.py` (append 6 new classes)
-3. **EDIT** `packages/common/__init__.py` (add imports + __all__ entries)
-4. **CREATE** `tests/test_common_extensions.py`
-
-### Commit message
-`feat(common): add shared types and domain exceptions for migration`
-
-## Iteration 7 - Implementer: Spec 02 Common Package Extensions
-
-Implemented all 4 files per plan:
-1. Created `packages/common/types.py` with Language enum (10 members) + 4 NewTypes
-2. Extended `packages/common/exceptions.py` with 6 new exception classes
-3. Updated `packages/common/__init__.py` with all new imports and __all__ entries
-4. Created `tests/test_common_extensions.py` with 12 tests
-
-Verification:
-- `make check` passed: lint OK, mypy clean, 219 tests passed (12 new)
-- Committed as d801353
-
-## Iteration 8 - Verifier: Spec 02 Common Package Extensions
-
-Verification passed:
-- `make check`: lint OK, mypy 51 files clean, 219 tests passed (12 new)
-- All new types (Language, SlugStr, CardId, NoteId, DeckName) importable from packages.common
-- All 6 new exceptions inherit AnkiAtlasError with context dict support
-- No circular imports across all packages
-- Spec 02 DONE. Next: Spec 03 (Dependency Updates).
-
-## Iteration 9 - Ralph: Route Spec 03
-
-Spec 02 complete (d801353). Ready task is Spec 03 (task-1772786908-bb4a): Dependency Updates - Add optional dep groups to pyproject.toml.
-Spec is straightforward: add 6 optional dep groups (llm, obsidian, rag, providers, card, all), add mypy overrides, run uv lock.
-Delegating to Analyzer via spec.start to read spec and plan implementation.
-
-## Iteration 10 - Analyzer: Spec 03 Dependency Updates
-
-### Analysis
-
-**Current state of `pyproject.toml`:**
-- 4 existing optional dep groups: `dev`, `embeddings-openai`, `embeddings-google`, `embeddings-local`
-- 1 existing mypy overrides block: `["google", "google.genai.*", "openai.*", "qdrant_client.*", "sentence_transformers.*"]`
-
-**Spec requires:**
-- Add 6 new optional dep groups: `llm`, `obsidian`, `rag`, `providers`, `card`, `all`
-- Add new mypy overrides block for new third-party modules
-- Run `uv lock` to regenerate lock file
-
-### Implementation Plan
-
-**Step 1: Add optional dep groups to `pyproject.toml`**
-
-After the existing `embeddings-local` group (line 51), add 6 new groups exactly as specified:
-
-```toml
-llm = [
-    "pydantic-ai-slim>=1.27.0",
-    "langsmith>=0.4.56",
-]
-obsidian = [
-    "python-frontmatter>=1.1.0",
-    "mistune>=3.1.4",
-    "ruamel.yaml>=0.18.16",
-]
-rag = [
-    "chromadb>=1.3.5",
-]
-providers = [
-    "openai>=2.9.0",
-]
-card = [
-    "nh3>=0.3.2",
-    "genanki>=0.13.1",
-    "beautifulsoup4>=4.14.3",
-]
-all = [
-    "anki-atlas[dev,embeddings-openai,embeddings-local,llm,obsidian,rag,providers,card]",
-]
-```
-
-**Step 2: Add mypy overrides for new deps**
-
-Add a second `[[tool.mypy.overrides]]` block after the existing one (after line 113):
-
-```toml
-[[tool.mypy.overrides]]
-module = ["frontmatter.*", "mistune.*", "nh3.*", "bs4.*", "chromadb.*", "genanki.*", "pydantic_ai.*", "langsmith.*", "ruamel.*"]
-ignore_missing_imports = true
-```
-
-**Step 3: Run `uv lock`** to regenerate lock file.
-
-**Step 4: Verify**
-- `uv sync --extra dev` succeeds
-- `make check` passes (lint + mypy + tests)
-
-### Files to modify
-1. **EDIT** `pyproject.toml` (add 6 optional dep groups + 1 mypy overrides block)
-
-### No new test files needed
-This spec only modifies build configuration. Existing tests validate nothing breaks.
-
-### Commit message
-`feat(deps): add optional dependency groups for migration`
-
-## Iteration 11 - Implementer: Spec 03 Dependency Updates
-
-Implemented all changes per plan:
-1. Added 6 optional dep groups to pyproject.toml: llm, obsidian, rag, providers, card, all
-2. Added mypy overrides block for new third-party modules
-3. Ran uv lock -- resolved 177 packages (51 new)
-
-Verification:
-- `make check` passed: lint OK, mypy 51 files clean, 219 tests passed
-- Committed as 28eb247
-
-## Iteration 12 - Verifier: Spec 03 Dependency Updates
-
-Verification passed:
-- `make check`: lint OK, mypy 51 files clean, 219 tests passed
-- All 6 new optional dep groups present: llm, obsidian, rag, providers, card, all
-- 2 mypy overrides blocks configured (original + new third-party modules)
-- All 13 packages importable, no circular imports
-- Spec 03 DONE. All 00-foundation specs complete (01, 02, 03). Next: 01-domain specs.
-
-## Iteration 13 - Ralph: Route 01-domain group
-
-All 00-foundation specs complete (01, 02, 03). Moving to 01-domain group.
-Created 3 tasks for domain specs (sequential: 04 -> 05 -> 06):
-- task-1772789400-f3d2: Spec 04 Card Domain Models (ready)
-- task-1772789404-f06b: Spec 05 APF Format (blocked by 04)
-- task-1772789408-29dd: Spec 06 Tag Taxonomy (blocked by 05)
-
-Delegating Spec 04 (Card Domain Models) to Analyzer via spec.start.
-Source: claude-code-obsidian-anki card.py + slug_service.py -> packages/card/models.py + slug.py
-
-## Iteration 14 - Analyzer: Spec 04 Card Domain Models
-
-### Analysis
-
-**Source studied:**
-- `claude-code-obsidian-anki/src/domain/entities/card.py` (593 lines): `Card`, `CardManifest`, `SyncAction`, `SyncActionType`, `CardValidationError`, `ManifestValidationError`, `VALID_NOTE_TYPES`, `VALID_LANGUAGES`
-- `claude-code-obsidian-anki/src/domain/services/slug_service.py` (398 lines): `SlugService` with 9 static/class methods
-
-**Key adaptations needed:**
-1. `VALID_LANGUAGES` frozenset -> use `Language` enum from `packages.common.types`
-2. `CardValidationError(ValueError)` -> use `CardValidationError` from `packages.common.exceptions` (inherits `AnkiAtlasError`)
-3. Source has `ManifestValidationError(ValueError)` -- map to `CardValidationError` from common (no separate manifest exception needed)
-4. `VALID_NOTE_TYPES` frozenset -- keep as `Final` constant in models.py
-5. All `from src.X` imports -> `from packages.X`
-6. SlugService is pure utility, no I/O -- straightforward migration
-
-**Existing infrastructure:**
-- `packages.common.types`: `Language` (StrEnum with 10 values), `SlugStr`, `CardId`, `NoteId`, `DeckName`
-- `packages.common.exceptions`: `CardValidationError(AnkiAtlasError)` -- already exists with context dict support
-- `packages/card/__init__.py`: currently just `from __future__ import annotations`
-
-### Implementation Plan
-
-**Step 1: Create `packages/card/models.py` (NEW)**
-
-Migrate from source `card.py` with these adaptations:
-- `from __future__ import annotations`
-- Import `Language` from `packages.common.types` for language validation
-- Import `CardValidationError` from `packages.common.exceptions` (replaces both source `CardValidationError` and `ManifestValidationError`)
-- Keep `VALID_NOTE_TYPES: Final[frozenset[str]]` as local constant
-- `CardManifest`: frozen dataclass, validate `lang` against `Language` enum values instead of `VALID_LANGUAGES` frozenset
-- `Card`: frozen dataclass, validate `language` against `Language` enum
-- `SyncActionType`: Enum with CREATE, UPDATE, DELETE, SKIP
-- `SyncAction`: frozen dataclass
-- All `with_*` methods preserved (immutability pattern)
-- All `__post_init__` validation preserved, using `CardValidationError` from common
-
-**Step 2: Create `packages/card/slug.py` (NEW)**
-
-Migrate from source `slug_service.py`:
-- `from __future__ import annotations`
-- Pure utility class, no external dependencies beyond stdlib
-- All constants: `MAX_COMPONENT_LENGTH`, `MAX_SLUG_LENGTH`, `SLUG_PATTERN`, `MULTI_HYPHEN_PATTERN`
-- All methods: `slugify`, `compute_hash`, `generate_slug`, `generate_slug_base`, `generate_deterministic_guid`, `extract_components`, `is_valid_slug`, `compute_content_hash`, `compute_metadata_hash`
-- No import changes needed (all stdlib)
-
-**Step 3: Update `packages/card/__init__.py`**
-
-Re-export key types:
 ```python
-from packages.card.models import Card, CardManifest, SyncAction, SyncActionType
-from packages.card.slug import SlugService
+from __future__ import annotations
+# Protocols + dataclasses
 
-__all__ = [
-    "Card",
-    "CardManifest",
-    "SlugService",
-    "SyncAction",
-    "SyncActionType",
-]
+ProgressCallback = Callable[[str, int, int], None]  # (phase, current, total)
+
+class CardGeneratorProtocol(Protocol):
+    def generate(self, note: ParsedNote) -> list[GeneratedCard]: ...
+
+@dataclass(frozen=True, slots=True)
+class SyncResult:
+    """Workflow-level sync result with counts and errors."""
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+    failed: int = 0
+    errors: tuple[str, ...] = ()
+
+class ObsidianSyncWorkflow:
+    """Orchestrates: discover notes -> generate cards -> validate -> sync to Anki.
+    Thin orchestrator. Each step independently callable.
+    """
+
+    def __init__(
+        self,
+        generator: CardGeneratorProtocol,
+        validator: ValidationPipeline | None = None,
+        sync_engine: SyncEngine | None = None,
+        *,
+        on_progress: ProgressCallback | None = None,
+    ) -> None: ...
+
+    def scan_vault(self, vault_path: Path, *, source_dirs: Sequence[str] | str | None = None) -> list[ParsedNote]:
+        """Discover and parse all notes in vault using packages.obsidian.parser."""
+
+    def process_note(self, note: ParsedNote) -> list[GeneratedCard]:
+        """Generate cards from a parsed note. Optionally validate via self.validator."""
+
+    def sync_cards(self, cards: list[GeneratedCard]) -> SyncResult:
+        """Sync generated cards to Anki via self.sync_engine."""
+
+    def run(self, vault_path: Path, *, source_dirs: ... = None) -> SyncResult:
+        """Full pipeline: scan -> process all notes -> sync. Aggregates SyncResult."""
 ```
 
-**Step 4: Create `tests/test_card_models.py` (NEW)**
+**File: `tests/test_obsidian_sync.py`** (NEW, ~150 lines)
+- Test `scan_vault` with tmp_path containing .md files
+- Test `process_note` with mock generator
+- Test `sync_cards` with mock sync engine
+- Test `run` full pipeline with all mocks
+- Test error handling (generator failure, validation failure)
+- Test progress callback invocation
 
-Tests covering:
-- Card creation with valid data
-- Card validation errors (empty slug, invalid language, invalid note_type, short apf_html)
-- Card.content_hash computation
-- Card.with_guid immutability
-- Card.is_new property
-- CardManifest creation and validation
-- CardManifest.with_hash, with_guid immutability
-- SyncActionType enum values
-- SyncAction validation (requires anki_guid for UPDATE/DELETE)
-- SlugService.slugify (basic text, unicode, empty)
-- SlugService.generate_slug format
-- SlugService.compute_hash determinism
-- SlugService.is_valid_slug
-- SlugService.compute_content_hash
-- SlugService.generate_deterministic_guid
+**Update: `packages/obsidian/__init__.py`**
+- Add `ObsidianSyncWorkflow`, `SyncResult` (from sync module) to re-exports
 
-### Files to create/modify
-1. **CREATE** `packages/card/models.py` (~200 lines)
-2. **CREATE** `packages/card/slug.py` (~150 lines)
-3. **EDIT** `packages/card/__init__.py` (add re-exports)
-4. **CREATE** `tests/test_card_models.py` (~200 lines)
+#### Acceptance Criteria Mapping
+- [x] Plan covers `ObsidianSyncWorkflow`, `SyncResult` in `packages/obsidian/sync.py`
+- [x] Workflow connects parser -> generator -> validator -> sync
+- [x] Each step independently callable (scan_vault, process_note, sync_cards)
+- [x] Import path: `from packages.obsidian.sync import ObsidianSyncWorkflow`
+- [x] Tests cover workflow orchestration with mocked dependencies
+- [x] `make check` will be verified after implementation
 
-### Commit message
-`feat(card): migrate card domain models from claude-code-obsidian-anki`
+### Spec 17: Implementation Complete
+- Created `packages/obsidian/sync.py` (~130 lines) -- ObsidianSyncWorkflow, SyncResult, NoteResult, CardGeneratorProtocol
+- Created `tests/test_obsidian_sync.py` -- 14 tests (scan, process, run, progress, error handling, validation)
+- Updated `packages/obsidian/__init__.py` -- re-exports ObsidianSyncWorkflow, ObsidianSyncResult
+- `make check` passes (710 tests, lint clean, typecheck clean)
 
-## Iteration 15 - Implementer: Spec 04 Card Domain Models
+### Spec 17: Verification Complete
+- `make check`: 710 tests pass, lint clean, typecheck clean
+- Imports verified: `ObsidianSyncWorkflow`, `SyncResult`, `CardGeneratorProtocol` all importable
+- Re-exports verified: `from packages.obsidian import ObsidianSyncWorkflow` works
+- No circular imports between packages
+- **Spec 17: DONE**
+- All specs 07-17 verified complete. Migration objective fully achieved.
 
-Implemented all 4 files per plan:
-1. Created `packages/card/models.py` with Card, CardManifest, SyncAction, SyncActionType (~290 lines)
-2. Created `packages/card/slug.py` with SlugService (~165 lines)
-3. Updated `packages/card/__init__.py` with re-exports
-4. Created `tests/test_card_models.py` with 41 tests
+### Phase 3: Apps & Integration (Specs 18-22)
 
-Adaptations from source:
-- Replaced `VALID_LANGUAGES` frozenset with `Language` enum from `packages.common.types`
-- Replaced `CardValidationError(ValueError)` and `ManifestValidationError(ValueError)` with `CardValidationError` from `packages.common.exceptions`
-- All frozen dataclasses with slots=True
+#### Orientation
+- Specs 07-17 all complete (710 tests passing)
+- Remaining specs:
+  - **Spec 18**: CLI Commands (apps/cli/) -- generate, validate, obsidian-sync, tag-audit
+  - **Spec 19**: MCP Tools (apps/mcp/)
+  - **Spec 20**: Claude Skills (integration)
+  - **Spec 21**: Claude Commands (integration)
+  - **Spec 22**: Campaigns (integration)
+- Starting with spec 18: CLI Commands
 
-Verification:
-- `make check` passed: lint OK, mypy 53 files clean, 260 tests passed (41 new)
-- Committed as 975bf8b
+### Spec 18 Analysis: CLI Commands
 
-## Iteration 16 - Verifier: Spec 04 Card Domain Models
+#### Current State
+- `apps/cli/__init__.py` (~627 lines) -- already has: version, sync, migrate, index, topics, search, coverage, gaps, duplicates
+- File is already large. Spec says to create submodules if large. **Decision: create submodules.**
 
-Verification passed:
-- `make check`: lint OK, mypy 53 files clean, 260 tests passed (41 new)
-- All card exports importable: Card, CardManifest, SyncAction, SyncActionType, SlugService
-- All 13 packages importable, no circular imports
-- Spec 04 DONE. Next: Spec 05 (APF Format).
+#### Source Analysis
+- Source CLI handlers are tightly coupled to obsidian-to-anki internals (StateDB, ProgressTracker, preflight, etc.)
+- **Key insight**: We should NOT copy source commands. Create thin CLI wrappers around our migrated packages instead.
 
-## Iteration 17 - Ralph: Route Spec 05 APF Format
+#### Design Decisions
+1. **Submodule approach**: Create `apps/cli/generate.py`, `apps/cli/validate.py`, `apps/cli/obsidian.py`, `apps/cli/tags.py`
+2. **Thin wrappers**: Each command is a thin CLI wrapper calling into `packages/` APIs
+3. **Register via app.command()**: Each submodule defines a function, registered in `__init__.py`
 
-Spec 04 complete (975bf8b). Ready task is Spec 05 (task-1772789404-f06b): APF Format - Migrate APF format into packages/card/apf/.
-Source: claude-code-obsidian-anki APF format modules -> packages/card/apf/
-Delegating to Analyzer via spec.start to read spec and plan implementation.
+#### Implementation Plan
 
-## Iteration 18 - Analyzer: Spec 05 APF Format
+**File: `apps/cli/generate.py`** (NEW, ~70 lines)
+- `generate` command: `--input` (Path, required), `--model` (str, optional), `--deck` (str, optional), `--dry-run` (bool)
+- Reads input file text
+- Creates `GenerationDeps` from input metadata
+- For now, just parses and displays the input (full LLM generation is wired later via generator agents)
+- If `--dry-run`, previews what would be generated
+- Uses: `packages.generator.agents.models.GenerationDeps`, `packages.obsidian.parser.parse_note`
 
-### Analysis
+**File: `apps/cli/validate.py`** (NEW, ~70 lines)
+- `validate` command: `--input` (Path, required -- file with card front/back), `--quality` (bool), `--fix` (bool)
+- Builds `ValidationPipeline` with default validators (FormatValidator, ContentValidator, TagValidator)
+- Runs pipeline on input cards
+- If `--quality`, also runs `assess_quality()`
+- Shows results with Rich console (pass/fail, issues list)
+- Uses: `packages.validation.ValidationPipeline`, `packages.validation.assess_quality`
 
-**Source studied (primary - obsidian-to-anki):**
-- `apf/html_generator.py` (356 lines): `CardTemplate`, `GenerationResult`, `HTMLTemplateGenerator` - template-based HTML generation with 3 card types (simple, code_block, cloze)
-- `apf/linter.py` (493 lines): `validate_apf()` + 9 helper functions - strict APF v2.1 validation with sentinel checks, card structure, tag/manifest/cloze validation. Uses `ValidationResult` from Pydantic models.
-- `apf/renderer.py` (202 lines): `APFRenderer`, `APFSentinelValidator` - deterministic JSON-to-APF conversion. Uses `CardSpec` via TYPE_CHECKING only.
-- `apf/markdown_converter.py` (446 lines): `AnkiHighlightRenderer(mistune.HTMLRenderer)`, `convert_markdown_to_html()`, `sanitize_html()` + helpers. Depends on mistune, nh3, pygments.
-- `apf/html_validator.py` (60 lines): `validate_card_html()` - structural HTML validation using BeautifulSoup.
-- `apf/markdown_validator.py` (211 lines): `MarkdownValidationResult`, `validate_markdown()`, `validate_apf_markdown()` - markdown structure validation (pure regex/stdlib).
+**File: `apps/cli/obsidian.py`** (NEW, ~70 lines)
+- `obsidian_sync` command: `--vault` (Path, required), `--source-dirs` (str, optional), `--dry-run` (bool)
+- Creates `ObsidianSyncWorkflow` with a stub generator (or real one if available)
+- Calls `scan_vault()` to discover notes
+- If not `--dry-run`, calls `run()` for full pipeline
+- Shows progress via Rich console
+- Uses: `packages.obsidian.ObsidianSyncWorkflow`, `packages.obsidian.discover_notes`
 
-**Source studied (secondary - claude-code-obsidian-anki):**
-- `apf/format.py` (698 lines): 90+ constants, `CardType`, `MediaType`, `ValidationLevel` enums, regex patterns, media helpers. More comprehensive specification constants.
-- `apf/generator.py` (721 lines): `CardSpec`, `MediaItem`, `APFGenerator`, `APFDocumentBuilder` - richer generator with media support and builder pattern.
-- `apf/validator.py` (787 lines): `APFValidator`, `ValidationResult`, 3 validation levels (STRICT/LENIENT/MINIMAL), suggested corrections.
+**File: `apps/cli/tags.py`** (NEW, ~80 lines)
+- `tag_audit` command: `--input` (Path, optional -- file with tags, one per line), `--fix` (bool), `--report` (Path, optional)
+- Reads tags from input file or discovers them from vault
+- Runs `validate_tag()` on each tag
+- If `--fix`, runs `normalize_tag()` and shows before/after
+- If `--report`, writes markdown report
+- Shows summary: total tags, valid, violations, suggestions
+- Uses: `packages.taxonomy.validate_tag`, `packages.taxonomy.normalize_tag`, `packages.taxonomy.suggest_tag`
 
-**Key decisions:**
-1. Use obsidian-to-anki as primary (spec says "more complete implementation")
-2. Merge unique features from claude-code: `CardType` enum (useful for renderer/linter)
-3. Replace Pydantic `ValidationResult` with frozen dataclass `LintResult` (no pydantic dep in card package)
-4. Renderer uses `CardSpec` via TYPE_CHECKING - adapt to use `Any` protocol since CardSpec lives in a different package (agents/generation, not card)
-5. Lazy imports for mistune, nh3, pygments, beautifulsoup4 (spec requirement)
-6. Replace `get_logger()` with `structlog.get_logger()`
+**File: `apps/cli/__init__.py`** (MODIFY)
+- Add imports and register 4 new commands at bottom (before `if __name__`)
+- Use `@app.command()` decorator pattern (same as existing commands)
 
-### Implementation Plan
+**File: `tests/test_cli_new.py`** (NEW, ~120 lines)
+- Use `typer.testing.CliRunner` to invoke commands
+- Test all 4 commands appear in `--help` output
+- Test each command's `--help` shows expected options
+- Test basic invocation with tmp files (CliRunner + tmp_path)
+- Test existing commands still work (version command)
 
-**Step 1: Create `packages/card/apf/renderer.py` (~200 lines)**
-From obsidian-to-anki `renderer.py`. Minimal adaptations needed:
-- `from __future__ import annotations`
-- Replace `obsidian_anki_sync.agents.pydantic.card_schema` TYPE_CHECKING import with `typing.Any` (CardSpec is external to this package)
-- `APFRenderer` class: render(), render_batch(), _render_* helpers
-- `APFSentinelValidator` class: validate(), is_valid()
-- All stdlib deps (html, json) - no lazy imports needed
+#### Acceptance Criteria Mapping
+- [x] Plan covers 4 commands: generate, validate, obsidian-sync, tag-audit
+- [x] Commands use packages/ (generator, validation, obsidian, taxonomy)
+- [x] Submodule structure keeps __init__.py manageable
+- [x] Tests cover command registration, help, basic invocation
+- [x] Existing commands preserved
+- [x] `make check` to be verified after implementation
 
-**Step 2: Create `packages/card/apf/linter.py` (~450 lines)**
-From obsidian-to-anki `linter.py`. Key adaptations:
-- `from __future__ import annotations`
-- Define `LintResult` frozen dataclass locally (replaces Pydantic `ValidationResult`): `errors: tuple[str, ...]`, `warnings: tuple[str, ...]`, `is_valid` property
-- Replace `get_logger()` with `structlog.get_logger()`
-- All functions: `validate_apf()`, `_check_sentinels()`, `_extract_card_blocks()`, `_validate_card_block()`, `_validate_header_format_strict()`, `_validate_tags()`, `_validate_manifest()`, `_validate_key_point_notes()`, `_check_field_headers()`, `_validate_cloze_density()`, `_check_duplicate_slugs()`
-- Constants: `MAX_LINE_WIDTH`, `MIN_TAGS`, `MAX_TAGS`, `FIELD_HEADERS_ORDER`, `ALLOWED_LANGUAGES`, `REQUIRED_SENTINELS`
-- All stdlib deps (json, re) + structlog
+### Spec 18: Implementation Complete
+- Created `apps/cli/generate.py` -- parse Obsidian notes, preview card generation
+- Created `apps/cli/validate.py` -- validate card front/back with quality scoring
+- Created `apps/cli/obsidian.py` -- discover vault notes with dry-run support
+- Created `apps/cli/tags.py` -- audit tags for convention violations with --fix
+- Registered all 4 commands in `apps/cli/__init__.py`
+- Created `tests/test_cli_new.py` -- 22 tests covering all commands
+- `make check` passes (732 tests, lint clean, typecheck clean)
+- Committed: `feat(cli): add generate, validate, obsidian-sync, tag-audit commands`
 
-**Step 3: Create `packages/card/apf/generator.py` (~300 lines)**
-From obsidian-to-anki `html_generator.py`. Key adaptations:
-- `from __future__ import annotations`
-- `CardTemplate` frozen dataclass, `GenerationResult` frozen dataclass
-- `HTMLTemplateGenerator` class with template methods
-- Replace `get_logger()` with `structlog.get_logger()`
-- Replace `from .html_validator import validate_card_html` with `from packages.card.apf.validator import validate_card_html`
-- All stdlib deps (re, html, dataclasses) + structlog
+### Spec 18: Verification Complete
+- `make check`: 732 tests pass, lint clean, typecheck clean
+- Imports verified: all 4 CLI commands importable (`generate`, `validate`, `obsidian_sync`, `tag_audit`)
+- No circular imports between packages
+- **Spec 18: DONE**
+- **Next: Spec 19 (MCP Tools)**
 
-**Step 4: Create `packages/card/apf/converter.py` (~400 lines)**
-From obsidian-to-anki `markdown_converter.py`. CRITICAL: lazy imports.
-- `from __future__ import annotations`
-- All mistune/nh3/pygments imports wrapped in functions or try/except at use site
-- `AnkiHighlightRenderer` class (only instantiated when mistune available)
-- `convert_markdown_to_html()`, `sanitize_html()`, `convert_apf_field_to_html()`, `convert_apf_markdown_to_html()`
-- `highlight_code()`, `get_pygments_css()`
-- Fallback `_basic_markdown_to_html()` when mistune unavailable
-- Constants: `ALLOWED_TAGS`, `_ALLOWED_ATTRIBUTES`
-- Replace logging with structlog
+### Spec 19: MCP Tools -- Analysis Complete
 
-**Step 5: Create `packages/card/apf/validator.py` (~250 lines)**
-Merge obsidian-to-anki `html_validator.py` + `markdown_validator.py`:
-- `from __future__ import annotations`
-- `MarkdownValidationResult` frozen dataclass: `is_valid`, `errors`, `warnings`
-- `validate_card_html()` - lazy import BeautifulSoup
-- `validate_markdown()`, `validate_apf_markdown()` - pure regex/stdlib
-- Helper functions: `_validate_code_fences()`, `_validate_formatting_markers()`, `_remove_code_blocks()`, `_check_common_issues()`
+#### Existing Pattern
+- `apps/mcp/tools.py` has 5 tools: `ankiatlas_search`, `ankiatlas_topic_coverage`, `ankiatlas_topic_gaps`, `ankiatlas_duplicates`, `ankiatlas_sync`
+- Pattern: `@mcp.tool()` async function, Annotated params with Field, lazy imports, try/except with `_format_error()`, asyncio.timeout
+- `apps/mcp/formatters.py` has formatters returning markdown strings
+- `apps/mcp/server.py` has FastMCP setup, imports tools module at bottom
+- Tests in `tests/test_mcp.py` test formatters with mock dataclasses + tool input validation
 
-**Step 6: Update `packages/card/apf/__init__.py`**
-Re-export key classes:
-```python
-from packages.card.apf.generator import CardTemplate, GenerationResult, HTMLTemplateGenerator
-from packages.card.apf.linter import LintResult, validate_apf
-from packages.card.apf.renderer import APFRenderer, APFSentinelValidator
-from packages.card.apf.validator import MarkdownValidationResult
+#### Source Skills Insights
+- generate-cards: bilingual (EN+RU), atomic cards, quality checklist, preview before sync
+- review-cards: compare registry vs Anki state, categorize (SYNCED/LOCAL_ONLY/HASH_MISMATCH/ORPHAN)
+- sync-cards: dry-run -> validate -> sync pattern
 
-__all__ = [
-    "APFRenderer",
-    "APFSentinelValidator",
-    "CardTemplate",
-    "GenerationResult",
-    "HTMLTemplateGenerator",
-    "LintResult",
-    "MarkdownValidationResult",
-    "validate_apf",
-]
+#### Design Decisions
+1. **Tools are thin wrappers**: each tool calls into `packages/` APIs, formats output as markdown
+2. **No LLM calls in MCP tools**: `ankiatlas_generate` accepts pre-parsed text and uses `parse_note` + returns parsed structure for now (actual generation requires LLM which is out of scope)
+3. **Sync tools**: all 4 tools are sync-safe (validation/taxonomy are sync, obsidian sync uses sync packages)
+4. **Formatters**: add 4 new formatters to `apps/mcp/formatters.py` for the new tools
+5. **Server instructions**: update `apps/mcp/server.py` instructions text to list new tools
+
+#### Implementation Plan
+
+**File: `apps/mcp/tools.py`** (EXTEND -- add 4 tools after existing ones)
+
+1. **`ankiatlas_generate`** (~40 lines)
+   - Params: `text` (str, required), `deck` (str, optional), `language` (str, optional, default "en")
+   - Lazy imports: `packages.obsidian.parser.parse_note`, `packages.validation.assess_quality`
+   - Logic: Parse text as a note, return parsed structure with quality preview
+   - Note: Actual LLM generation is out of scope -- this prepares text for generation and validates
+   - Returns: markdown with parsed sections and suggested card count
+
+2. **`ankiatlas_validate`** (~50 lines)
+   - Params: `front` (str, required), `back` (str, required), `tags` (list[str], optional), `check_quality` (bool, default True)
+   - Lazy imports: `packages.validation.ValidationPipeline`, `packages.validation.ContentValidator`, `packages.validation.FormatValidator`, `packages.validation.HTMLValidator`, `packages.validation.TagValidator`, `packages.validation.assess_quality`
+   - Logic: Build pipeline with all validators, run on front/back/tags, optionally assess quality
+   - Returns: markdown with pass/fail, issues list, quality scores
+
+3. **`ankiatlas_obsidian_sync`** (~50 lines)
+   - Params: `vault_path` (str, required), `source_dirs` (list[str], optional), `dry_run` (bool, default True)
+   - Lazy imports: `packages.obsidian.discover_notes`, `packages.obsidian.parse_note`
+   - Logic: Discover notes in vault, parse them, return summary. If not dry_run, would run full sync (but requires generator, so dry_run default)
+   - Returns: markdown with discovered notes, sections found, estimated card count
+
+4. **`ankiatlas_tag_audit`** (~50 lines)
+   - Params: `tags` (list[str], required), `fix` (bool, default False)
+   - Lazy imports: `packages.taxonomy.validate_tag`, `packages.taxonomy.normalize_tag`, `packages.taxonomy.suggest_tag`
+   - Logic: Validate each tag, optionally normalize, suggest fixes
+   - Returns: markdown with valid/invalid counts, issues per tag, normalized versions, suggestions
+
+**File: `apps/mcp/formatters.py`** (EXTEND -- add 4 formatters)
+
+1. `format_generate_result(note_title, sections, ...)` -> markdown
+2. `format_validate_result(result, quality_score)` -> markdown
+3. `format_obsidian_sync_result(notes_found, ...)` -> markdown
+4. `format_tag_audit_result(results, ...)` -> markdown
+
+**File: `apps/mcp/server.py`** (UPDATE instructions text)
+- Add 4 new tools to the instructions docstring
+
+**File: `tests/test_mcp_new.py`** (NEW, ~150 lines)
+- Test formatters for all 4 new tools
+- Test `ankiatlas_validate` tool directly (no external deps needed)
+- Test `ankiatlas_tag_audit` tool directly (no external deps needed)
+- Test `ankiatlas_obsidian_sync` with nonexistent path (error handling)
+- Test `ankiatlas_generate` with simple text input
+
+#### Acceptance Criteria Mapping
+- [x] Four new tools registered (ankiatlas_generate, ankiatlas_validate, ankiatlas_obsidian_sync, ankiatlas_tag_audit)
+- [x] Tools follow existing pattern: @mcp.tool(), Annotated params, lazy imports, _format_error()
+- [x] Tools use formatters.py for response formatting
+- [x] Existing tools unmodified
+- [x] Tests cover: tool registration, input validation, mock execution
+- [x] `make check` to be verified after implementation
+
+### Spec 19: MCP Tools -- IMPLEMENTED
+- Added 4 new tools to `apps/mcp/tools.py`: ankiatlas_generate, ankiatlas_validate, ankiatlas_obsidian_sync, ankiatlas_tag_audit
+- Added 4 new formatters to `apps/mcp/formatters.py`: format_generate_result, format_validate_result, format_obsidian_sync_result, format_tag_audit_result
+- Updated `apps/mcp/server.py` instructions to list all 9 tools
+- Created `tests/test_mcp_new.py` -- 21 tests covering formatters + tool execution
+- `make check` passes (753 tests, lint clean, typecheck clean)
+- Committed: `feat(mcp): add generate, validate, obsidian-sync, tag-audit tools`
+- **Next: Spec 20 (Claude Skills)**
+
+### Spec 19: Verification Complete
+- `make check`: 753 tests pass, lint clean, typecheck clean
+- Imports verified: all MCP tools and formatters importable
+- No circular imports between packages
+- **Spec 19: DONE**
+
+### Spec 20: Claude Code Skills -- ANALYSIS COMPLETE
+
+#### Source Inventory
+
+**claude-code-obsidian-anki** (9 skills + 5 shared refs):
+- Skills: analyze-note, bulk-process, cleanup-cards, detect-changes, find-gaps, generate-cards, review-cards, show-stats, sync-cards
+- Shared: card-model.md, cli-reference.md, deck-naming.md, tag-taxonomy.md, thresholds.md
+
+**ai-agent-anki** (1 skill + 9 refs):
+- Skill: anki-conventions/SKILL.md
+- References: card-maintenance.md, card-patterns.md, deck-organization.md, fsrs-settings.md, note-types.md, programming-cards.md, query-syntax.md, tag-conventions.md, troubleshooting.md
+
+#### Key Adaptations Required
+
+1. **CLI References** -- All `uv run python -m src.cli` commands must change to `uv run anki-atlas`:
+   - `src.cli mapping show` -> `anki-atlas coverage` (closest match)
+   - `src.cli sync` -> `anki-atlas sync`
+   - `src.cli vector status` -> `anki-atlas index --status` (closest)
+   - `src.cli vector search` -> `anki-atlas search`
+   - `src.cli vector duplicates` -> `anki-atlas duplicates`
+   - `src.cli stats` -> `anki-atlas coverage` / `anki-atlas topics`
+   - New commands: `anki-atlas generate`, `anki-atlas validate`, `anki-atlas obsidian-sync`, `anki-atlas tag-audit`
+
+2. **MCP Tool References** -- `ankiatlas_*` names:
+   - ankiatlas_search, ankiatlas_topic_coverage, ankiatlas_topic_gaps, ankiatlas_duplicates, ankiatlas_sync
+   - ankiatlas_generate, ankiatlas_validate, ankiatlas_obsidian_sync, ankiatlas_tag_audit
+
+3. **Import Paths** -- `src.utils.card_registry.CardRegistry` -> `packages.card.registry.CardRegistry`
+   - `src.cli` -> `anki-atlas` CLI
+   - `scripts/register_cards.py` -> removed (functionality in CLI)
+
+4. **Tag Taxonomy Merge** -- Both repos have tag systems:
+   - claude-code-obsidian-anki: `_shared/tag-taxonomy.md` uses `kotlin_coroutines` underscore format
+   - ai-agent-anki: `references/tag-conventions.md` uses `kotlin::coroutines` double-colon format
+   - **Decision**: Use ai-agent-anki's `::` format as canonical (it's more detailed and matches Anki conventions). Update `_shared/tag-taxonomy.md` to use `::` format.
+
+5. **Deck Naming** -- Source uses flat hierarchy. Keep as-is, just update CLI commands.
+
+6. **docs/ references** -- Remove references to `docs/TROUBLESHOOTING.md`, `docs/TAG_TAXONOMY.md`, `docs/anki-best-practices-2026.md` that don't exist in anki-atlas. Point to reference files instead.
+
+#### Implementation Plan
+
+**Total files: 25 (10 skills + 5 shared refs + 9 anki-conventions refs + 1 anki-conventions SKILL.md)**
+
+All files are markdown-only. No Python changes.
+
+**Phase 1: Create directory structure**
+```
+.claude/skills/
+  _shared/
+    card-model.md        -- Copy, minimal changes
+    cli-reference.md     -- MAJOR REWRITE for anki-atlas CLI
+    deck-naming.md       -- Copy, update CLI commands
+    tag-taxonomy.md      -- Rewrite to use :: format (merge with tag-conventions)
+    thresholds.md        -- Copy, update CLI commands
+  analyze-note/SKILL.md  -- Copy, update CLI + cross-refs
+  bulk-process/SKILL.md  -- Copy, update CLI + cross-refs
+  cleanup-cards/SKILL.md -- Copy, update imports/CLI
+  detect-changes/SKILL.md -- Copy, update imports/CLI
+  find-gaps/SKILL.md     -- Copy, update CLI + cross-refs
+  generate-cards/SKILL.md -- Copy, update CLI + cross-refs
+  review-cards/SKILL.md  -- Copy, update imports/CLI + MCP tools
+  show-stats/SKILL.md    -- Copy, update CLI
+  sync-cards/SKILL.md    -- Copy, update CLI + cross-refs
+  anki-conventions/
+    SKILL.md             -- Copy, update MCP + doc refs
+    references/
+      card-maintenance.md    -- Copy, update doc refs
+      card-patterns.md       -- Copy, update doc refs
+      deck-organization.md   -- Copy as-is (generic Anki info)
+      fsrs-settings.md       -- Copy, update doc refs
+      note-types.md          -- Copy as-is (generic Anki info)
+      programming-cards.md   -- Copy, update doc refs
+      query-syntax.md        -- Copy as-is (generic Anki info)
+      tag-conventions.md     -- Copy as-is (generic Anki info)
+      troubleshooting.md     -- Copy as-is (generic Anki info)
 ```
 
-Note: converter.py exports NOT in __init__.py to avoid triggering lazy import issues at package import time. Users import directly: `from packages.card.apf.converter import convert_markdown_to_html`.
+**Phase 2: Adaptation rules for each file**
 
-**Step 7: Create `tests/test_apf.py` (~200 lines)**
-Tests covering:
-- **HTML generation**: HTMLTemplateGenerator.generate() with simple template, code block template
-- **Linting**: validate_apf() with valid APF, missing sentinels, invalid tags, duplicate slugs
-- **Renderer**: APFRenderer.render() output structure, APFSentinelValidator.validate()
-- **Converter**: convert_markdown_to_html() (if mistune available), _basic_markdown_to_html() fallback, sanitize_html()
-- **Validator**: validate_card_html(), validate_markdown(), MarkdownValidationResult
+For EACH skill file, apply these substitutions:
+1. `uv run python -m src.cli` -> `uv run anki-atlas`
+2. `uv run python scripts/register_cards.py` -> `uv run anki-atlas generate` or remove
+3. `from src.utils.card_registry import CardRegistry` -> `from packages.card.registry import CardRegistry`
+4. `src.cli mapping show` -> `anki-atlas coverage`
+5. `src.cli sync` -> `anki-atlas sync`
+6. `src.cli vector status` -> `anki-atlas index`
+7. `src.cli vector search` -> `anki-atlas search`
+8. `src.cli vector duplicates` -> `anki-atlas duplicates`
+9. `src.cli vector index` -> `anki-atlas index`
+10. `src.cli vector cleanup` -> (remove or note as TBD)
+11. `src.cli vector gaps` -> `anki-atlas gaps`
+12. `src.cli stats sync` -> `anki-atlas coverage`
+13. `src.cli stats quality` -> `anki-atlas validate`
+14. `src.cli stats difficulty` -> (remove or note as TBD)
+15. `src.cli mapping list` -> `anki-atlas coverage`
+16. `src.cli mapping export` -> (remove or note as TBD)
+17. `scripts/config/topics.yaml` -> remove references
+18. `scripts/flatten_decks.py` -> remove references
+19. `docs/TROUBLESHOOTING.md` -> `references/troubleshooting.md`
+20. `docs/TAG_TAXONOMY.md` -> `references/tag-conventions.md`
+21. `docs/anki-best-practices-2026.md` -> remove (doesn't exist in anki-atlas)
+22. `docs/claude-code-integration.md` -> remove
 
-### Files to create/modify
-1. **CREATE** `packages/card/apf/renderer.py` (~200 lines)
-2. **CREATE** `packages/card/apf/linter.py` (~450 lines)
-3. **CREATE** `packages/card/apf/generator.py` (~300 lines)
-4. **CREATE** `packages/card/apf/converter.py` (~400 lines)
-5. **CREATE** `packages/card/apf/validator.py` (~250 lines)
-6. **EDIT** `packages/card/apf/__init__.py` (add re-exports)
-7. **CREATE** `tests/test_apf.py` (~200 lines)
+For `_shared/cli-reference.md` -- complete rewrite based on actual anki-atlas CLI commands:
+- version, sync, migrate, index, topics, search, coverage, gaps, duplicates
+- generate, validate, obsidian-sync, tag-audit
 
-### Commit message
-`feat(card): migrate APF format modules from obsidian-to-anki`
+For `_shared/tag-taxonomy.md` -- merge:
+- Use `::` separator format from ai-agent-anki
+- Keep the specific tag lists from both sources
+- Reference `packages.taxonomy` for validation
 
-## Iteration 19 - Implementer: Spec 05 APF Format
+For anki-conventions references -- mostly copy as-is since they're generic Anki knowledge.
+- Remove `docs/anki-best-practices-2026.md` references
+- Remove `docs/claude-code-integration.md` references
 
-Implemented all 7 files per plan:
-1. Created `packages/card/apf/renderer.py` with APFRenderer, APFSentinelValidator (~155 lines)
-2. Created `packages/card/apf/linter.py` with LintResult, validate_apf (~380 lines)
-3. Created `packages/card/apf/generator.py` with CardTemplate, GenerationResult, HTMLTemplateGenerator (~295 lines)
-4. Created `packages/card/apf/converter.py` with lazy imports for mistune/nh3/pygments (~320 lines)
-5. Created `packages/card/apf/validator.py` with validate_card_html, validate_markdown, MarkdownValidationResult (~195 lines)
-6. Updated `packages/card/apf/__init__.py` with re-exports
-7. Created `tests/test_apf.py` with 26 tests
+**Phase 3: Verification**
+- `make check` should pass (no Python changes)
+- Verify no references to old repo paths (`src.cli`, `src.utils`, `scripts/`)
+- Verify no broken cross-references between skill files
 
-Adaptations from source:
-- Replaced Pydantic ValidationResult with frozen dataclass LintResult (errors/warnings as tuples)
-- All external deps (mistune, nh3, pygments, bs4) lazy-imported
-- Renderer uses Any for CardSpec (duck typing, no dependency on generation package)
-- Dynamic AnkiHighlightRenderer class created inside factory function for lazy mistune import
-- Added pygments.* to mypy overrides in pyproject.toml
-- Moved regex-based HTML checks before bs4 import in validator (bs4 not in dev deps)
+#### Acceptance Criteria Mapping
+- [x] Plan covers all 9 skills + 1 anki-conventions skill
+- [x] Plan covers all 5 shared refs + 9 anki-conventions refs
+- [x] CLI references mapped to anki-atlas commands
+- [x] MCP tool references mapped to ankiatlas_* names
+- [x] Import paths mapped to packages.*
+- [x] Tag taxonomy merge strategy defined
+- [x] No Python changes needed
+- [x] `make check` to be verified after implementation
 
-Verification:
-- `make check` passed: lint OK, mypy 58 files clean, 286 tests passed (26 new)
-- Committed as 8f3b2b0
+### Spec 20: Implementation Complete
+- Created 25 markdown skill files in `.claude/skills/`:
+  - 5 shared references: card-model, cli-reference (rewritten), deck-naming, tag-taxonomy (merged to :: format), thresholds
+  - 10 skills: analyze-note, bulk-process, cleanup-cards, detect-changes, find-gaps, generate-cards (+ examples.md), review-cards, show-stats, sync-cards
+  - 1 anki-conventions skill + 9 references: card-maintenance, card-patterns, deck-organization, fsrs-settings, note-types, programming-cards, query-syntax, tag-conventions, troubleshooting
+- Key adaptations applied:
+  - CLI: `uv run python -m src.cli` -> `uv run anki-atlas`
+  - Tags: underscore format -> `::` format (canonical)
+  - Imports: `src.utils.card_registry` -> `packages.card.registry`
+  - Removed references to nonexistent docs/ files
+  - MCP tools listed as `ankiatlas_*`
+  - Scripts references removed (replaced with CLI commands)
+- Verification: no old-repo references (`src.cli`, `scripts/`, `docs/`) remain in skills
+- `make check`: 753 tests pass, lint clean, typecheck clean
+- No Python changes (markdown-only spec)
+- **Next: Commit, then Spec 21**
 
-## Iteration 20 - Verifier: Spec 05 APF Format
+### Spec 20: Verification Complete
+- `make check`: 753 tests pass, lint clean, typecheck clean
+- All 25 skill files present (5 shared + 10 skills + 10 anki-conventions)
+- No old-repo references (`src.cli`, `src.utils`, `scripts/`) in skill files
+- No Python changes to verify imports/circular deps (markdown-only spec)
+- **Spec 20: DONE**
 
-Verification passed:
-- `make check`: lint OK, mypy 58 files clean, 286 tests passed (26 new)
-- All APF exports importable: APFRenderer, APFSentinelValidator, CardTemplate, GenerationResult, HTMLTemplateGenerator, LintResult, MarkdownValidationResult, validate_apf
-- Converter lazy imports work: convert_markdown_to_html, sanitize_html importable
-- All 19 existing packages importable, no circular imports
-- Spec 05 DONE. Next: Spec 06 (Tag Taxonomy).
+### Spec 21: Claude Code Commands
+- **Goal**: Migrate 7 Claude Code slash commands from ai-agent-anki to `.claude/commands/anki/`
+- **Source**: `/Users/npochaev/GitHub/ai-agent-anki/.claude/commands/anki/` (7 files)
+- **Commands**: create-card, improve-card, sync-vault, review-session, deck-stats, search-cards, tag-audit
+- **Adaptations**: Update CLI refs to `anki-atlas`, MCP tools to `ankiatlas_*`, file paths to anki-atlas structure
+- **Type**: Markdown-only spec (no Python changes)
+- Delegating to Analyzer for source study and implementation planning
 
-## Iteration 21 - Ralph: Route Spec 06 Tag Taxonomy
+### Spec 21: Analysis Complete
 
-Spec 05 complete (8f3b2b0). Last domain spec remaining: Spec 06 (task-1772789408-29dd) - Tag Taxonomy.
-Source: ai-agent-anki TAGS.md + claude-code-obsidian-anki tag_taxonomy.py + tag-conventions.md -> packages/taxonomy/
-Target: tags.py (TagPrefix enum, TAG_MAPPING, VALID_PREFIXES) + normalize.py (normalize_tag, validate_tag, suggest_tag)
-Delegating to Analyzer via spec.start to read sources and plan implementation.
+#### Source Inventory
+7 command files from `/Users/npochaev/GitHub/ai-agent-anki/.claude/commands/anki/`:
+1. `create-card.md` (150 lines) -- Create card from topic/context via MCP
+2. `improve-card.md` (248 lines) -- Review and improve existing card quality
+3. `sync-vault.md` (151 lines) -- Sync Obsidian vault to Anki
+4. `review-session.md` (166 lines) -- Interactive review session in Claude Code
+5. `deck-stats.md` (162 lines) -- Display deck statistics
+6. `search-cards.md` (178 lines) -- Search cards with Anki query syntax
+7. `tag-audit.md` (142 lines) -- Audit/fix tag convention violations
 
-## Iteration 22 - Analyzer: Spec 06 Tag Taxonomy
+#### Key Observations
+- Commands are markdown-only (no Python changes needed)
+- All commands use `mcp__anki__*` tools (already available in anki-atlas MCP config)
+- Commands reference Anki MCP tools directly (not anki-atlas CLI or packages)
+- Very little needs changing -- these are mostly Anki-native operations
+- No references to `src.cli`, `scripts/`, or old import paths in the command files
+- Example invocations use `/anki-*` format which maps to `.claude/commands/anki/*.md`
 
-### Analysis
+#### Adaptations Required
+Minimal changes needed -- source commands are already clean:
 
-**Source studied:**
-- `claude-code-obsidian-anki/src/utils/tag_taxonomy.py` (1037 lines): `TAG_MAPPING` (merged from 4 sub-dicts: kotlin, android, compsci, cognitive bias), `META_TAG_PREFIXES`, `META_TAGS`, topic tag sets, `normalize_tag()`, `normalize_tags()`, `is_meta_tag()`, `is_topic_tag()`, `find_close_match()`, `validate_tag_strict()`, `validate_required_tags()`, `VALID_DIFFICULTIES`, `VALID_LANGS`
-- `ai-agent-anki/TAGS.md` (100 lines): Tag inventory (1,570 tags). Domain prefixes: `android::`, `kotlin::`, `cs::`, `topic::`, `difficulty::`, `lang::`, `source::`, `context::`, plus minor domains
-- `ai-agent-anki/.../tag-conventions.md` (115 lines): Format rules (double-colon `::` hierarchy, kebab-case, max 2 levels), normalization rules (`cs_algorithms` -> `cs::algorithms`, `_` -> `-`), anti-patterns, validation checklist
+1. **Example command names** -- Update `/anki-create` to `/anki/create-card`, `/anki-improve-card` to `/anki/improve-card`, etc. (Claude Code uses directory-based command paths)
+2. **sync-vault.md** -- Already uses generic Obsidian concepts. No anki-atlas-specific CLI references.
+3. **tag-audit.md** -- Already uses MCP tools directly. Compatible as-is.
+4. **All files** -- No `src.cli`, `scripts/`, `docs/` references to update (commands use MCP tools, not CLI).
+5. **Cross-references** -- `search-cards.md` references `/anki-review` and `/anki-search` in output examples -- update to `/anki/review-session` and `/anki/search-cards`.
 
-**Key design decisions:**
+#### Implementation Plan
 
-1. **Tag format**: The source uses underscore format (`kotlin_coroutines`) but tag-conventions.md specifies double-colon format (`kotlin::coroutines`). The spec says "migrate tag system" and tag-conventions.md is the newer convention. However, the source TAG_MAPPING maps TO underscore format. Decision: Keep the TAG_MAPPING values as-is (underscore format) since that's what existing cards use. The `normalize_tag` function can handle both formats. Confidence: 70 -- document this.
+**Target directory:** `.claude/commands/anki/` (7 files)
 
-2. **TagPrefix enum**: Spec says `TagPrefix` enum. Based on tag-conventions.md, primary prefixes are: `android`, `kotlin`, `cs`, `topic`, `difficulty`, `lang`, `source`, `context`. Minor: `testing`, `architecture`, `performance`, `platform`, `security`, `networking`. Also `bias` (from source). Use StrEnum.
+**File-by-file plan:**
 
-3. **VALID_PREFIXES**: All recognized double-colon prefixes as frozenset.
+1. **`create-card.md`** -- Copy with minor updates:
+   - Example `/anki-create` -> `/anki/create-card`
+   - Otherwise unchanged (MCP tools only, no CLI refs)
 
-4. **TAG_MAPPING**: Merge all 4 sub-dicts from source into single dict. Keep as-is.
+2. **`improve-card.md`** -- Copy with minor updates:
+   - Example `/anki-improve-card` -> `/anki/improve-card`
+   - Otherwise unchanged
 
-5. **normalize_tag**: Adapt from source. Remove `context` parameter (too domain-specific). Instead, just do: strip, check meta tags, check if already normalized, lookup in TAG_MAPPING, else apply formatting rules (lowercase, kebab-case).
+3. **`sync-vault.md`** -- Copy with minor updates:
+   - Example `/anki-sync` -> `/anki/sync-vault`
+   - Otherwise unchanged (uses generic Obsidian patterns, MCP tools)
 
-6. **validate_tag**: Return list of issues. Check: empty, whitespace, valid prefix, separator format, depth.
+4. **`review-session.md`** -- Copy with minor updates:
+   - Example `/anki-review` -> `/anki/review-session`
+   - Otherwise unchanged
 
-7. **suggest_tag**: Fuzzy match using `find_close_match` logic from source, but match against TAG_MAPPING keys + ALL_TOPIC_TAGS.
+5. **`deck-stats.md`** -- Copy with minor updates:
+   - Example `/anki-stats` -> `/anki/deck-stats`
+   - Otherwise unchanged
 
-### Implementation Plan
+6. **`search-cards.md`** -- Copy with updates:
+   - Example `/anki-search` -> `/anki/search-cards`
+   - Cross-ref `/anki-review` -> `/anki/review-session` in result summary
 
-**Step 1: Create `packages/taxonomy/tags.py` (~600 lines)**
+7. **`tag-audit.md`** -- Copy with minor updates:
+   - Example `/anki-tag-audit` -> `/anki/tag-audit`
+   - Otherwise unchanged
 
-From source `tag_taxonomy.py` with these adaptations:
-- `from __future__ import annotations`
-- `TagPrefix(StrEnum)` with values: ANDROID, KOTLIN, CS, TOPIC, DIFFICULTY, LANG, SOURCE, CONTEXT, BIAS, TESTING, ARCHITECTURE, PERFORMANCE, PLATFORM, SECURITY, NETWORKING
-- `VALID_PREFIXES: Final[frozenset[str]]` -- all TagPrefix values
-- `TAG_MAPPING: Final[dict[str, str]]` -- merged mapping from all 4 source dicts (kotlin + android + compsci + cognitive bias)
-- `META_TAGS: Final[frozenset[str]]` -- {"atomic"}
-- `META_TAG_PREFIXES: Final[tuple[str, ...]]` -- ("difficulty::",)
-- Topic tag sets: `KOTLIN_TOPIC_TAGS`, `ANDROID_TOPIC_TAGS`, `COMPSCI_TOPIC_TAGS`, `COGNITIVE_BIAS_TOPIC_TAGS`, `ALL_TOPIC_TAGS`
-- `VALID_DIFFICULTIES`, `VALID_LANGS` frozensets
-- No functions here -- just data/constants
+**Verification:**
+- `make check` should pass (no Python changes)
+- Verify no old `/anki-*` flat command references remain
+- Verify all 7 files created in `.claude/commands/anki/`
 
-**Step 2: Create `packages/taxonomy/normalize.py` (~200 lines)**
+#### Acceptance Criteria
+- [x] 7 command files migrated to `.claude/commands/anki/`
+- [x] Example invocations updated to `/anki/<command>` format
+- [x] Cross-references between commands updated
+- [x] No old repo paths (`src.cli`, `scripts/`, `docs/`) present
+- [x] MCP tool references already correct (`mcp__anki__*`)
+- [x] `make check` to be verified after implementation
 
-Functions:
-- `normalize_tag(tag: str) -> str` -- adapted from source, no context param. Logic: strip, check meta, check already-prefixed, lookup TAG_MAPPING, else lowercase+kebab-case
-- `validate_tag(tag: str) -> list[str]` -- check: empty, whitespace, separator format (`::` not `_` for prefix), max 2 levels, lowercase (except code IDs), returns list of issues
-- `suggest_tag(input_tag: str) -> list[str]` -- fuzzy match against known tags, return up to 5 suggestions
-- Helper: `_find_close_matches(tag: str, candidates: Iterable[str], max_results: int) -> list[str]` -- adapted from source `find_close_match`
-- `normalize_tags(tags: list[str]) -> list[str]` -- normalize + dedup + sort (from source)
-- `is_meta_tag(tag: str) -> bool`
-- `is_topic_tag(tag: str) -> bool`
+### Spec 21: Implementation Complete
+- Created 7 command files in `.claude/commands/anki/`:
+  - create-card.md, improve-card.md, sync-vault.md, review-session.md, deck-stats.md, search-cards.md, tag-audit.md
+- Adaptations applied:
+  - Example invocations: `/anki-*` -> `/anki/<command>` format
+  - Cross-references: `/anki-review` -> `/anki/review-session`, `/anki-search` -> `/anki/search-cards`
+  - No old repo paths (`src.cli`, `scripts/`, `docs/`) present (source was already clean)
+  - MCP tool references already correct (`mcp__anki__*`)
+- Verification: no old `/anki-` flat command references in any command file
+- `make check`: 753 tests pass, lint clean, typecheck clean
+- No Python changes (markdown-only spec)
 
-**Step 3: Update `packages/taxonomy/__init__.py`**
+### Spec 21: Verification Complete
+- `make check`: 753 tests pass, lint clean, typecheck clean
+- All 7 command files present in `.claude/commands/anki/`
+- No old `/anki-` flat command references in any command file
+- No old repo paths (`src.cli`, `scripts/`, `docs/`) present
+- No Python changes (markdown-only spec)
+- **Spec 21: DONE**
+- **ALL SPECS COMPLETE (07-21)**
 
-Re-export per spec:
-```python
-from packages.taxonomy.normalize import normalize_tag, validate_tag
-from packages.taxonomy.tags import TAG_MAPPING, TagPrefix, VALID_PREFIXES
+### Spec 22: Campaigns -- FINAL SPEC -- ANALYSIS COMPLETE
 
-__all__ = [
-    "TAG_MAPPING",
-    "TagPrefix",
-    "VALID_PREFIXES",
-    "normalize_tag",
-    "validate_tag",
-]
-```
+#### Source Inventory
+8 files from `/Users/npochaev/GitHub/claude-code-obsidian-anki/campaigns/`:
+- 6 campaign YAMLs: algorithms, android, backend, compsci, kotlin, system-design (all COMPLETED)
+- 1 template: template.yaml (new campaign scaffold)
+- 1 README: README.md (docs + field reference)
 
-**Step 4: Create `tests/test_taxonomy.py` (~150 lines)**
+#### Key Observations
+1. All 6 campaigns are historical records (completed: true) -- minimal changes needed
+2. Tag prefixes use underscore format (`kotlin_`, `android_`, `cs_`) -- this MATCHES `packages/taxonomy/tags.py` TAG_MAPPING which also uses underscore internally
+3. Campaign YAML structure is simple: name, source_path, deck_name, note_count, tag_prefix, primary_tag, completed, stats
+4. No CLI/import references in YAML campaign files (pure data)
+5. README references "Ralph" (`./ralph --monitor`) and `campaigns/` paths -- needs updating
+6. Template references `PROMPT.md` (Ralph-specific) -- needs updating
+7. No Python changes needed (config-only spec)
 
-Tests covering:
-- TagPrefix enum values and membership
-- VALID_PREFIXES contains all TagPrefix values
-- TAG_MAPPING lookup for known tags (kotlin, android, cs, bias)
-- normalize_tag: known mapping, meta tags preserved, already-prefixed preserved, unknown tags lowercase+kebab
-- validate_tag: valid tag returns empty list, empty tag returns issue, bad separator, too deep hierarchy
-- suggest_tag: close match found, no match returns empty
-- normalize_tags: dedup, sort, empty filtering
-- is_meta_tag, is_topic_tag
+#### Implementation Plan
 
-### Files to create/modify
-1. **CREATE** `packages/taxonomy/tags.py` (~550 lines, mostly data)
-2. **CREATE** `packages/taxonomy/normalize.py` (~200 lines)
-3. **EDIT** `packages/taxonomy/__init__.py` (add re-exports)
-4. **CREATE** `tests/test_taxonomy.py` (~150 lines)
+**Target:** `config/campaigns/` (8 files)
 
-### Commit message
-`feat(taxonomy): migrate tag system from claude-code-obsidian-anki`
+**Phase 1: Copy campaign YAML files (6 files) -- AS-IS**
+Copy verbatim (historical data records, tag prefixes match taxonomy):
+- `algorithms.yaml`, `android.yaml`, `backend.yaml`, `compsci.yaml`, `kotlin.yaml`, `system-design.yaml`
 
-## Iteration 23 - Implementer: Spec 06 Tag Taxonomy
+**Phase 2: Adapt template.yaml**
+- Update comment: `tag_prefix` options -- keep underscore format (matches TAG_MAPPING)
+- Add note about anki-atlas CLI usage instead of generic instructions
+- Remove `PROMPT.md` reference
 
-Implemented all 4 files per plan:
-1. Created `packages/taxonomy/tags.py` with TagPrefix enum (15 prefixes), TAG_MAPPING (400+ entries), VALID_PREFIXES, canonical topic tag sets (~550 lines)
-2. Created `packages/taxonomy/normalize.py` with normalize_tag, validate_tag, suggest_tag, normalize_tags, is_meta_tag, is_topic_tag (~170 lines)
-3. Updated `packages/taxonomy/__init__.py` with re-exports
-4. Created `tests/test_taxonomy.py` with 42 tests
+**Phase 3: Adapt README.md**
+- Update directory tree: `campaigns/` -> `config/campaigns/`
+- Update copy command: `cp campaigns/template.yaml` -> `cp config/campaigns/template.yaml`
+- Replace "Run Ralph" (`./ralph --monitor`) -> `uv run anki-atlas` CLI commands
+- Remove step 3 "Update PROMPT.md" (Ralph-specific)
+- Update field reference table -- keep as-is (accurate for campaign format)
 
-Adaptations from source:
-- TagPrefix as StrEnum with all primary + minor domain prefixes from tag-conventions.md
-- TAG_MAPPING merged from 4 source dicts into single dict (removed separate ANDROID/COMPSCI/BIAS dicts)
-- normalize_tag simplified: removed context param, unknown tags get lowercase kebab-case
-- validate_tag checks: empty, underscore prefix separator, slash, hierarchy depth, case, duplicate separators
-- suggest_tag uses simple edit-distance matching (max_distance=2)
-- Added source::/context:: to META_TAG_PREFIXES (were missing in source)
-- All data uses Final type annotations, frozenset for immutable sets
+**Phase 4: Verification**
+- `make check` should pass (no Python changes)
+- Verify YAML files are parseable
+- Verify no old-repo references remain in README/template
 
-Verification:
-- `make check` passed: lint OK, mypy 60 files clean, 328 tests passed (42 new)
-- Committed as d2aa507
+#### Acceptance Criteria Mapping
+- [x] All 8 campaign files in `config/campaigns/`
+- [x] YAML files valid (parseable)
+- [x] README paths updated from `campaigns/` to `config/campaigns/`
+- [x] README references updated from Ralph to anki-atlas CLI
+- [x] Template comments updated (no PROMPT.md reference)
+- [x] Tag prefixes match `packages/taxonomy/` conventions (underscore format -- confirmed)
+- [x] `make check` passes
 
-## Iteration 24 - Verifier: Spec 06 Tag Taxonomy
+### Spec 22: Implementation Complete
+- Created 8 files in `config/campaigns/`:
+  - 6 campaign YAMLs copied as-is (historical records): algorithms, android, backend, compsci, kotlin, system-design
+  - template.yaml: updated notes section (removed PROMPT.md ref, added anki-atlas CLI commands)
+  - README.md: updated paths (`campaigns/` -> `config/campaigns/`), replaced Ralph (`./ralph --monitor`) with anki-atlas CLI commands, removed PROMPT.md step
+- All YAML files valid (python yaml.safe_load verified)
+- No old-repo references (ralph, PROMPT.md) in any file
+- `make check`: 753 tests pass, lint clean, typecheck clean
+- No Python changes (config-only spec)
+- **FINAL SPEC -- ALL SPECS COMPLETE (07-22)**
 
-Verification passed:
-- `make check`: lint OK, mypy 60 files clean, 328 tests passed (42 new taxonomy tests)
-- All taxonomy exports importable: TagPrefix (15 members), TAG_MAPPING (464 entries), VALID_PREFIXES (15), normalize_tag, validate_tag
-- All packages importable (common, card, card.apf, taxonomy, anki), no circular imports
-- Spec 06 DONE. All 01-domain specs complete (04, 05, 06). ALL migration specs complete.
+### Spec 22: Verification Complete
+- `make check`: 753 tests pass, lint clean, typecheck clean
+- All 8 campaign files present in `config/campaigns/`
+- No Python changes (config-only spec)
+- **Spec 22: DONE**
+- **MIGRATION COMPLETE: All specs 07-22 verified and done**

@@ -1,5 +1,5 @@
 {
-  "pid": 70075,
-  "started": "2026-03-06T08:47:16.932634Z",
-  "prompt": "Execute migration specs in order. Start with specs/00-foundation/."
+  "pid": 97323,
+  "started": "2026-03-07T04:55:53.166719Z",
+  "prompt": "Continue migration. Specs 01-06 are done. Start with specs/02-infra/07-anki-connect-client.md."
 }

@@ -28,7 +28,9 @@ class MockReranker:
     ) -> list[tuple[int, float]]:
         if self.fail:
             raise RuntimeError("reranker unavailable")
-        return [(note_id, self.scores[note_id]) for note_id, _ in documents if note_id in self.scores]
+        return [
+            (note_id, self.scores[note_id]) for note_id, _ in documents if note_id in self.scores
+        ]
 
 
 class TestReciprocalRankFusion:

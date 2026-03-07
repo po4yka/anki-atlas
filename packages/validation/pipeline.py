@@ -95,7 +95,6 @@ class ValidationPipeline:
         if not self._validators:
             return ValidationResult.ok()
         results = [
-            v.validate(front=front, back=back, tags=tags, **kwargs)
-            for v in self._validators
+            v.validate(front=front, back=back, tags=tags, **kwargs) for v in self._validators
         ]
         return ValidationResult.merge(*results)

@@ -62,9 +62,7 @@ class TestSchema:
         conn = registry._get_connection()
         tables = {
             row["name"]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         assert "cards" in tables
         assert "notes" in tables
@@ -119,9 +117,7 @@ class TestSchema:
         # Verify notes table exists now
         tables = {
             row["name"]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         assert "notes" in tables
 
@@ -219,12 +215,8 @@ class TestCardCRUD:
 
     def test_find_cards_by_source_path(self) -> None:
         registry = CardRegistry()
-        registry.add_card(
-            _make_card_entry(slug="card-a-0-en", source_path="notes/a.md")
-        )
-        registry.add_card(
-            _make_card_entry(slug="card-b-0-en", source_path="notes/b.md")
-        )
+        registry.add_card(_make_card_entry(slug="card-a-0-en", source_path="notes/a.md"))
+        registry.add_card(_make_card_entry(slug="card-b-0-en", source_path="notes/b.md"))
 
         results = registry.find_cards(source_path="notes/a.md")
         assert len(results) == 1
@@ -376,9 +368,7 @@ class TestHashHelpers:
 
 class TestCardMappingEntry:
     def test_is_synced_true(self) -> None:
-        entry = CardMappingEntry(
-            slug="test-0-en", language="en", anki_note_id=123
-        )
+        entry = CardMappingEntry(slug="test-0-en", language="en", anki_note_id=123)
         assert entry.is_synced is True
 
     def test_is_synced_false(self) -> None:

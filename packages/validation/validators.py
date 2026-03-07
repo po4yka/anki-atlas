@@ -11,10 +11,24 @@ from packages.validation.pipeline import (
     ValidationResult,
 )
 
-_VOID_ELEMENTS = frozenset({
-    "area", "base", "br", "col", "embed", "hr", "img", "input",
-    "link", "meta", "param", "source", "track", "wbr",
-})
+_VOID_ELEMENTS = frozenset(
+    {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    }
+)
 
 _FORBIDDEN_TAGS = frozenset({"script", "style", "iframe", "object", "applet"})
 
@@ -38,37 +52,25 @@ class ContentValidator:
         issues: list[ValidationIssue] = []
 
         if not front.strip():
-            issues.append(
-                ValidationIssue(Severity.ERROR, "Front side is empty", "front")
-            )
+            issues.append(ValidationIssue(Severity.ERROR, "Front side is empty", "front"))
         elif len(front.strip()) < self.MIN_LENGTH:
-            issues.append(
-                ValidationIssue(Severity.WARNING, "Front side is very short", "front")
-            )
+            issues.append(ValidationIssue(Severity.WARNING, "Front side is very short", "front"))
 
         if not back.strip():
-            issues.append(
-                ValidationIssue(Severity.ERROR, "Back side is empty", "back")
-            )
+            issues.append(ValidationIssue(Severity.ERROR, "Back side is empty", "back"))
         elif len(back.strip()) < self.MIN_LENGTH:
-            issues.append(
-                ValidationIssue(Severity.WARNING, "Back side is very short", "back")
-            )
+            issues.append(ValidationIssue(Severity.WARNING, "Back side is very short", "back"))
 
         if len(front) > self.MAX_LENGTH:
             issues.append(
                 ValidationIssue(Severity.WARNING, "Front side exceeds 5000 chars", "front")
             )
         if len(back) > self.MAX_LENGTH:
-            issues.append(
-                ValidationIssue(Severity.WARNING, "Back side exceeds 5000 chars", "back")
-            )
+            issues.append(ValidationIssue(Severity.WARNING, "Back side exceeds 5000 chars", "back"))
 
         for label, text in (("front", front), ("back", back)):
             if text.count("```") % 2 != 0:
-                issues.append(
-                    ValidationIssue(Severity.ERROR, "Unmatched code fence", label)
-                )
+                issues.append(ValidationIssue(Severity.ERROR, "Unmatched code fence", label))
 
         return ValidationResult(issues=tuple(issues))
 
@@ -98,11 +100,7 @@ class FormatValidator:
                     )
 
             if "\n\n\n" in text:
-                issues.append(
-                    ValidationIssue(
-                        Severity.WARNING, "Consecutive blank lines", label
-                    )
-                )
+                issues.append(ValidationIssue(Severity.WARNING, "Consecutive blank lines", label))
 
         return ValidationResult(issues=tuple(issues))
 
@@ -191,9 +189,7 @@ class TagValidator:
 
         for tag in tags:
             if not tag.strip():
-                issues.append(
-                    ValidationIssue(Severity.ERROR, "Empty tag", "tags")
-                )
+                issues.append(ValidationIssue(Severity.ERROR, "Empty tag", "tags"))
             elif self._INVALID_CHARS_RE.search(tag):
                 issues.append(
                     ValidationIssue(
@@ -214,8 +210,6 @@ class TagValidator:
 
         unique = set(tags)
         if len(unique) < len(tags):
-            issues.append(
-                ValidationIssue(Severity.WARNING, "Duplicate tags found", "tags")
-            )
+            issues.append(ValidationIssue(Severity.WARNING, "Duplicate tags found", "tags"))
 
         return ValidationResult(issues=tuple(issues))

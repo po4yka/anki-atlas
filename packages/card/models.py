@@ -10,12 +10,14 @@ from typing import Final
 from packages.common.exceptions import CardValidationError
 from packages.common.types import Language
 
-VALID_NOTE_TYPES: Final[frozenset[str]] = frozenset({
-    "APF::Simple",
-    "APF::Cloze",
-    "Basic",
-    "Cloze",
-})
+VALID_NOTE_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        "APF::Simple",
+        "APF::Cloze",
+        "Basic",
+        "Cloze",
+    }
+)
 
 _VALID_LANG_VALUES: Final[frozenset[str]] = frozenset(lang.value for lang in Language)
 
@@ -79,9 +81,7 @@ class CardManifest:
                 errors.append("hash6 must be a valid hexadecimal string")
 
         if self.difficulty is not None and not 0.0 <= self.difficulty <= 1.0:
-            errors.append(
-                f"difficulty must be between 0.0 and 1.0, got {self.difficulty}"
-            )
+            errors.append(f"difficulty must be between 0.0 and 1.0, got {self.difficulty}")
 
         if self.cognitive_load is not None:
             valid_loads = ("basic", "intermediate", "advanced")
@@ -91,9 +91,7 @@ class CardManifest:
                 )
 
         if errors:
-            raise CardValidationError(
-                f"CardManifest validation failed: {'; '.join(errors)}"
-            )
+            raise CardValidationError(f"CardManifest validation failed: {'; '.join(errors)}")
 
     @property
     def anchor_url(self) -> str:
@@ -164,9 +162,7 @@ class CardManifest:
             cognitive_load=self.cognitive_load,
         )
 
-    def with_fsrs_metadata(
-        self, difficulty: float, cognitive_load: str
-    ) -> CardManifest:
+    def with_fsrs_metadata(self, difficulty: float, cognitive_load: str) -> CardManifest:
         """Create new manifest with FSRS metadata."""
         return CardManifest(
             slug=self.slug,
@@ -212,8 +208,7 @@ class Card:
             errors.append(f"language must be 2 characters, got '{self.language}'")
         elif self.language not in _VALID_LANG_VALUES:
             errors.append(
-                f"language '{self.language}' not in valid languages: "
-                f"{sorted(_VALID_LANG_VALUES)}"
+                f"language '{self.language}' not in valid languages: {sorted(_VALID_LANG_VALUES)}"
             )
 
         if not self.apf_html:
@@ -225,8 +220,7 @@ class Card:
             errors.append("note_type cannot be empty")
         elif self.note_type not in VALID_NOTE_TYPES:
             errors.append(
-                f"note_type '{self.note_type}' not in valid types: "
-                f"{sorted(VALID_NOTE_TYPES)}"
+                f"note_type '{self.note_type}' not in valid types: {sorted(VALID_NOTE_TYPES)}"
             )
 
         if self.manifest.lang != self.language:
@@ -237,8 +231,7 @@ class Card:
 
         if self.manifest.slug != self.slug:
             errors.append(
-                f"manifest.slug '{self.manifest.slug}' does not match "
-                f"card slug '{self.slug}'"
+                f"manifest.slug '{self.manifest.slug}' does not match card slug '{self.slug}'"
             )
 
         for i, tag in enumerate(self.tags):
@@ -334,9 +327,7 @@ class SyncAction:
         errors: list[str] = []
 
         if not isinstance(self.action_type, SyncActionType):
-            errors.append(
-                f"action_type must be SyncActionType, got {type(self.action_type)}"
-            )
+            errors.append(f"action_type must be SyncActionType, got {type(self.action_type)}")
 
         if not isinstance(self.card, Card):
             errors.append(f"card must be Card instance, got {type(self.card)}")
@@ -345,14 +336,10 @@ class SyncAction:
             self.action_type in (SyncActionType.UPDATE, SyncActionType.DELETE)
             and not self.anki_guid
         ):
-            errors.append(
-                f"anki_guid is required for {self.action_type.value} actions"
-            )
+            errors.append(f"anki_guid is required for {self.action_type.value} actions")
 
         if errors:
-            raise CardValidationError(
-                f"SyncAction validation failed: {'; '.join(errors)}"
-            )
+            raise CardValidationError(f"SyncAction validation failed: {'; '.join(errors)}")
 
     @property
     def is_destructive(self) -> bool:

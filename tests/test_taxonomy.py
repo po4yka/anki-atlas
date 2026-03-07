@@ -86,8 +86,7 @@ class TestTagMapping:
 class TestTopicTags:
     def test_all_topic_tags_is_union(self) -> None:
         expected = (
-            KOTLIN_TOPIC_TAGS | ANDROID_TOPIC_TAGS | COMPSCI_TOPIC_TAGS
-            | COGNITIVE_BIAS_TOPIC_TAGS
+            KOTLIN_TOPIC_TAGS | ANDROID_TOPIC_TAGS | COMPSCI_TOPIC_TAGS | COGNITIVE_BIAS_TOPIC_TAGS
         )
         assert expected == ALL_TOPIC_TAGS
 

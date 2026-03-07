@@ -89,9 +89,7 @@ class HTMLTemplateGenerator:
                         "CardType: Simple | Tags: {tags} -->"
                     ),
                     "title": "\n<!-- Title -->\n{title}",
-                    "code_sample": (
-                        "\n<!-- Sample (code block) -->\n{code_sample}"
-                    ),
+                    "code_sample": ("\n<!-- Sample (code block) -->\n{code_sample}"),
                     "key_points": "\n<!-- Key point -->\n{key_points}",
                     "notes": "\n<!-- Other notes -->\n{other_notes}",
                 },
@@ -121,17 +119,13 @@ class HTMLTemplateGenerator:
         warnings: list[str] = []
 
         if validation_errors:
-            html_content, fix_warnings = self._auto_fix_html_issues(
-                html_content, validation_errors
-            )
+            html_content, fix_warnings = self._auto_fix_html_issues(html_content, validation_errors)
             warnings.extend(fix_warnings)
 
             final_errors = validate_card_html(html_content)
             if final_errors:
                 validation_errors.extend(final_errors)
-                warnings.append(
-                    "Some HTML validation issues could not be auto-fixed"
-                )
+                warnings.append("Some HTML validation issues could not be auto-fixed")
 
         return GenerationResult(
             html=html_content,
@@ -140,9 +134,7 @@ class HTMLTemplateGenerator:
             warnings=tuple(warnings),
         )
 
-    def _preprocess_card_data(
-        self, card_data: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _preprocess_card_data(self, card_data: dict[str, Any]) -> dict[str, Any]:
         """Preprocess card data for template rendering."""
         processed = card_data.copy()
 
@@ -152,22 +144,14 @@ class HTMLTemplateGenerator:
         processed.setdefault("title", "Untitled Card")
 
         if "code_sample" in processed:
-            processed["code_sample"] = self._generate_code_block(
-                processed["code_sample"]
-            )
+            processed["code_sample"] = self._generate_code_block(processed["code_sample"])
 
         if "key_points" in processed:
-            processed["key_points"] = self._generate_key_points(
-                processed["key_points"]
-            )
+            processed["key_points"] = self._generate_key_points(processed["key_points"])
 
-        for text_field in (
-            "question", "answer", "title", "other_notes", "content"
-        ):
+        for text_field in ("question", "answer", "title", "other_notes", "content"):
             if processed.get(text_field):
-                processed[text_field] = self._escape_and_format_text(
-                    processed[text_field]
-                )
+                processed[text_field] = self._escape_and_format_text(processed[text_field])
 
         return processed
 
@@ -182,21 +166,13 @@ class HTMLTemplateGenerator:
             return self._create_code_html(code, language, caption)
         return "<pre><code>Invalid code data</code></pre>"
 
-    def _create_code_html(
-        self, code: str, language: str, caption: str = ""
-    ) -> str:
+    def _create_code_html(self, code: str, language: str, caption: str = "") -> str:
         """Create properly formatted code HTML."""
         escaped_code = escape(code.strip())
-        code_html = (
-            f'<pre><code class="language-{language}">'
-            f"{escaped_code}</code></pre>"
-        )
+        code_html = f'<pre><code class="language-{language}">{escaped_code}</code></pre>'
 
         if caption:
-            return (
-                f"<figure>\n{code_html}\n"
-                f"<figcaption>{escape(caption)}</figcaption>\n</figure>"
-            )
+            return f"<figure>\n{code_html}\n<figcaption>{escape(caption)}</figcaption>\n</figure>"
         return code_html
 
     def _generate_key_points(self, key_points: Any) -> str:
@@ -204,9 +180,7 @@ class HTMLTemplateGenerator:
         if isinstance(key_points, str):
             return f"<ul>\n<li>{escape(key_points)}</li>\n</ul>"
         if isinstance(key_points, list):
-            points_html = "\n".join(
-                f"<li>{escape(point)}</li>" for point in key_points
-            )
+            points_html = "\n".join(f"<li>{escape(point)}</li>" for point in key_points)
             return f"<ul>\n{points_html}\n</ul>"
         return "<ul><li>Key points data</li></ul>"
 
@@ -216,30 +190,22 @@ class HTMLTemplateGenerator:
             return ""
 
         escaped = escape(text)
-        escaped = re.sub(
-            r"\*\*(.*?)\*\*", r"<strong>\1</strong>", escaped
-        )
+        escaped = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", escaped)
         escaped = re.sub(r"\*(.*?)\*", r"<em>\1</em>", escaped)
         escaped = escaped.replace("\n", "<br>")
         return escaped
 
-    def _auto_fix_html_issues(
-        self, html_str: str, errors: list[str]
-    ) -> tuple[str, list[str]]:
+    def _auto_fix_html_issues(self, html_str: str, errors: list[str]) -> tuple[str, list[str]]:
         """Attempt to auto-fix common HTML validation issues."""
         fixed_html = html_str
         warnings: list[str] = []
 
         for error in errors:
             if "language- class" in error:
-                fixed_html, lang_warnings = (
-                    self._add_missing_language_classes(fixed_html)
-                )
+                fixed_html, lang_warnings = self._add_missing_language_classes(fixed_html)
                 warnings.extend(lang_warnings)
             elif "wrap in <pre><code>" in error:
-                warnings.append(
-                    "Standalone code wrapping not fully implemented"
-                )
+                warnings.append("Standalone code wrapping not fully implemented")
             elif "Backtick code fences detected" in error:
                 fixed_html = re.sub(
                     r"```[^\n]*\n(.*?)\n```",
@@ -251,21 +217,15 @@ class HTMLTemplateGenerator:
 
         return fixed_html, warnings
 
-    def _add_missing_language_classes(
-        self, html_str: str
-    ) -> tuple[str, list[str]]:
+    def _add_missing_language_classes(self, html_str: str) -> tuple[str, list[str]]:
         """Add default language classes to code elements missing them."""
         warnings: list[str] = []
 
         def add_class(match: re.Match[str]) -> str:
             code_tag = match.group(0)
             if "class=" not in code_tag:
-                warnings.append(
-                    "Added default language class to code element"
-                )
-                return code_tag.replace(
-                    "<code", '<code class="language-text"', 1
-                )
+                warnings.append("Added default language class to code element")
+                return code_tag.replace("<code", '<code class="language-text"', 1)
             return code_tag
 
         pattern = r"<code(?:\s[^>]*)?>"

@@ -25,23 +25,13 @@ def validate_card_html(apf_html: str) -> list[str]:
 
     # Regex-based checks (no external deps)
     if "```" in apf_html:
-        errors.append(
-            "Backtick code fences detected; use <pre><code> blocks."
-        )
+        errors.append("Backtick code fences detected; use <pre><code> blocks.")
 
-    text_without_code = re.sub(
-        r"<pre>.*?</pre>", "", apf_html, flags=re.DOTALL
-    )
+    text_without_code = re.sub(r"<pre>.*?</pre>", "", apf_html, flags=re.DOTALL)
     if re.search(r"\*\*[^*]+\*\*", text_without_code):
-        errors.append(
-            "Markdown **bold** detected; use <strong> HTML tags instead."
-        )
-    if re.search(
-        r"(?<!\*)\*[^*\s][^*]*[^*\s]\*(?!\*)", text_without_code
-    ):
-        errors.append(
-            "Markdown *italic* detected; use <em> HTML tags instead."
-        )
+        errors.append("Markdown **bold** detected; use <strong> HTML tags instead.")
+    if re.search(r"(?<!\*)\*[^*\s][^*]*[^*\s]\*(?!\*)", text_without_code):
+        errors.append("Markdown *italic* detected; use <em> HTML tags instead.")
 
     # DOM-based checks (require bs4)
     try:
@@ -61,10 +51,7 @@ def validate_card_html(apf_html: str) -> list[str]:
 
     for code in soup.find_all("code"):
         if code.parent is not None and code.parent.name != "pre":
-            errors.append(
-                "Inline <code> elements are not allowed; "
-                "wrap in <pre><code>."
-            )
+            errors.append("Inline <code> elements are not allowed; wrap in <pre><code>.")
 
     return errors
 
@@ -124,16 +111,12 @@ def _validate_formatting_markers(content: str) -> list[str]:
     backtick_count = content_without_code.count("`")
     if backtick_count % 2 != 0:
         errors.append(
-            "Unbalanced inline code markers (`). "
-            "Each opening backtick needs a closing one."
+            "Unbalanced inline code markers (`). Each opening backtick needs a closing one."
         )
 
     bold_marker_count = len(re.findall(r"\*\*", content_without_code))
     if bold_marker_count % 2 != 0:
-        errors.append(
-            "Unbalanced bold markers (**). "
-            "Each ** needs a matching closing **."
-        )
+        errors.append("Unbalanced bold markers (**). Each ** needs a matching closing **.")
     return errors
 
 
@@ -153,8 +136,7 @@ def _check_common_issues(content: str) -> list[str]:
     for tag in html_tags:
         if tag in content_lower:
             warnings.append(
-                f"HTML tag {tag} found in Markdown content. "
-                "Consider using Markdown syntax instead."
+                f"HTML tag {tag} found in Markdown content. Consider using Markdown syntax instead."
             )
             break
 
@@ -189,9 +171,7 @@ def validate_apf_markdown(apf_content: str) -> MarkdownValidationResult:
     if "<!-- END_CARDS -->" not in apf_content:
         errors.append("Missing END_CARDS sentinel")
 
-    card_header_pattern = (
-        r"<!-- Card \d+ \| slug: [a-z0-9-]+ \| CardType: \w+"
-    )
+    card_header_pattern = r"<!-- Card \d+ \| slug: [a-z0-9-]+ \| CardType: \w+"
     if not re.search(card_header_pattern, apf_content):
         errors.append("Missing or invalid card header")
 
@@ -202,8 +182,7 @@ def validate_apf_markdown(apf_content: str) -> MarkdownValidationResult:
     has_key_notes = "<!-- Key point notes -->" in apf_content
     if not has_key_point and not has_key_notes:
         warnings.append(
-            "Missing Key point sections. "
-            "Cards should have Key point or Key point notes."
+            "Missing Key point sections. Cards should have Key point or Key point notes."
         )
 
     content_pattern = r"<!--[^>]+-->\s*([^<]+?)(?=<!--|$)"

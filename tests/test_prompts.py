@@ -291,9 +291,7 @@ class TestValidationPrompts:
         assert "atomicity" in result.lower()
 
     def test_memorization_assessment_user(self) -> None:
-        result = memorization_assessment_user(
-            question="What is X?", answer="Y", context="ctx"
-        )
+        result = memorization_assessment_user(question="What is X?", answer="Y", context="ctx")
         assert "What is X?" in result
         assert "ctx" in result
 
@@ -309,9 +307,7 @@ class TestEnhancementPrompts:
         assert "enhancement" in result.lower()
 
     def test_enhancement_user(self) -> None:
-        result = enhancement_user(
-            front="Q", back="A", card_type="Simple", tags="t", language="en"
-        )
+        result = enhancement_user(front="Q", back="A", card_type="Simple", tags="t", language="en")
         assert "Q" in result
         assert "Simple" in result
 

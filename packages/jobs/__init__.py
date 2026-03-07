@@ -19,4 +19,3 @@ __all__ = [
     "close_job_manager",
     "get_job_manager",
 ]
-

@@ -21,8 +21,20 @@ _VAGUE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 )
 
 _YES_NO_STARTERS: tuple[str, ...] = (
-    "is ", "are ", "does ", "do ", "can ", "will ", "has ", "have ",
-    "was ", "were ", "did ", "could ", "would ", "should ",
+    "is ",
+    "are ",
+    "does ",
+    "do ",
+    "can ",
+    "will ",
+    "has ",
+    "have ",
+    "was ",
+    "were ",
+    "did ",
+    "could ",
+    "would ",
+    "should ",
 )
 
 _MULTI_CONCEPT_RE = re.compile(r"\b(and|or)\b", re.IGNORECASE)
@@ -43,8 +55,7 @@ class QualityScore:
     def overall(self) -> float:
         """Average across all dimensions."""
         return (
-            self.clarity + self.atomicity + self.testability
-            + self.memorability + self.accuracy
+            self.clarity + self.atomicity + self.testability + self.memorability + self.accuracy
         ) / 5.0
 
 

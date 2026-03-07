@@ -1,0 +1,11 @@
+{"ts":"2026-03-06T10:59:05.330520+00:00","iteration":0,"hat":"loop","topic":"task.start","triggered":"planner","payload":"Continue migration. Specs 01-06 are done. Start with specs/02-infra/07-anki-connect-client.md."}
+{"payload":"spec=07-anki-connect-client, task=task-1772794789-5285, spec_path=specs/02-infra/07-anki-connect-client.md","topic":"spec.start","ts":"2026-03-06T10:59:53.388130+00:00"}
+{"payload":"Spec 07 analysis complete. Plan written to scratchpad. Ready to implement packages/anki/connect.py and tests/test_anki_connect.py.","topic":"implementation.ready","ts":"2026-03-06T11:01:32.810933+00:00"}
+{"payload":"Spec 07 AnkiConnect client migrated. packages/anki/connect.py (242 lines), tests/test_anki_connect.py (413 lines), 34 tests. make check passes (362 tests total).","topic":"implementation.done","ts":"2026-03-06T11:10:57.515793+00:00"}
+{"payload":"Spec 07 AnkiConnect client verified: make check passes (362 tests, lint clean, mypy clean), imports OK, no circular deps","topic":"spec.done","ts":"2026-03-06T11:16:04.104997+00:00"}
+{"payload":"Start spec 08: card-registry (specs/02-infra/08-card-registry.md)","topic":"spec.start","ts":"2026-03-06T11:17:00.994491+00:00"}
+{"payload":"Spec 08 card-registry analyzed. Plan in scratchpad: registry.py (~400 lines, CardEntry + NoteEntry + CardRegistry with SQLite schema v1+v2), mapping.py (~100 lines, CardMappingEntry + NoteMapping), tests/test_card_registry.py, __init__.py update.","topic":"implementation.ready","ts":"2026-03-06T11:19:49.354293+00:00"}
+{"payload":"Spec 08 card-registry: registry.py (CardEntry, NoteEntry, CardRegistry with SQLite v1+v2), mapping.py (CardMappingEntry, NoteMapping), 33 tests, make check passes (395 total tests)","topic":"implementation.done","ts":"2026-03-06T11:27:22.370109+00:00"}
+{"payload":"Spec 08 card-registry verified: make check passes (63 src files, 395 tests), all new types importable, no circular imports","topic":"spec.done","ts":"2026-03-06T11:32:32.827489+00:00"}
+{"payload":"Spec 09: Obsidian Parser - migrate vault parsing (parser, frontmatter, analyzer) into packages/obsidian/","topic":"spec.start","ts":"2026-03-06T11:33:40.790574+00:00"}
+{"payload":"Spec 09 plan complete: 3 new files (frontmatter.py, parser.py, analyzer.py) + tests + __init__.py update","topic":"implementation.ready","ts":"2026-03-06T11:35:38.516318+00:00"}

@@ -1,0 +1,16 @@
+# System Design Campaign - COMPLETED
+
+name: "System Design"
+source_path: "~/Documents/InterviewQuestions/30-System-Design/"
+deck_name: "SystemDesign::Interview"
+note_count: 10
+tag_prefix: "cs_"
+primary_tag: "cs_system_design"
+completed: true
+
+stats:
+  notes_processed: 10
+  cards_created: 20
+  cards_synced: 20
+  started_at: "2025-01-15"
+  completed_at: "2025-01-15"

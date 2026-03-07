@@ -88,7 +88,7 @@ def validate_tag(tag: str) -> list[str]:
         if tag.startswith(prefix) and tag != "cognitive_bias" and tag not in ALL_TOPIC_TAGS:
             issues.append(
                 f"Use '::' for domain prefix, not '_': "
-                f"'{tag}' -> '{prefix[:-1]}::{tag[len(prefix):]}'"
+                f"'{tag}' -> '{prefix[:-1]}::{tag[len(prefix) :]}'"
             )
             break
 
@@ -99,9 +99,7 @@ def validate_tag(tag: str) -> list[str]:
     # Check hierarchy depth
     parts = tag.split("::")
     if len(parts) > 2:
-        issues.append(
-            f"Tag too deep (max 2 levels): '{tag}' has {len(parts)} levels"
-        )
+        issues.append(f"Tag too deep (max 2 levels): '{tag}' has {len(parts)} levels")
 
     # Check for uppercase (except known code identifiers and meta tags)
     if "::" in tag:
@@ -185,9 +183,7 @@ def _find_close_matches(
             continue
 
         # Simple character difference count
-        differences = sum(
-            1 for a, b in zip(tag_lower, candidate_lower, strict=False) if a != b
-        )
+        differences = sum(1 for a, b in zip(tag_lower, candidate_lower, strict=False) if a != b)
         differences += abs(len(tag) - len(candidate))
 
         if differences <= max_distance:

@@ -69,8 +69,7 @@ def _make_valid_apf(
 
     tags_json = json.dumps(tags.split())
     manifest = (
-        f'{{"slug":"{slug}","lang":"en","type":"{card_type}",'
-        f'"tags":{tags_json},"guid":"abc123"}}'
+        f'{{"slug":"{slug}","lang":"en","type":"{card_type}","tags":{tags_json},"guid":"abc123"}}'
     )
     return (
         "<!-- PROMPT_VERSION: apf-v2.1 -->\n"
@@ -244,9 +243,7 @@ class TestHTMLTemplateGenerator:
 
     def test_generate_full_apf_html(self) -> None:
         gen = HTMLTemplateGenerator()
-        result = gen.generate_full_apf_html(
-            [{"title": "Card 1", "key_points": ["p1"]}]
-        )
+        result = gen.generate_full_apf_html([{"title": "Card 1", "key_points": ["p1"]}])
         assert "<!-- PROMPT_VERSION: apf-v2.1 -->" in result
         assert "<!-- BEGIN_CARDS -->" in result
         assert "END_OF_CARDS" in result

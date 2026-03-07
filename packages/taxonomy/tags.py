@@ -576,96 +576,104 @@ META_TAGS: Final[frozenset[str]] = frozenset({"atomic"})
 # Canonical topic tag sets
 # ---------------------------------------------------------------------------
 
-KOTLIN_TOPIC_TAGS: Final[frozenset[str]] = frozenset({
-    "kotlin_coroutines",
-    "kotlin_flow",
-    "kotlin_channels",
-    "kotlin_dispatchers",
-    "kotlin_collections",
-    "kotlin_classes",
-    "kotlin_types",
-    "kotlin_functions",
-    "kotlin_oop",
-    "kotlin_initialization",
-    "kotlin_delegation",
-    "kotlin_syntax",
-    "kotlin_equality",
-    "kotlin_concurrency",
-    "kotlin_java_interop",
-    "kotlin_android",
-    "kotlin_general",
-    "kotlin_functional",
-    "kotlin_builders",
-    "kotlin_annotations",
-    "kotlin_error_handling",
-    "kotlin_performance",
-    "kotlin_internals",
-    "kotlin_memory",
-    "kotlin_patterns",
-})
+KOTLIN_TOPIC_TAGS: Final[frozenset[str]] = frozenset(
+    {
+        "kotlin_coroutines",
+        "kotlin_flow",
+        "kotlin_channels",
+        "kotlin_dispatchers",
+        "kotlin_collections",
+        "kotlin_classes",
+        "kotlin_types",
+        "kotlin_functions",
+        "kotlin_oop",
+        "kotlin_initialization",
+        "kotlin_delegation",
+        "kotlin_syntax",
+        "kotlin_equality",
+        "kotlin_concurrency",
+        "kotlin_java_interop",
+        "kotlin_android",
+        "kotlin_general",
+        "kotlin_functional",
+        "kotlin_builders",
+        "kotlin_annotations",
+        "kotlin_error_handling",
+        "kotlin_performance",
+        "kotlin_internals",
+        "kotlin_memory",
+        "kotlin_patterns",
+    }
+)
 
-ANDROID_TOPIC_TAGS: Final[frozenset[str]] = frozenset({
-    "android_lifecycle",
-    "android_activities",
-    "android_fragments",
-    "android_services",
-    "android_intents",
-    "android_broadcast",
-    "android_content_providers",
-    "android_views",
-    "android_layouts",
-    "android_compose",
-    "android_animations",
-    "android_architecture",
-    "android_viewmodel",
-    "android_livedata",
-    "android_databinding",
-    "android_navigation",
-    "android_room",
-    "android_paging",
-    "android_datastore",
-    "android_workmanager",
-    "android_permissions",
-    "android_storage",
-    "android_threading",
-    "android_testing",
-    "android_networking",
-    "android_debugging",
-    "android_general",
-})
+ANDROID_TOPIC_TAGS: Final[frozenset[str]] = frozenset(
+    {
+        "android_lifecycle",
+        "android_activities",
+        "android_fragments",
+        "android_services",
+        "android_intents",
+        "android_broadcast",
+        "android_content_providers",
+        "android_views",
+        "android_layouts",
+        "android_compose",
+        "android_animations",
+        "android_architecture",
+        "android_viewmodel",
+        "android_livedata",
+        "android_databinding",
+        "android_navigation",
+        "android_room",
+        "android_paging",
+        "android_datastore",
+        "android_workmanager",
+        "android_permissions",
+        "android_storage",
+        "android_threading",
+        "android_testing",
+        "android_networking",
+        "android_debugging",
+        "android_general",
+    }
+)
 
-COMPSCI_TOPIC_TAGS: Final[frozenset[str]] = frozenset({
-    "cs_patterns",
-    "cs_oop",
-    "cs_architecture",
-    "cs_concurrency",
-    "cs_data_structures",
-    "cs_algorithms",
-    "cs_database",
-    "cs_networking",
-    "cs_system_design",
-    "cs_distributed_systems",
-    "cs_security",
-    "cs_os",
-    "cs_testing",
-    "cs_types",
-    "cs_compilers",
-    "cs_general",
-})
+COMPSCI_TOPIC_TAGS: Final[frozenset[str]] = frozenset(
+    {
+        "cs_patterns",
+        "cs_oop",
+        "cs_architecture",
+        "cs_concurrency",
+        "cs_data_structures",
+        "cs_algorithms",
+        "cs_database",
+        "cs_networking",
+        "cs_system_design",
+        "cs_distributed_systems",
+        "cs_security",
+        "cs_os",
+        "cs_testing",
+        "cs_types",
+        "cs_compilers",
+        "cs_general",
+    }
+)
 
-COGNITIVE_BIAS_TOPIC_TAGS: Final[frozenset[str]] = frozenset({
-    "cognitive_bias",
-    "bias_probability",
-    "bias_self",
-    "bias_others",
-    "bias_decisions",
-    "bias_information",
-    "bias_perception",
-    "bias_memory",
-    "bias_social",
-    "bias_argumentation",
-    "bias_specific",
-})
+COGNITIVE_BIAS_TOPIC_TAGS: Final[frozenset[str]] = frozenset(
+    {
+        "cognitive_bias",
+        "bias_probability",
+        "bias_self",
+        "bias_others",
+        "bias_decisions",
+        "bias_information",
+        "bias_perception",
+        "bias_memory",
+        "bias_social",
+        "bias_argumentation",
+        "bias_specific",
+    }
+)
 
 ALL_TOPIC_TAGS: Final[frozenset[str]] = (
     KOTLIN_TOPIC_TAGS | ANDROID_TOPIC_TAGS | COMPSCI_TOPIC_TAGS | COGNITIVE_BIAS_TOPIC_TAGS
@@ -675,16 +683,20 @@ ALL_TOPIC_TAGS: Final[frozenset[str]] = (
 # Valid meta tag values
 # ---------------------------------------------------------------------------
 
-VALID_DIFFICULTIES: Final[frozenset[str]] = frozenset({
-    "difficulty::easy",
-    "difficulty::medium",
-    "difficulty::hard",
-})
+VALID_DIFFICULTIES: Final[frozenset[str]] = frozenset(
+    {
+        "difficulty::easy",
+        "difficulty::medium",
+        "difficulty::hard",
+    }
+)
 
-VALID_LANGS: Final[frozenset[str]] = frozenset({
-    "lang::en",
-    "lang::ru",
-})
+VALID_LANGS: Final[frozenset[str]] = frozenset(
+    {
+        "lang::en",
+        "lang::ru",
+    }
+)
 
 # Known topic prefixes in underscore format (used by normalize/validate)
 _TOPIC_PREFIXES: Final[tuple[str, ...]] = (

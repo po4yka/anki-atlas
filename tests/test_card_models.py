@@ -191,17 +191,13 @@ class TestSyncAction:
 
     def test_delete_is_destructive(self) -> None:
         card = _make_card()
-        action = SyncAction(
-            action_type=SyncActionType.DELETE, card=card, anki_guid="guid-1"
-        )
+        action = SyncAction(action_type=SyncActionType.DELETE, card=card, anki_guid="guid-1")
         assert action.is_destructive is True
         assert action.requires_confirmation is True
 
     def test_describe(self) -> None:
         card = _make_card()
-        action = SyncAction(
-            action_type=SyncActionType.SKIP, card=card, reason="up-to-date"
-        )
+        action = SyncAction(action_type=SyncActionType.SKIP, card=card, reason="up-to-date")
         assert action.describe() == "SKIP: python-decorators-1-en (up-to-date)"
 
     def test_sync_action_type_values(self) -> None:

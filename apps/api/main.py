@@ -530,7 +530,9 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except Exception as exc:
             logger.exception("enqueue_sync_job_failed", error_type=type(exc).__name__)
-            raise HTTPException(status_code=500, detail=f"Failed to enqueue sync job: {exc}") from exc
+            raise HTTPException(
+                status_code=500, detail=f"Failed to enqueue sync job: {exc}"
+            ) from exc
 
         return JobAcceptedResponse(
             job_id=job.job_id,
@@ -560,7 +562,9 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except Exception as exc:
             logger.exception("enqueue_index_job_failed", error_type=type(exc).__name__)
-            raise HTTPException(status_code=500, detail=f"Failed to enqueue index job: {exc}") from exc
+            raise HTTPException(
+                status_code=500, detail=f"Failed to enqueue index job: {exc}"
+            ) from exc
 
         return JobAcceptedResponse(
             job_id=job.job_id,

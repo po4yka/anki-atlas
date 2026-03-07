@@ -1,0 +1,16 @@
+# Kotlin Campaign - COMPLETED
+
+name: "Kotlin"
+source_path: "~/Documents/InterviewQuestions/70-Kotlin/"
+deck_name: "Kotlin::Interview"
+note_count: 358
+tag_prefix: "kotlin_"
+primary_tag: "kotlin_coroutines"
+completed: true
+
+stats:
+  notes_processed: 358
+  cards_created: 764
+  cards_synced: 764
+  started_at: "2025-01-08"
+  completed_at: "2025-01-12"

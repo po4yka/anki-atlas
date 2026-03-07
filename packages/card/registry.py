@@ -380,9 +380,7 @@ class CardRegistry:
     def get_note(self, note_id: str) -> NoteEntry | None:
         """Get a note by note_id."""
         conn = self._get_connection()
-        row = conn.execute(
-            "SELECT * FROM notes WHERE note_id = ?", (note_id,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM notes WHERE note_id = ?", (note_id,)).fetchone()
         if row is None:
             return None
         return self._row_to_note_entry(row)

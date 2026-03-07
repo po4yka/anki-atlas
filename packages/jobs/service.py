@@ -208,9 +208,7 @@ class ArqJobManager:
         job_id = str(uuid4())
 
         status: JobStatus = (
-            "scheduled"
-            if normalized_run_at is not None and normalized_run_at > now
-            else "queued"
+            "scheduled" if normalized_run_at is not None and normalized_run_at > now else "queued"
         )
         record = JobRecord(
             job_id=job_id,

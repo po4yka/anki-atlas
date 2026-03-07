@@ -74,6 +74,4 @@ class CrossEncoderReranker:
 
         pairs = [(query, text) for _, text in documents]
         scores = await asyncio.to_thread(self._predict_scores, pairs)
-        return [
-            (doc_id, score) for (doc_id, _), score in zip(documents, scores, strict=True)
-        ]
+        return [(doc_id, score) for (doc_id, _), score in zip(documents, scores, strict=True)]

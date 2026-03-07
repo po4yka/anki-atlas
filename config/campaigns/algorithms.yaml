@@ -1,0 +1,16 @@
+# Algorithms Campaign - COMPLETED
+
+name: "Algorithms"
+source_path: "~/Documents/InterviewQuestions/20-Algorithms/"
+deck_name: "Algorithms::Interview"
+note_count: 9
+tag_prefix: "cs_"
+primary_tag: "cs_algorithms"
+completed: true
+
+stats:
+  notes_processed: 9
+  cards_created: 44
+  cards_synced: 44
+  started_at: "2025-01-15"
+  completed_at: "2025-01-15"

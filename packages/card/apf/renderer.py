@@ -82,10 +82,7 @@ class APFRenderer:
         lang = section.key_point_code_lang or "plaintext"
         escaped_code = html.escape(section.key_point_code)
 
-        return (
-            f'{header}\n<pre><code class="language-{lang}">'
-            f"{escaped_code}</code></pre>"
-        )
+        return f'{header}\n<pre><code class="language-{lang}">{escaped_code}</code></pre>'
 
     def _render_key_point_notes(self, notes: list[str]) -> str:
         """Render the key point notes section."""
@@ -132,9 +129,7 @@ class APFRenderer:
         if spec.source_anchor:
             manifest["source_anchor"] = spec.source_anchor
 
-        manifest_json = json.dumps(
-            manifest, ensure_ascii=False, separators=(",", ":")
-        )
+        manifest_json = json.dumps(manifest, ensure_ascii=False, separators=(",", ":"))
         return f"<!-- manifest: {manifest_json} -->"
 
 

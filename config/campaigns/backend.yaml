@@ -1,0 +1,16 @@
+# Backend Campaign - COMPLETED
+
+name: "Backend"
+source_path: "~/Documents/InterviewQuestions/50-Backend/"
+deck_name: "Backend::Interview"
+note_count: 9
+tag_prefix: "cs_"
+primary_tag: "cs_database"
+completed: true
+
+stats:
+  notes_processed: 9
+  cards_created: 28
+  cards_synced: 28
+  started_at: "2025-01-15"
+  completed_at: "2025-01-15"

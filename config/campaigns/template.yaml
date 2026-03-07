@@ -1,0 +1,26 @@
+# Campaign Configuration Template
+# Copy this file and customize for your campaign
+
+name: "Campaign Name"
+source_path: "~/Documents/InterviewQuestions/XX-Folder/"
+deck_name: "Topic::Interview"
+note_count: 0  # Update after counting: ls <path>/*.md | wc -l
+tag_prefix: "cs_"  # Options: kotlin_, android_, cs_
+primary_tag: "cs_topic"
+completed: false
+
+# Statistics (updated during processing)
+stats:
+  notes_processed: 0
+  cards_created: 0
+  cards_synced: 0
+  started_at: ""
+  completed_at: ""
+
+# Notes
+# - source_path: Use ~ for home directory
+# - deck_name: Use :: for nested decks (e.g., "Kotlin::Interview")
+# - tag_prefix: Must match domain (kotlin_, android_, cs_)
+# - primary_tag: Main tag for card categorization
+# - Generate cards: uv run anki-atlas generate <source_path>
+# - Sync to Anki: uv run anki-atlas sync

@@ -34,58 +34,62 @@ FIELD_HEADERS_ORDER: Final[tuple[str, ...]] = (
     "<!-- Markdown (optional) -->",
 )
 
-ALLOWED_LANGUAGES: Final[frozenset[str]] = frozenset({
-    "kotlin",
-    "java",
-    "python",
-    "javascript",
-    "typescript",
-    "swift",
-    "objective_c",
-    "c",
-    "cpp",
-    "rust",
-    "go",
-    "dart",
-    "ruby",
-    "php",
-    "csharp",
-    "sql",
-    "yaml",
-    "json",
-    "bash",
-    "powershell",
-    "docker",
-    "kubernetes",
-    "terraform",
-    "ansible",
-    "gradle",
-    "maven",
-    "git",
-    "regex",
-})
+ALLOWED_LANGUAGES: Final[frozenset[str]] = frozenset(
+    {
+        "kotlin",
+        "java",
+        "python",
+        "javascript",
+        "typescript",
+        "swift",
+        "objective_c",
+        "c",
+        "cpp",
+        "rust",
+        "go",
+        "dart",
+        "ruby",
+        "php",
+        "csharp",
+        "sql",
+        "yaml",
+        "json",
+        "bash",
+        "powershell",
+        "docker",
+        "kubernetes",
+        "terraform",
+        "ansible",
+        "gradle",
+        "maven",
+        "git",
+        "regex",
+    }
+)
 
-ALLOWED_FIRST_TAGS: Final[frozenset[str]] = ALLOWED_LANGUAGES | frozenset({
-    "android",
-    "ios",
-    "web",
-    "mobile",
-    "backend",
-    "frontend",
-    "fullstack",
-    "devops",
-    "cloud",
-    "database",
-    "security",
-    "testing",
-    "architecture",
-    "design",
-    "ux",
-    "ui",
-    "api",
-    "microservices",
-    "serverless",
-})
+ALLOWED_FIRST_TAGS: Final[frozenset[str]] = ALLOWED_LANGUAGES | frozenset(
+    {
+        "android",
+        "ios",
+        "web",
+        "mobile",
+        "backend",
+        "frontend",
+        "fullstack",
+        "devops",
+        "cloud",
+        "database",
+        "security",
+        "testing",
+        "architecture",
+        "design",
+        "ux",
+        "ui",
+        "api",
+        "microservices",
+        "serverless",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,9 +153,7 @@ def _check_sentinels(lines: list[str], errors: list[str]) -> None:
 
 def _extract_card_blocks(apf_html: str) -> list[str]:
     """Extract individual card blocks from APF HTML."""
-    match = re.search(
-        r"<!-- BEGIN_CARDS -->(.*?)<!-- END_CARDS -->", apf_html, re.DOTALL
-    )
+    match = re.search(r"<!-- BEGIN_CARDS -->(.*?)<!-- END_CARDS -->", apf_html, re.DOTALL)
     if not match:
         return []
 
@@ -196,8 +198,7 @@ def _validate_card_block(
             actual=actual_header,
         )
         errors.append(
-            f"Card {card_num}: Invalid card header format. "
-            f"Found: '{actual_header[:100]}...'"
+            f"Card {card_num}: Invalid card header format. Found: '{actual_header[:100]}...'"
         )
         return
 
@@ -205,8 +206,7 @@ def _validate_card_block(
 
     if expected_slug and slug_val != expected_slug:
         warnings.append(
-            f"Card {card_num}: Slug mismatch "
-            f"(expected {expected_slug}, got {slug_val})"
+            f"Card {card_num}: Slug mismatch (expected {expected_slug}, got {slug_val})"
         )
 
     tags = tags_str.strip().split()
@@ -216,8 +216,13 @@ def _validate_card_block(
         errors.append(f"Card {card_num}: Missing manifest")
     else:
         _validate_manifest(
-            block, slug_val, card_num, errors, warnings,
-            expected_tags=tags, expected_type=card_type,
+            block,
+            slug_val,
+            card_num,
+            errors,
+            warnings,
+            expected_tags=tags,
+            expected_type=card_type,
         )
 
     _check_field_headers(block, card_num, errors)
@@ -236,9 +241,7 @@ def _validate_card_block(
             )
 
 
-def _validate_header_format_strict(
-    header_line: str, card_num: int, errors: list[str]
-) -> None:
+def _validate_header_format_strict(header_line: str, card_num: int, errors: list[str]) -> None:
     """Perform strict validation of card header format."""
     if not header_line.startswith("<!--"):
         errors.append(f"Card {card_num}: Header must start with '<!--'")
@@ -249,31 +252,21 @@ def _validate_header_format_strict(
         return
 
     if "type:" in header_line.lower() and "CardType:" not in header_line:
-        errors.append(
-            f"Card {card_num}: Use 'CardType:' not 'type:' (case-sensitive)"
-        )
+        errors.append(f"Card {card_num}: Use 'CardType:' not 'type:' (case-sensitive)")
         return
 
     if "cardtype:" in header_line.lower() and "CardType:" not in header_line:
-        errors.append(
-            f"Card {card_num}: Use 'CardType:' with capital C and T"
-        )
+        errors.append(f"Card {card_num}: Use 'CardType:' with capital C and T")
         return
 
     if " |" not in header_line or "| " not in header_line:
-        errors.append(
-            f"Card {card_num}: Header must have spaces around pipe "
-            "characters: ' | '"
-        )
+        errors.append(f"Card {card_num}: Header must have spaces around pipe characters: ' | '")
         return
 
     if "Tags:" in header_line:
         tags_part = header_line.split("Tags:")[1].split("-->")[0]
         if "," in tags_part:
-            errors.append(
-                f"Card {card_num}: Tags must be space-separated, "
-                "not comma-separated"
-            )
+            errors.append(f"Card {card_num}: Tags must be space-separated, not comma-separated")
 
 
 def _validate_tags(
@@ -284,10 +277,7 @@ def _validate_tags(
 ) -> None:
     """Validate tag count and format."""
     if not (MIN_TAGS <= len(tags) <= MAX_TAGS):
-        errors.append(
-            f"Card {card_num}: Must have {MIN_TAGS}-{MAX_TAGS} tags, "
-            f"found {len(tags)}"
-        )
+        errors.append(f"Card {card_num}: Must have {MIN_TAGS}-{MAX_TAGS} tags, found {len(tags)}")
 
     normalized_tags = []
     for tag in tags:
@@ -295,9 +285,7 @@ def _validate_tags(
         normalized_tags.append(normalized_tag)
 
         if re.search(r"\s", tag):
-            errors.append(
-                f"Card {card_num}: Tag '{tag}' must not contain whitespace"
-            )
+            errors.append(f"Card {card_num}: Tag '{tag}' must not contain whitespace")
             continue
 
         if not re.match(r"^\w+$", normalized_tag):
@@ -308,22 +296,16 @@ def _validate_tags(
             continue
 
         if not tag.islower():
-            warnings.append(
-                f"Card {card_num}: Tag '{tag}' should be lowercase "
-                "(convention)"
-            )
+            warnings.append(f"Card {card_num}: Tag '{tag}' should be lowercase (convention)")
 
     if tags and tags[0] not in ALLOWED_FIRST_TAGS:
         warnings.append(
-            f"Card {card_num}: First tag should be a "
-            f"language/tool/platform, got '{tags[0]}'"
+            f"Card {card_num}: First tag should be a language/tool/platform, got '{tags[0]}'"
         )
 
     non_lang_tags = [t for t in normalized_tags if t not in ALLOWED_LANGUAGES]
     if not non_lang_tags:
-        errors.append(
-            f"Card {card_num}: Must have at least one non-language tag"
-        )
+        errors.append(f"Card {card_num}: Must have at least one non-language tag")
 
 
 def _validate_manifest(
@@ -350,9 +332,7 @@ def _validate_manifest(
     required_fields = ("slug", "lang", "type", "tags")
     missing = [f for f in required_fields if f not in manifest]
     if missing:
-        errors.append(
-            f"Card {card_num}: Manifest missing fields: {missing}"
-        )
+        errors.append(f"Card {card_num}: Manifest missing fields: {missing}")
 
     if manifest.get("slug") != expected_slug:
         errors.append(
@@ -364,9 +344,7 @@ def _validate_manifest(
         manifest_tags = set(manifest.get("tags", []))
         header_tags = set(expected_tags)
         if manifest_tags != header_tags:
-            warnings.append(
-                f"Card {card_num}: Manifest tags do not match header tags"
-            )
+            warnings.append(f"Card {card_num}: Manifest tags do not match header tags")
 
     if expected_type:
         manifest_type = manifest.get("type", "")
@@ -377,13 +355,9 @@ def _validate_manifest(
             )
 
 
-def _validate_key_point_notes(
-    block: str, card_num: int, warnings: list[str]
-) -> None:
+def _validate_key_point_notes(block: str, card_num: int, warnings: list[str]) -> None:
     """Validate content of Key point notes."""
-    match = re.search(
-        r"<!-- Key point notes -->\s*(.*?)(?=<!--|\Z)", block, re.DOTALL
-    )
+    match = re.search(r"<!-- Key point notes -->\s*(.*?)(?=<!--|\Z)", block, re.DOTALL)
     if not match:
         return
 
@@ -395,22 +369,17 @@ def _validate_key_point_notes(
     has_md_list = bool(re.search(r"^\s*[-*]\s+", content, re.MULTILINE))
 
     if not has_html_list and not has_md_list:
-        warnings.append(
-            f"Card {card_num}: 'Key point notes' should contain a list"
-        )
+        warnings.append(f"Card {card_num}: 'Key point notes' should contain a list")
 
     if has_html_list:
         bullet_count = content.count("<li>")
         if bullet_count < 3:
             warnings.append(
-                f"Card {card_num}: 'Key point notes' has few bullets "
-                f"({bullet_count}), aim for 5-7"
+                f"Card {card_num}: 'Key point notes' has few bullets ({bullet_count}), aim for 5-7"
             )
 
 
-def _check_field_headers(
-    block: str, card_num: int, errors: list[str]
-) -> None:
+def _check_field_headers(block: str, card_num: int, errors: list[str]) -> None:
     """Check that required field headers are present and non-empty."""
     required = (
         "<!-- Title -->",
@@ -425,9 +394,7 @@ def _check_field_headers(
                 and "<!-- Key point -->" in block
             ):
                 continue
-            errors.append(
-                f"Card {card_num}: Missing required field header '{header}'"
-            )
+            errors.append(f"Card {card_num}: Missing required field header '{header}'")
             continue
 
         escaped_header = re.escape(header)
@@ -436,12 +403,8 @@ def _check_field_headers(
 
         if match:
             content = match.group(1).strip()
-            if not content and (
-                header == "<!-- Title -->" or "Key point" in header
-            ):
-                errors.append(
-                    f"Card {card_num}: Field '{header}' is empty"
-                )
+            if not content and (header == "<!-- Title -->" or "Key point" in header):
+                errors.append(f"Card {card_num}: Field '{header}' is empty")
 
 
 def _validate_cloze_density(
@@ -451,23 +414,18 @@ def _validate_cloze_density(
     cloze_matches = re.findall(r"\{\{c(\d+)::", block)
 
     if not cloze_matches:
-        warnings.append(
-            f"Card {card_num}: Missing card has no cloze deletions"
-        )
+        warnings.append(f"Card {card_num}: Missing card has no cloze deletions")
         return
 
     indices = sorted({int(m) for m in cloze_matches})
     expected = list(range(1, len(indices) + 1))
     if indices != expected:
         errors.append(
-            f"Card {card_num}: Cloze indices not dense "
-            f"(expected {expected}, got {indices})"
+            f"Card {card_num}: Cloze indices not dense (expected {expected}, got {indices})"
         )
 
 
-def _check_duplicate_slugs(
-    card_blocks: list[str], errors: list[str]
-) -> None:
+def _check_duplicate_slugs(card_blocks: list[str], errors: list[str]) -> None:
     """Check for duplicate slugs across blocks."""
     seen: set[str] = set()
     for block in card_blocks:

@@ -19,18 +19,54 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 # Allowed HTML tags for Anki cards (used by nh3 sanitizer)
-ALLOWED_TAGS: Final[frozenset[str]] = frozenset({
-    "p", "br", "strong", "b", "em", "i", "u", "s", "strike",
-    "code", "pre", "ul", "ol", "li",
-    "table", "thead", "tbody", "tr", "th", "td",
-    "blockquote", "h1", "h2", "h3", "h4", "h5", "h6",
-    "a", "img", "div", "span", "sup", "sub", "hr",
-    "figure", "figcaption",
-})
+ALLOWED_TAGS: Final[frozenset[str]] = frozenset(
+    {
+        "p",
+        "br",
+        "strong",
+        "b",
+        "em",
+        "i",
+        "u",
+        "s",
+        "strike",
+        "code",
+        "pre",
+        "ul",
+        "ol",
+        "li",
+        "table",
+        "thead",
+        "tbody",
+        "tr",
+        "th",
+        "td",
+        "blockquote",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "a",
+        "img",
+        "div",
+        "span",
+        "sup",
+        "sub",
+        "hr",
+        "figure",
+        "figcaption",
+    }
+)
 
-_GLOBAL_ATTRIBUTES: Final[frozenset[str]] = frozenset({
-    "class", "id", "style",
-})
+_GLOBAL_ATTRIBUTES: Final[frozenset[str]] = frozenset(
+    {
+        "class",
+        "id",
+        "style",
+    }
+)
 
 _TAG_SPECIFIC_ATTRIBUTES: Final[dict[str, set[str]]] = {
     "a": {"href", "title", "target"},
@@ -60,12 +96,14 @@ _MISTUNE_CONVERTER: mistune.Markdown | None = None
 def _get_mistune() -> Any:
     """Lazy-import mistune."""
     import mistune as _mistune
+
     return _mistune
 
 
 def _get_nh3() -> Any:
     """Lazy-import nh3."""
     import nh3 as _nh3
+
     return _nh3
 
 
@@ -75,6 +113,7 @@ def _get_pygments() -> tuple[Any, Any, Any, Any]:
     from pygments.formatters import HtmlFormatter as _HtmlFormatter
     from pygments.lexers import get_lexer_by_name as _get_lexer
     from pygments.lexers import guess_lexer as _guess
+
     return _highlight, _HtmlFormatter, _get_lexer, _guess
 
 
@@ -86,9 +125,7 @@ def _get_pygments() -> tuple[Any, Any, Any, Any]:
 def _create_anki_renderer() -> Any:
     """Create an AnkiHighlightRenderer (mistune.HTMLRenderer subclass)."""
     mistune_mod = _get_mistune()
-    _highlight_fn, HtmlFormatter, get_lexer_by_name, guess_lexer = (
-        _get_pygments()
-    )
+    _highlight_fn, HtmlFormatter, get_lexer_by_name, guess_lexer = _get_pygments()
 
     class AnkiHighlightRenderer(mistune_mod.HTMLRenderer):  # type: ignore[name-defined,misc]
         """Custom mistune renderer with Pygments syntax highlighting."""
@@ -96,26 +133,19 @@ def _create_anki_renderer() -> Any:
         def __init__(self, **kwargs: Any) -> None:
             super().__init__(**kwargs)
             self._formatter = HtmlFormatter(
-                cssclass="codehilite", linenos=False, nowrap=False,
+                cssclass="codehilite",
+                linenos=False,
+                nowrap=False,
             )
 
         def block_code(self, code: str, info: str | None = None) -> str:
             lang = info.split()[0] if info else None
             try:
-                lexer = (
-                    get_lexer_by_name(lang, stripall=True)
-                    if lang
-                    else guess_lexer(code)
-                )
+                lexer = get_lexer_by_name(lang, stripall=True) if lang else guess_lexer(code)
             except Exception:
-                lang_class = (
-                    f"language-{lang}" if lang else "language-text"
-                )
+                lang_class = f"language-{lang}" if lang else "language-text"
                 escaped_code = escape(code.strip())
-                return (
-                    f'<pre><code class="{lang_class}">'
-                    f"{escaped_code}</code></pre>\n"
-                )
+                return f'<pre><code class="{lang_class}">{escaped_code}</code></pre>\n'
             result: str = _highlight_fn(code, lexer, self._formatter)
             return result
 
@@ -181,8 +211,7 @@ def _ensure_code_language_classes(html_str: str) -> str:
 def _is_already_html(content: str) -> bool:
     """Check if content is already HTML (not Markdown)."""
     _html_tags = (
-        "p|pre|code|strong|em|b|i|ul|ol|li|table|tr|td|th|"
-        "div|span|br|hr|blockquote|h[1-6]|a|img"
+        "p|pre|code|strong|em|b|i|ul|ol|li|table|tr|td|th|div|span|br|hr|blockquote|h[1-6]|a|img"
     )
     html_tag_pattern = re.compile(
         rf"<(?:{_html_tags})(?:\s[^>]*)?/?>",
@@ -196,9 +225,7 @@ def _is_already_html(content: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def convert_markdown_to_html(
-    md_content: str, *, sanitize: bool = True
-) -> str:
+def convert_markdown_to_html(md_content: str, *, sanitize: bool = True) -> str:
     """Convert Markdown content to HTML using mistune."""
     if not md_content or not md_content.strip():
         return md_content
@@ -227,8 +254,7 @@ def _basic_markdown_to_html(md_content: str) -> str:
     html_str = re.sub(
         r"```(\w*)\n(.*?)\n```",
         lambda m: (
-            f'<pre><code class="language-{m.group(1) or "text"}">'
-            f"{escape(m.group(2))}</code></pre>"
+            f'<pre><code class="language-{m.group(1) or "text"}">{escape(m.group(2))}</code></pre>'
         ),
         html_str,
         flags=re.DOTALL,
@@ -240,17 +266,11 @@ def _basic_markdown_to_html(md_content: str) -> str:
         html_str,
     )
 
-    html_str = re.sub(
-        r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", html_str
-    )
+    html_str = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", html_str)
 
-    html_str = re.sub(
-        r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", html_str
-    )
+    html_str = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", html_str)
 
-    html_str = re.sub(
-        r"^- (.+)$", r"<li>\1</li>", html_str, flags=re.MULTILINE
-    )
+    html_str = re.sub(r"^- (.+)$", r"<li>\1</li>", html_str, flags=re.MULTILINE)
     html_str = re.sub(r"(<li>.*</li>\n?)+", r"<ul>\g<0></ul>", html_str)
 
     html_str = html_str.replace("\n\n", "</p><p>")
@@ -341,25 +361,19 @@ def convert_apf_markdown_to_html(apf_markdown: str) -> str:
 def highlight_code(code: str, language: str | None = None) -> str:
     """Highlight code using Pygments."""
     try:
-        _highlight_fn, HtmlFormatter, get_lexer_by_name, guess_lexer = (
-            _get_pygments()
-        )
+        _highlight_fn, HtmlFormatter, get_lexer_by_name, guess_lexer = _get_pygments()
 
-        lexer = (
-            get_lexer_by_name(language, stripall=True)
-            if language
-            else guess_lexer(code)
-        )
+        lexer = get_lexer_by_name(language, stripall=True) if language else guess_lexer(code)
         formatter = HtmlFormatter(
-            cssclass="codehilite", linenos=False, nowrap=False,
+            cssclass="codehilite",
+            linenos=False,
+            nowrap=False,
         )
         result: str = _highlight_fn(code, lexer, formatter)
         return result
     except Exception:
         escaped = escape(code)
-        lang_class = (
-            f"language-{language}" if language else "language-text"
-        )
+        lang_class = f"language-{language}" if language else "language-text"
         return f'<pre><code class="{lang_class}">{escaped}</code></pre>'
 
 

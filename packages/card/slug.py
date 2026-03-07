@@ -28,9 +28,7 @@ class SlugService:
             return ""
 
         normalized = unicodedata.normalize("NFKD", text)
-        ascii_text = "".join(
-            char for char in normalized if unicodedata.category(char) != "Mn"
-        )
+        ascii_text = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
         lower_text = ascii_text.lower()
         with_hyphens = re.sub(r"[\s_./\\]+", "-", lower_text)
         clean_text = SLUG_PATTERN.sub("", with_hyphens)
@@ -127,8 +125,8 @@ class SlugService:
             parts = parts[:-1]
 
         if len(parts) >= 1 and parts[-1].isdigit():
-                result["index"] = int(parts[-1])
-                parts = parts[:-1]
+            result["index"] = int(parts[-1])
+            parts = parts[:-1]
 
         if len(parts) >= 1:
             remaining = "-".join(parts)

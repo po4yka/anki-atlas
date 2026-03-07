@@ -213,9 +213,7 @@ class GoogleEmbeddingProvider(EmbeddingProvider):
                         continue
                     raise
 
-            all_embeddings.extend(
-                [list(emb.values) for emb in response.embeddings]
-            )
+            all_embeddings.extend([list(emb.values) for emb in response.embeddings])
 
         return all_embeddings
 
