@@ -36,7 +36,7 @@ class DimensionMismatchError(Exception):
         )
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class NotePayload:
     """Payload stored with each vector in Qdrant."""
 
@@ -66,7 +66,7 @@ class NotePayload:
         }
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class UpsertResult:
     """Result of an upsert operation."""
 

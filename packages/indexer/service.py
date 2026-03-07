@@ -30,7 +30,7 @@ class EmbeddingModelChanged(Exception):
         )
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class NoteForIndexing:
     """Note data needed for indexing."""
 

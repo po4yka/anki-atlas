@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from psycopg import AsyncConnection
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class FTSResult:
     """Result from lexical search."""
 
@@ -23,7 +23,7 @@ class FTSResult:
     source: Literal["fts", "fuzzy", "autocomplete"] = "fts"
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class LexicalSearchResult:
     """Result bundle for lexical search with fallback metadata."""
 
@@ -34,7 +34,7 @@ class LexicalSearchResult:
     autocomplete_suggestions: list[str] = field(default_factory=list)
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class SearchFilters:
     """Filters for search queries."""
 

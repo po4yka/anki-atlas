@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from packages.analytics.taxonomy import Taxonomy
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class TopicAssignment:
     """A topic assignment for a note."""
 

@@ -30,7 +30,7 @@ class TopicCoverage:
     avg_lapses: float = 0.0
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class TopicGap:
     """A gap (missing or undercovered topic)."""
 
@@ -45,7 +45,7 @@ class TopicGap:
     nearest_notes: list[dict[str, Any]] = field(default_factory=list)
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class WeakNote:
     """A note with weakness signals."""
 

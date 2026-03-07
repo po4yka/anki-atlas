@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class AnalyticsResult:
     """Result from analytics operations."""
 

@@ -18,7 +18,7 @@ from packages.search.reranker import CrossEncoderReranker, Reranker
 logger = get_logger(module=__name__)
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class HybridSearchResult:
     """Complete result from hybrid search."""
 
@@ -35,7 +35,7 @@ class HybridSearchResult:
     rerank_top_n: int | None = None
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class NoteDetail:
     """Detailed note information for search results."""
 
