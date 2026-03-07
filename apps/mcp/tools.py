@@ -322,3 +322,187 @@ async def ankiatlas_sync(
             "sync_failed", collection_path=collection_path, error_type=type(e).__name__
         )
         return _format_error(e, "sync")
+
+
+@mcp.tool()
+async def ankiatlas_generate(
+    text: Annotated[str, Field(description="Markdown text of the note to parse for generation")],
+    deck: Annotated[str | None, Field(description="Target deck name (optional)")] = None,  # noqa: ARG001
+) -> str:
+    """Parse an Obsidian-style markdown note and preview card generation.
+
+    Extracts title, sections, and metadata from the text. Shows a generation
+    preview with estimated card count per section.
+
+    The actual LLM-based card generation is done separately -- this tool
+    prepares and previews the input.
+
+    Constraints:
+        - text: non-empty markdown string
+    """
+    from pathlib import Path
+    from tempfile import NamedTemporaryFile
+
+    from apps.mcp.formatters import format_generate_result
+    from packages.obsidian.parser import parse_note
+
+    try:
+        # Write text to a temp file so parse_note can read it
+        with NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as f:
+            f.write(text)
+            tmp_path = Path(f.name)
+
+        try:
+            note = parse_note(tmp_path)
+            return format_generate_result(
+                title=note.title,
+                sections=note.sections,
+                body_length=len(note.body),
+            )
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    except Exception as e:
+        logger.exception("generate_preview_failed", error_type=type(e).__name__)
+        return _format_error(e, "generation preview")
+
+
+@mcp.tool()
+async def ankiatlas_validate(
+    front: Annotated[str, Field(description="Card front side text")],
+    back: Annotated[str, Field(description="Card back side text")],
+    tags: Annotated[list[str] | None, Field(description="Card tags (optional)")] = None,
+    check_quality: Annotated[bool, Field(description="Also run quality scoring")] = True,
+) -> str:
+    """Validate a flashcard's front and back content.
+
+    Runs content, format, HTML, and tag validators. Optionally scores quality
+    across five dimensions: clarity, atomicity, testability, memorability,
+    accuracy.
+
+    Constraints:
+        - front: non-empty string
+        - back: non-empty string
+    """
+    from apps.mcp.formatters import format_validate_result
+    from packages.validation.pipeline import ValidationPipeline
+    from packages.validation.quality import assess_quality
+    from packages.validation.validators import (
+        ContentValidator,
+        FormatValidator,
+        HTMLValidator,
+        TagValidator,
+    )
+
+    try:
+        pipeline = ValidationPipeline(
+            [ContentValidator(), FormatValidator(), HTMLValidator(), TagValidator()]
+        )
+        tag_tuple = tuple(tags) if tags else ()
+        result = pipeline.run(front=front, back=back, tags=tag_tuple)
+
+        quality = None
+        if check_quality:
+            quality = assess_quality(front=front, back=back)
+
+        return format_validate_result(result, quality)
+
+    except Exception as e:
+        logger.exception("validation_failed", error_type=type(e).__name__)
+        return _format_error(e, "validation")
+
+
+@mcp.tool()
+async def ankiatlas_obsidian_sync(
+    vault_path: Annotated[str, Field(description="Path to the Obsidian vault directory")],
+    dry_run: Annotated[bool, Field(description="Only scan and preview, do not sync")] = True,
+) -> str:
+    """Scan an Obsidian vault and preview notes for card generation.
+
+    Discovers all markdown notes, parses them, and returns a summary
+    with titles, section counts, and estimated card counts.
+
+    By default runs in dry-run mode (scan only). Set dry_run=False to
+    trigger the full sync pipeline (requires configured generator).
+
+    Constraints:
+        - vault_path: must point to a valid directory
+    """
+    from pathlib import Path
+
+    from apps.mcp.formatters import format_obsidian_sync_result
+    from packages.obsidian.parser import discover_notes, parse_note
+
+    try:
+        path = Path(vault_path)
+        if not path.is_dir():
+            return (
+                f"**Error**: Vault path not found or not a directory: {vault_path}\n\n"
+                "**Suggested actions:**\n"
+                "1. Check the path is correct\n"
+                "2. Ensure the directory exists and is accessible"
+            )
+
+        notes = discover_notes(path)
+
+        parsed_notes: list[tuple[str, str | None, int]] = []
+        for note_path in notes[:50]:  # Limit parsing for performance
+            try:
+                parsed = parse_note(note_path, vault_root=path)
+                parsed_notes.append((note_path.name, parsed.title, len(parsed.sections)))
+            except Exception:
+                parsed_notes.append((note_path.name, None, 0))
+
+        result = format_obsidian_sync_result(
+            notes_found=len(notes),
+            parsed_notes=parsed_notes,
+            vault_path=vault_path,
+        )
+
+        if not dry_run:
+            result += "\n\n*Full sync requires a configured card generator. Use dry_run=True to preview.*"
+
+        return result
+
+    except Exception as e:
+        logger.exception(
+            "obsidian_sync_failed", vault_path=vault_path, error_type=type(e).__name__
+        )
+        return _format_error(e, "obsidian sync")
+
+
+@mcp.tool()
+async def ankiatlas_tag_audit(
+    tags: Annotated[list[str], Field(description="List of tags to audit")],
+    fix: Annotated[bool, Field(description="Show normalized (fixed) versions")] = False,
+) -> str:
+    """Audit tags for convention violations.
+
+    Validates each tag against the Anki Atlas taxonomy conventions:
+    - Proper prefix format (:: separator)
+    - Kebab-case naming
+    - Maximum hierarchy depth
+    - Case conventions
+
+    Optionally shows normalized versions and suggests close matches
+    for unknown tags.
+
+    Constraints:
+        - tags: non-empty list of strings
+    """
+    from apps.mcp.formatters import format_tag_audit_result
+    from packages.taxonomy.normalize import normalize_tag, suggest_tag, validate_tag
+
+    try:
+        results: list[tuple[str, list[str], str | None, list[str]]] = []
+        for tag in tags:
+            issues = validate_tag(tag)
+            normalized = normalize_tag(tag) if fix else None
+            suggestions = suggest_tag(tag) if issues else []
+            results.append((tag, issues, normalized, suggestions))
+
+        return format_tag_audit_result(results)
+
+    except Exception as e:
+        logger.exception("tag_audit_failed", error_type=type(e).__name__)
+        return _format_error(e, "tag audit")

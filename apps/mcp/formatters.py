@@ -249,6 +249,192 @@ def format_sync_result(stats: Any) -> str:
     return "\n".join(lines)
 
 
+def format_generate_result(
+    title: str | None,
+    sections: tuple[tuple[str, str], ...],
+    body_length: int,
+) -> str:
+    """Format note parse result as markdown for generation preview.
+
+    Args:
+        title: Extracted note title.
+        sections: Parsed (heading, content) pairs.
+        body_length: Length of the note body in characters.
+
+    Returns:
+        Markdown-formatted string.
+    """
+    lines: list[str] = []
+
+    lines.append("## Generation Preview")
+    lines.append("")
+
+    if title:
+        lines.append(f"**Title**: {title}")
+    else:
+        lines.append("**Title**: *(not detected)*")
+    lines.append(f"**Body length**: {body_length} chars")
+    lines.append(f"**Sections**: {len(sections)}")
+    lines.append("")
+
+    if sections:
+        lines.append("### Sections Found")
+        lines.append("")
+        lines.append("| # | Heading | Content Length |")
+        lines.append("|---|---------|---------------|")
+        for i, (heading, content) in enumerate(sections, 1):
+            heading_label = heading if heading else "*(preamble)*"
+            lines.append(f"| {i} | {_truncate(heading_label, 50)} | {len(content)} chars |")
+        lines.append("")
+
+    estimated_cards = max(1, len(sections))
+    lines.append(f"**Estimated cards**: ~{estimated_cards}")
+    lines.append("")
+    lines.append("*Use the generate command to create cards from this note.*")
+
+    return "\n".join(lines)
+
+
+def format_validate_result(
+    result: Any,
+    quality: Any | None = None,
+) -> str:
+    """Format validation result as markdown.
+
+    Args:
+        result: ValidationResult from the pipeline.
+        quality: Optional QualityScore.
+
+    Returns:
+        Markdown-formatted string.
+    """
+    lines: list[str] = []
+
+    status = "PASS" if result.is_valid else "FAIL"
+    lines.append(f"## Validation: {status}")
+    lines.append("")
+
+    errors = result.errors()
+    warnings = result.warnings()
+
+    lines.append(f"- **Errors**: {len(errors)}")
+    lines.append(f"- **Warnings**: {len(warnings)}")
+    lines.append("")
+
+    if errors:
+        lines.append("### Errors")
+        for issue in errors:
+            loc = f" ({issue.location})" if issue.location else ""
+            lines.append(f"- {issue.message}{loc}")
+        lines.append("")
+
+    if warnings:
+        lines.append("### Warnings")
+        for issue in warnings:
+            loc = f" ({issue.location})" if issue.location else ""
+            lines.append(f"- {issue.message}{loc}")
+        lines.append("")
+
+    if quality is not None:
+        lines.append("### Quality Score")
+        lines.append(f"- **Overall**: {quality.overall:.2f}")
+        lines.append(f"- Clarity: {quality.clarity:.2f}")
+        lines.append(f"- Atomicity: {quality.atomicity:.2f}")
+        lines.append(f"- Testability: {quality.testability:.2f}")
+        lines.append(f"- Memorability: {quality.memorability:.2f}")
+        lines.append(f"- Accuracy: {quality.accuracy:.2f}")
+
+    return "\n".join(lines)
+
+
+def format_obsidian_sync_result(
+    notes_found: int,
+    parsed_notes: list[tuple[str, str | None, int]],
+    vault_path: str,
+) -> str:
+    """Format obsidian sync discovery result as markdown.
+
+    Args:
+        notes_found: Total number of markdown files found.
+        parsed_notes: List of (filename, title, section_count) tuples.
+        vault_path: Path to the vault.
+
+    Returns:
+        Markdown-formatted string.
+    """
+    lines: list[str] = []
+
+    lines.append("## Obsidian Vault Scan")
+    lines.append(f"*Vault: {vault_path}*")
+    lines.append("")
+    lines.append(f"**Notes found**: {notes_found}")
+    lines.append("")
+
+    if parsed_notes:
+        lines.append("### Parsed Notes")
+        lines.append("")
+        lines.append("| # | File | Title | Sections |")
+        lines.append("|---|------|-------|----------|")
+        for i, (filename, title, section_count) in enumerate(parsed_notes[:20], 1):
+            title_label = title or "*(untitled)*"
+            lines.append(
+                f"| {i} | {_truncate(filename, 40)} | "
+                f"{_truncate(title_label, 40)} | {section_count} |"
+            )
+        if len(parsed_notes) > 20:
+            lines.append(f"\n*...and {len(parsed_notes) - 20} more notes*")
+
+    return "\n".join(lines)
+
+
+def format_tag_audit_result(
+    results: list[tuple[str, list[str], str | None, list[str]]],
+) -> str:
+    """Format tag audit result as markdown.
+
+    Args:
+        results: List of (tag, issues, normalized, suggestions) tuples.
+
+    Returns:
+        Markdown-formatted string.
+    """
+    lines: list[str] = []
+
+    lines.append("## Tag Audit Results")
+    lines.append("")
+
+    total = len(results)
+    valid = sum(1 for _, issues, _, _ in results if not issues)
+    invalid = total - valid
+
+    lines.append(f"- **Total tags**: {total}")
+    lines.append(f"- **Valid**: {valid}")
+    lines.append(f"- **With issues**: {invalid}")
+    lines.append("")
+
+    if invalid > 0:
+        lines.append("### Issues Found")
+        lines.append("")
+        lines.append("| Tag | Issues | Normalized | Suggestions |")
+        lines.append("|-----|--------|------------|-------------|")
+        for tag, issues, normalized, suggestions in results:
+            if not issues:
+                continue
+            issues_str = "; ".join(issues)
+            norm_str = normalized or "-"
+            sugg_str = ", ".join(suggestions[:3]) if suggestions else "-"
+            lines.append(
+                f"| `{_truncate(tag, 30)}` | {_truncate(issues_str, 50)} | "
+                f"`{norm_str}` | {sugg_str} |"
+            )
+        lines.append("")
+
+    if valid == total:
+        lines.append("All tags are valid.")
+
+    return "\n".join(lines)
+
+
 def _truncate(text: str, max_len: int) -> str:
     """Truncate text with ellipsis."""
     text = text.replace("\n", " ").strip()
