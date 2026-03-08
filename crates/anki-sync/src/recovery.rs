@@ -1,6 +1,6 @@
 use std::collections::HashSet;
-use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::now_secs;
 use crate::state::{CardState, StateDB};
 
 /// A recorded action that can be rolled back.
@@ -53,8 +53,7 @@ impl CardTransaction {
             return Vec::new();
         }
 
-        let actions: Vec<RollbackAction> = self
-            .actions
+        self.actions
             .drain(..)
             .rev()
             .map(|(action_type, target_id)| RollbackAction {
@@ -63,9 +62,7 @@ impl CardTransaction {
                 succeeded: true,
                 error: String::new(),
             })
-            .collect();
-
-        actions
+            .collect()
     }
 }
 
@@ -102,12 +99,7 @@ impl<'a> CardRecovery<'a> {
     /// Find card states older than `max_age_days`.
     /// Only considers states with `synced_at > 0`.
     pub fn find_stale(&self, max_age_days: u32) -> Vec<CardState> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("time went backwards")
-            .as_secs_f64();
-
-        let cutoff = now - (max_age_days as f64 * 86400.0);
+        let cutoff = now_secs() - (max_age_days as f64 * 86400.0);
 
         self.state_db
             .get_all()

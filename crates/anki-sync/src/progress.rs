@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::now_secs;
 
 /// Phases of a sync operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,13 +63,6 @@ struct ProgressState {
     errors: i32,
     started_at: f64,
     updated_at: f64,
-}
-
-fn now_secs() -> f64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("time went backwards")
-        .as_secs_f64()
 }
 
 /// Thread-safe progress tracker.
