@@ -171,10 +171,7 @@ async fn setup_pg() -> (PgPool, testcontainers::ContainerAsync<Postgres>) {
         .await
         .expect("start postgres container");
 
-    let host_port = container
-        .get_host_port_ipv4(5432)
-        .await
-        .expect("get port");
+    let host_port = container.get_host_port_ipv4(5432).await.expect("get port");
 
     let url = format!("postgresql://postgres:postgres@127.0.0.1:{host_port}/postgres");
     let pool = PgPool::connect(&url).await.expect("connect to pg");
@@ -404,11 +401,10 @@ async fn sync_collection_soft_deletes_missing_notes() {
         .unwrap();
     assert_eq!(active.0, 1);
 
-    let deleted: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM notes WHERE deleted_at IS NOT NULL")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let deleted: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes WHERE deleted_at IS NOT NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(deleted.0, 1);
 }
 
@@ -485,7 +481,10 @@ async fn sync_collection_updates_sync_metadata() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    let path = row.0.as_str().expect("last_collection_path should be a string");
+    let path = row
+        .0
+        .as_str()
+        .expect("last_collection_path should be a string");
     assert!(!path.is_empty());
 }
 
@@ -516,11 +515,10 @@ async fn sync_collection_stores_correct_deck_data() {
 
     service.sync_collection(db.path()).await.unwrap();
 
-    let row: (i64, String) =
-        sqlx::query_as("SELECT deck_id, name FROM decks WHERE deck_id = 1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let row: (i64, String) = sqlx::query_as("SELECT deck_id, name FROM decks WHERE deck_id = 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(row.0, 1);
     assert_eq!(row.1, "Default");
 }
@@ -533,11 +531,10 @@ async fn sync_collection_stores_correct_note_data() {
 
     service.sync_collection(db.path()).await.unwrap();
 
-    let row: (i64, i64) =
-        sqlx::query_as("SELECT note_id, model_id FROM notes WHERE note_id = 100")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let row: (i64, i64) = sqlx::query_as("SELECT note_id, model_id FROM notes WHERE note_id = 100")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(row.0, 100);
     assert_eq!(row.1, 1234567890);
 }
@@ -568,11 +565,12 @@ async fn sync_collection_stores_correct_card_stats_data() {
 
     service.sync_collection(db.path()).await.unwrap();
 
-    let row: (i64, i32, i64) =
-        sqlx::query_as("SELECT card_id, reviews, total_time_ms FROM card_stats WHERE card_id = 500")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let row: (i64, i32, i64) = sqlx::query_as(
+        "SELECT card_id, reviews, total_time_ms FROM card_stats WHERE card_id = 500",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(row.0, 500);
     assert_eq!(row.1, 3);
     assert_eq!(row.2, 29000); // 8000 + 15000 + 6000

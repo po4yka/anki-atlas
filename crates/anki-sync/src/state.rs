@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use rusqlite::{Connection, Row};
 
@@ -31,7 +32,7 @@ impl CardState {
 
 /// SQLite WAL database for tracking per-card sync state.
 pub struct StateDB {
-    conn: Connection,
+    conn: Mutex<Connection>,
     #[allow(dead_code)]
     path: PathBuf,
 }
@@ -57,25 +58,28 @@ impl StateDB {
             );",
         )?;
 
-        Ok(Self { conn, path })
+        Ok(Self {
+            conn: Mutex::new(conn),
+            path,
+        })
     }
 
     /// Get card state by slug, or `None` if not found.
     pub fn get(&self, slug: &str) -> Option<CardState> {
-        self.conn
-            .query_row(
-                "SELECT slug, content_hash, anki_guid, note_type, source_path, synced_at
+        let conn = self.conn.lock().expect("state_db mutex poisoned");
+        conn.query_row(
+            "SELECT slug, content_hash, anki_guid, note_type, source_path, synced_at
                  FROM card_state WHERE slug = ?1",
-                [slug],
-                CardState::from_row,
-            )
-            .ok()
+            [slug],
+            CardState::from_row,
+        )
+        .ok()
     }
 
     /// Get all card states, sorted by slug.
     pub fn get_all(&self) -> Vec<CardState> {
-        let mut stmt = self
-            .conn
+        let conn = self.conn.lock().expect("state_db mutex poisoned");
+        let mut stmt = conn
             .prepare(
                 "SELECT slug, content_hash, anki_guid, note_type, source_path, synced_at
                  FROM card_state ORDER BY slug",
@@ -90,9 +94,9 @@ impl StateDB {
 
     /// Insert or update a card state (upsert on slug).
     pub fn upsert(&self, state: &CardState) {
-        self.conn
-            .execute(
-                "INSERT INTO card_state (slug, content_hash, anki_guid, note_type, source_path, synced_at)
+        let conn = self.conn.lock().expect("state_db mutex poisoned");
+        conn.execute(
+            "INSERT INTO card_state (slug, content_hash, anki_guid, note_type, source_path, synced_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                  ON CONFLICT(slug) DO UPDATE SET
                     content_hash = excluded.content_hash,
@@ -100,29 +104,29 @@ impl StateDB {
                     note_type = excluded.note_type,
                     source_path = excluded.source_path,
                     synced_at = excluded.synced_at",
-                rusqlite::params![
-                    state.slug,
-                    state.content_hash,
-                    state.anki_guid,
-                    state.note_type,
-                    state.source_path,
-                    state.synced_at,
-                ],
-            )
-            .expect("failed to upsert card_state");
+            rusqlite::params![
+                state.slug,
+                state.content_hash,
+                state.anki_guid,
+                state.note_type,
+                state.source_path,
+                state.synced_at,
+            ],
+        )
+        .expect("failed to upsert card_state");
     }
 
     /// Delete card state by slug.
     pub fn delete(&self, slug: &str) {
-        self.conn
-            .execute("DELETE FROM card_state WHERE slug = ?1", [slug])
+        let conn = self.conn.lock().expect("state_db mutex poisoned");
+        conn.execute("DELETE FROM card_state WHERE slug = ?1", [slug])
             .expect("failed to delete card_state");
     }
 
     /// Get all card states for a given source path, sorted by slug.
     pub fn get_by_source(&self, source_path: &str) -> Vec<CardState> {
-        let mut stmt = self
-            .conn
+        let conn = self.conn.lock().expect("state_db mutex poisoned");
+        let mut stmt = conn
             .prepare(
                 "SELECT slug, content_hash, anki_guid, note_type, source_path, synced_at
                  FROM card_state WHERE source_path = ?1 ORDER BY slug",

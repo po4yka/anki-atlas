@@ -220,8 +220,10 @@ impl SyncService {
         let now = chrono::Utc::now().to_rfc3339();
         let collection_path_str = path.display().to_string();
 
-        for (key, value) in [("last_sync_at", now), ("last_collection_path", collection_path_str)]
-        {
+        for (key, value) in [
+            ("last_sync_at", now),
+            ("last_collection_path", collection_path_str),
+        ] {
             sqlx::query(
                 "INSERT INTO sync_metadata (key, value) VALUES ($1, $2)
                  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",

@@ -79,6 +79,22 @@ dependencies = [
 [[package]]
 name = "anki-sync"
 version = "0.1.0"
+dependencies = [
+ "anki-reader",
+ "chrono",
+ "common",
+ "database",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "testcontainers",
+ "testcontainers-modules",
+ "tokio",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "anyhow"
