@@ -94,7 +94,7 @@ impl Default for AnkiCollection {
             card_stats: Vec::new(),
             collection_path: None,
             extracted_at: Utc::now(),
-            schema_version: 0, // Wrong on purpose - should be 11
+            schema_version: 11,
         }
     }
 }
