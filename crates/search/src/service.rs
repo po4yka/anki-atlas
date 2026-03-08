@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 use sqlx::FromRow;
+use tracing::instrument;
 
 use crate::error::SearchError;
 use crate::fts::SearchFilters;
@@ -51,7 +52,6 @@ struct NoteDetailRow {
 }
 
 /// Search service with trait-based DI.
-#[allow(dead_code)]
 pub struct SearchService<E, V, R>
 where
     E: indexer::embeddings::EmbeddingProvider,
@@ -93,6 +93,7 @@ where
 
     /// Execute hybrid search: semantic + FTS -> RRF fusion -> optional rerank.
     #[allow(clippy::too_many_arguments)]
+    #[instrument(skip(self))]
     pub async fn search(
         &self,
         query: &str,
@@ -228,6 +229,7 @@ where
     }
 
     /// Fetch note details for a list of IDs (for reranking / enrichment).
+    #[instrument(skip(self))]
     pub async fn get_notes_details(
         &self,
         note_ids: &[i64],

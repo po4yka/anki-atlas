@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use tracing::instrument;
 
 use crate::error::SearchError;
 
@@ -108,7 +109,6 @@ fn build_filter_clauses(filters: Option<&SearchFilters>) -> String {
 /// Filters on `deck_names`, `deck_names_exclude`, `min_ivl`, `max_lapses`,
 /// and `min_reps` require a LEFT JOIN to `cards` and `decks`.
 /// Filters on `tags`, `tags_exclude`, and `model_ids` apply to `notes` directly.
-#[allow(dead_code)]
 pub(crate) fn needs_card_join(filters: &SearchFilters) -> bool {
     filters.deck_names.is_some()
         || filters.deck_names_exclude.is_some()
@@ -117,7 +117,38 @@ pub(crate) fn needs_card_join(filters: &SearchFilters) -> bool {
         || filters.min_reps.is_some()
 }
 
+/// Return the JOIN clause for cards/decks when filters require it.
+fn join_clause(filters: Option<&SearchFilters>) -> &'static str {
+    if needs_card_join(filters.unwrap_or(&SearchFilters::default())) {
+        "LEFT JOIN cards c ON c.nid = n.id LEFT JOIN decks d ON d.id = c.did"
+    } else {
+        ""
+    }
+}
+
+/// Return GROUP BY clause when card join is present (avoids duplicate rows).
+fn group_by_clause(filters: Option<&SearchFilters>) -> &'static str {
+    if needs_card_join(filters.unwrap_or(&SearchFilters::default())) {
+        "GROUP BY n.id, n.fts_vector, n.normalized_text, n.mid, n.tags"
+    } else {
+        ""
+    }
+}
+
+/// Convert raw DB rows to typed FTS results.
+fn rows_to_results(rows: Vec<FtsRow>, source: FtsSource) -> Vec<FtsResult> {
+    rows.into_iter()
+        .map(|r| FtsResult {
+            note_id: r.note_id,
+            rank: r.rank,
+            headline: r.headline,
+            source,
+        })
+        .collect()
+}
+
 /// Execute lexical search with FTS -> fuzzy -> autocomplete fallback chain.
+#[instrument(skip(pool))]
 pub async fn search_lexical(
     pool: &sqlx::PgPool,
     query: &str,
@@ -134,21 +165,19 @@ pub async fn search_lexical(
         });
     }
 
+    let join = join_clause(filters);
+    let filter_sql = build_filter_clauses(filters);
+    let group_by = group_by_clause(filters);
+
     // Stage 1: Full-text search
-    let fts_query = format!(
+    let fts_sql = format!(
         "SELECT n.id AS note_id, ts_rank(n.fts_vector, plainto_tsquery('english', $1)) AS rank, \
          ts_headline('english', n.normalized_text, plainto_tsquery('english', $1)) AS headline \
-         FROM notes n {} WHERE n.fts_vector @@ plainto_tsquery('english', $1) {} \
-         ORDER BY rank DESC LIMIT $2",
-        if needs_card_join(filters.unwrap_or(&SearchFilters::default())) {
-            "LEFT JOIN cards c ON c.nid = n.id LEFT JOIN decks d ON d.id = c.did"
-        } else {
-            ""
-        },
-        build_filter_clauses(filters),
+         FROM notes n {join} WHERE n.fts_vector @@ plainto_tsquery('english', $1) {filter_sql} \
+         {group_by} ORDER BY rank DESC LIMIT $2",
     );
 
-    let rows: Vec<FtsRow> = sqlx::query_as(&fts_query)
+    let rows: Vec<FtsRow> = sqlx::query_as(&fts_sql)
         .bind(query)
         .bind(limit)
         .fetch_all(pool)
@@ -156,15 +185,7 @@ pub async fn search_lexical(
 
     if !rows.is_empty() {
         return Ok(LexicalSearchResult {
-            results: rows
-                .into_iter()
-                .map(|r| FtsResult {
-                    note_id: r.note_id,
-                    rank: r.rank,
-                    headline: r.headline,
-                    source: FtsSource::Fts,
-                })
-                .collect(),
+            results: rows_to_results(rows, FtsSource::Fts),
             mode: LexicalMode::Fts,
             used_fallback: false,
             query_suggestions: vec![],
@@ -173,20 +194,14 @@ pub async fn search_lexical(
     }
 
     // Stage 2: Fuzzy search fallback
-    let fuzzy_query = format!(
+    let fuzzy_sql = format!(
         "SELECT n.id AS note_id, similarity(n.normalized_text, $1) AS rank, \
          NULL AS headline \
-         FROM notes n {} WHERE similarity(n.normalized_text, $1) > 0.1 {} \
-         ORDER BY rank DESC LIMIT $2",
-        if needs_card_join(filters.unwrap_or(&SearchFilters::default())) {
-            "LEFT JOIN cards c ON c.nid = n.id LEFT JOIN decks d ON d.id = c.did"
-        } else {
-            ""
-        },
-        build_filter_clauses(filters),
+         FROM notes n {join} WHERE similarity(n.normalized_text, $1) > 0.1 {filter_sql} \
+         {group_by} ORDER BY rank DESC LIMIT $2",
     );
 
-    let rows: Vec<FtsRow> = sqlx::query_as(&fuzzy_query)
+    let rows: Vec<FtsRow> = sqlx::query_as(&fuzzy_sql)
         .bind(query)
         .bind(limit)
         .fetch_all(pool)
@@ -194,15 +209,7 @@ pub async fn search_lexical(
 
     if !rows.is_empty() {
         return Ok(LexicalSearchResult {
-            results: rows
-                .into_iter()
-                .map(|r| FtsResult {
-                    note_id: r.note_id,
-                    rank: r.rank,
-                    headline: r.headline,
-                    source: FtsSource::Fuzzy,
-                })
-                .collect(),
+            results: rows_to_results(rows, FtsSource::Fuzzy),
             mode: LexicalMode::Fuzzy,
             used_fallback: true,
             query_suggestions: vec![],
@@ -211,20 +218,14 @@ pub async fn search_lexical(
     }
 
     // Stage 3: Autocomplete fallback
-    let auto_query = format!(
+    let auto_sql = format!(
         "SELECT n.id AS note_id, 1.0 AS rank, NULL AS headline \
-         FROM notes n {} WHERE n.normalized_text ILIKE $1 {} \
-         ORDER BY n.id LIMIT $2",
-        if needs_card_join(filters.unwrap_or(&SearchFilters::default())) {
-            "LEFT JOIN cards c ON c.nid = n.id LEFT JOIN decks d ON d.id = c.did"
-        } else {
-            ""
-        },
-        build_filter_clauses(filters),
+         FROM notes n {join} WHERE n.normalized_text ILIKE $1 {filter_sql} \
+         {group_by} ORDER BY n.id LIMIT $2",
     );
 
     let prefix_pattern = format!("{}%", query);
-    let rows: Vec<FtsRow> = sqlx::query_as(&auto_query)
+    let rows: Vec<FtsRow> = sqlx::query_as(&auto_sql)
         .bind(&prefix_pattern)
         .bind(limit)
         .fetch_all(pool)
@@ -237,15 +238,7 @@ pub async fn search_lexical(
     };
 
     Ok(LexicalSearchResult {
-        results: rows
-            .into_iter()
-            .map(|r| FtsResult {
-                note_id: r.note_id,
-                rank: r.rank,
-                headline: r.headline,
-                source: FtsSource::Autocomplete,
-            })
-            .collect(),
+        results: rows_to_results(rows, FtsSource::Autocomplete),
         mode,
         used_fallback: true,
         query_suggestions: vec![],
