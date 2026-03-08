@@ -1,4 +1,4 @@
-use anki_reader::reader::{read_anki_collection, AnkiReader};
+use anki_reader::reader::{AnkiReader, read_anki_collection};
 use rusqlite::Connection;
 use tempfile::NamedTempFile;
 

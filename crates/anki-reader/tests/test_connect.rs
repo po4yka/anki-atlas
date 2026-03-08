@@ -1,4 +1,6 @@
-use anki_reader::connect::{AnkiConnectClient, ANKI_CONNECT_URL, ANKI_CONNECT_VERSION, DEFAULT_TIMEOUT_SECS};
+use anki_reader::connect::{
+    ANKI_CONNECT_URL, ANKI_CONNECT_VERSION, AnkiConnectClient, DEFAULT_TIMEOUT_SECS,
+};
 use serde_json::json;
 use std::collections::HashMap;
 use wiremock::matchers::{body_json, method};

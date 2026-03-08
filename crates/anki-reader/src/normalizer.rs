@@ -100,11 +100,7 @@ pub fn normalize_whitespace(text: &str) -> String {
     }
 
     text.lines()
-        .map(|line| {
-            WHITESPACE_PATTERN
-                .replace_all(line.trim(), " ")
-                .to_string()
-        })
+        .map(|line| WHITESPACE_PATTERN.replace_all(line.trim(), " ").to_string())
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
         .join("\n")

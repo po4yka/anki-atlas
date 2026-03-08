@@ -47,11 +47,10 @@ impl AnkiReader {
             }
         })?;
 
-        let conn =
-            Connection::open(temp_file.path()).map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to open database: {e}"),
-                context: HashMap::new(),
-            })?;
+        let conn = Connection::open(temp_file.path()).map_err(|e| AnkiAtlasError::AnkiReader {
+            message: format!("failed to open database: {e}"),
+            context: HashMap::new(),
+        })?;
 
         self.conn = Some(conn);
         self._temp_file = Some(temp_file);
@@ -65,10 +64,12 @@ impl AnkiReader {
     }
 
     fn conn(&self) -> Result<&Connection> {
-        self.conn.as_ref().ok_or_else(|| AnkiAtlasError::AnkiReader {
-            message: "reader not opened".to_string(),
-            context: HashMap::new(),
-        })
+        self.conn
+            .as_ref()
+            .ok_or_else(|| AnkiAtlasError::AnkiReader {
+                message: "reader not opened".to_string(),
+                context: HashMap::new(),
+            })
     }
 
     fn has_modern_schema(&self) -> Result<bool> {
@@ -117,15 +118,15 @@ impl AnkiReader {
 
     fn read_decks_legacy(&self) -> Result<Vec<AnkiDeck>> {
         let conn = self.conn()?;
-        let decks_json: String =
-            conn.query_row("SELECT decks FROM col", [], |row| row.get(0))
-                .map_err(|e| AnkiAtlasError::AnkiReader {
-                    message: format!("failed to read decks: {e}"),
-                    context: HashMap::new(),
-                })?;
+        let decks_json: String = conn
+            .query_row("SELECT decks FROM col", [], |row| row.get(0))
+            .map_err(|e| AnkiAtlasError::AnkiReader {
+                message: format!("failed to read decks: {e}"),
+                context: HashMap::new(),
+            })?;
 
-        let decks_map: HashMap<String, serde_json::Value> =
-            serde_json::from_str(&decks_json).map_err(|e| AnkiAtlasError::AnkiReader {
+        let decks_map: HashMap<String, serde_json::Value> = serde_json::from_str(&decks_json)
+            .map_err(|e| AnkiAtlasError::AnkiReader {
                 message: format!("failed to parse decks JSON: {e}"),
                 context: HashMap::new(),
             })?;
@@ -151,12 +152,12 @@ impl AnkiReader {
 
     fn read_decks_modern(&self) -> Result<Vec<AnkiDeck>> {
         let conn = self.conn()?;
-        let mut stmt = conn
-            .prepare("SELECT id, name FROM decks")
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to query decks: {e}"),
-                context: HashMap::new(),
-            })?;
+        let mut stmt =
+            conn.prepare("SELECT id, name FROM decks")
+                .map_err(|e| AnkiAtlasError::AnkiReader {
+                    message: format!("failed to query decks: {e}"),
+                    context: HashMap::new(),
+                })?;
 
         let decks = stmt
             .query_map([], |row| {
@@ -198,15 +199,15 @@ impl AnkiReader {
 
     fn read_models_legacy(&self) -> Result<Vec<AnkiModel>> {
         let conn = self.conn()?;
-        let models_json: String =
-            conn.query_row("SELECT models FROM col", [], |row| row.get(0))
-                .map_err(|e| AnkiAtlasError::AnkiReader {
-                    message: format!("failed to read models: {e}"),
-                    context: HashMap::new(),
-                })?;
+        let models_json: String = conn
+            .query_row("SELECT models FROM col", [], |row| row.get(0))
+            .map_err(|e| AnkiAtlasError::AnkiReader {
+                message: format!("failed to read models: {e}"),
+                context: HashMap::new(),
+            })?;
 
-        let models_map: HashMap<String, serde_json::Value> =
-            serde_json::from_str(&models_json).map_err(|e| AnkiAtlasError::AnkiReader {
+        let models_map: HashMap<String, serde_json::Value> = serde_json::from_str(&models_json)
+            .map_err(|e| AnkiAtlasError::AnkiReader {
                 message: format!("failed to parse models JSON: {e}"),
                 context: HashMap::new(),
             })?;
@@ -215,14 +216,8 @@ impl AnkiReader {
         for (_key, val) in models_map {
             let model_id = val["id"].as_i64().unwrap_or(0);
             let name = val["name"].as_str().unwrap_or("").to_string();
-            let fields = val["flds"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default();
-            let templates = val["tmpls"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default();
+            let fields = val["flds"].as_array().cloned().unwrap_or_default();
+            let templates = val["tmpls"].as_array().cloned().unwrap_or_default();
             models.push(AnkiModel {
                 model_id,
                 name,
@@ -390,13 +385,9 @@ impl AnkiReader {
                         context: HashMap::new(),
                     })?;
 
-                let tags: Vec<String> = tags_str
-                    .split_whitespace()
-                    .map(String::from)
-                    .collect();
+                let tags: Vec<String> = tags_str.split_whitespace().map(String::from).collect();
 
-                let fields: Vec<String> =
-                    fields_str.split('\x1f').map(String::from).collect();
+                let fields: Vec<String> = fields_str.split('\x1f').map(String::from).collect();
 
                 let field_names = model_field_names.get(&model_id);
                 let fields_json: HashMap<String, String> = fields
