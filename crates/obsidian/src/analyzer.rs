@@ -12,7 +12,7 @@ static WIKILINK_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").unwrap());
 
 /// Statistics about an Obsidian vault.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VaultStats {
     pub total_notes: usize,
     pub total_dirs: usize,
@@ -32,6 +32,32 @@ struct ScanData {
     has_frontmatter: HashSet<String>,
     /// Set of distinct parent directories.
     dirs: HashSet<PathBuf>,
+}
+
+impl ScanData {
+    /// Notes with no outgoing AND no incoming links, sorted by path.
+    fn orphaned_paths(&self) -> Vec<PathBuf> {
+        let has_incoming: HashSet<&str> = self
+            .links
+            .values()
+            .flatten()
+            .map(String::as_str)
+            .collect();
+
+        let mut orphaned: Vec<PathBuf> = self
+            .paths
+            .iter()
+            .filter(|(stem, _)| {
+                let outgoing = self.links.get(stem.as_str()).is_none_or(Vec::is_empty);
+                let incoming = has_incoming.contains(stem.as_str());
+                outgoing && !incoming
+            })
+            .map(|(_, path)| path.clone())
+            .collect();
+
+        orphaned.sort();
+        orphaned
+    }
 }
 
 /// Analyze vault structure: wikilinks, orphans, broken links.
@@ -92,11 +118,15 @@ impl VaultAnalyzer {
         });
     }
 
+    /// Ensure vault is scanned and return a reference to cached data.
+    fn scan_data(&mut self) -> &ScanData {
+        self.ensure_scanned();
+        self.scan.as_ref().unwrap()
+    }
+
     /// Get wikilink targets from a specific note.
     pub fn get_wikilinks(&mut self, path: &Path) -> Vec<String> {
-        self.ensure_scanned();
-        let scan = self.scan.as_ref().unwrap();
-
+        let scan = self.scan_data();
         let stem = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -107,63 +137,36 @@ impl VaultAnalyzer {
 
     /// Find notes with no incoming or outgoing links.
     pub fn find_orphaned(&mut self) -> Vec<PathBuf> {
-        self.ensure_scanned();
-        let scan = self.scan.as_ref().unwrap();
-
-        // Build set of notes that have incoming links
-        let mut has_incoming: HashSet<&str> = HashSet::new();
-        for targets in scan.links.values() {
-            for target in targets {
-                has_incoming.insert(target.as_str());
-            }
-        }
-
-        let mut orphaned: Vec<PathBuf> = scan
-            .paths
-            .iter()
-            .filter(|(stem, _)| {
-                let outgoing = scan.links.get(stem.as_str()).is_none_or(Vec::is_empty);
-                let incoming = has_incoming.contains(stem.as_str());
-                outgoing && !incoming
-            })
-            .map(|(_, path)| path.clone())
-            .collect();
-
-        orphaned.sort();
-        orphaned
+        self.scan_data().orphaned_paths()
     }
 
     /// Compute comprehensive vault statistics.
     pub fn analyze(&mut self) -> VaultStats {
-        self.ensure_scanned();
-        let scan = self.scan.as_ref().unwrap();
+        let scan = self.scan_data();
 
-        let total_notes = scan.paths.len();
-        let total_dirs = scan.dirs.len();
-        let notes_with_frontmatter = scan.has_frontmatter.len();
+        let wikilinks_count: usize = scan.links.values().map(Vec::len).sum();
 
-        let mut wikilinks_count = 0;
-        let mut broken_links = Vec::new();
+        let broken_links: Vec<(String, String)> = scan
+            .links
+            .iter()
+            .flat_map(|(stem, targets)| {
+                targets
+                    .iter()
+                    .filter(|t| !scan.paths.contains_key(t.as_str()))
+                    .map(move |t| (stem.clone(), t.clone()))
+            })
+            .collect();
 
-        for (stem, targets) in &scan.links {
-            wikilinks_count += targets.len();
-            for target in targets {
-                if !scan.paths.contains_key(target) {
-                    broken_links.push((stem.clone(), target.clone()));
-                }
-            }
-        }
-
-        let orphaned = self.find_orphaned();
-        let orphaned_notes: Vec<String> = orphaned
+        let orphaned_notes: Vec<String> = scan
+            .orphaned_paths()
             .iter()
             .filter_map(|p| p.file_stem().and_then(|s| s.to_str()).map(String::from))
             .collect();
 
         VaultStats {
-            total_notes,
-            total_dirs,
-            notes_with_frontmatter,
+            total_notes: scan.paths.len(),
+            total_dirs: scan.dirs.len(),
+            notes_with_frontmatter: scan.has_frontmatter.len(),
             wikilinks_count,
             orphaned_notes,
             broken_links,
