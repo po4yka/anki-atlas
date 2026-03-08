@@ -6,8 +6,7 @@ use serde::{Deserialize, Serialize};
 pub const SCHEMA_VERSION: u32 = 2;
 
 /// Column list for card queries (must match row_to_card_entry field order).
-const CARD_COLUMNS: &str =
-    "slug, note_id, source_path, front, back, content_hash, metadata_hash, \
+const CARD_COLUMNS: &str = "slug, note_id, source_path, front, back, content_hash, metadata_hash, \
      language, tags, anki_note_id, created_at, updated_at, synced_at";
 
 /// Column list for note queries (must match row_to_note_entry field order).
@@ -421,10 +420,8 @@ impl CardRegistry {
 
     /// Replace all cards for a note (delete + re-insert).
     pub fn update_mapping(&self, note_id: &str, cards: &[CardEntry]) -> Result<(), RegistryError> {
-        self.conn.execute(
-            "DELETE FROM cards WHERE note_id = ?1",
-            params![note_id],
-        )?;
+        self.conn
+            .execute("DELETE FROM cards WHERE note_id = ?1", params![note_id])?;
 
         for card in cards {
             self.add_card(card)?;

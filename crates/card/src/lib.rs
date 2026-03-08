@@ -1,4 +1,4 @@
-pub mod models;
-pub mod slug;
 pub mod mapping;
+pub mod models;
 pub mod registry;
+pub mod slug;

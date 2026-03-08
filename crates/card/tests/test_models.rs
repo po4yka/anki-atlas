@@ -78,13 +78,13 @@ fn manifest_rejects_empty_slug() {
 #[test]
 fn manifest_rejects_empty_required_fields() {
     let result = CardManifest::new(
-        "".into(),       // slug empty
-        "".into(),       // slug_base empty
+        "".into(), // slug empty
+        "".into(), // slug_base empty
         "en".into(),
-        "".into(),       // source_path empty
-        "".into(),       // source_anchor empty
-        "".into(),       // note_id empty
-        "".into(),       // note_title empty
+        "".into(), // source_path empty
+        "".into(), // source_anchor empty
+        "".into(), // note_id empty
+        "".into(), // note_title empty
         0,
         None,
         None,
@@ -399,10 +399,11 @@ fn card_rejects_mismatched_manifest_lang() {
         None,
     );
     let err = result.unwrap_err();
-    assert!(err
-        .messages
-        .iter()
-        .any(|m| m.contains("lang") || m.contains("language")));
+    assert!(
+        err.messages
+            .iter()
+            .any(|m| m.contains("lang") || m.contains("language"))
+    );
 }
 
 #[test]
@@ -586,13 +587,7 @@ fn sync_action_is_destructive() {
         None,
     )
     .unwrap();
-    let delete = SyncAction::new(
-        SyncActionType::Delete,
-        card,
-        Some("guid".into()),
-        None,
-    )
-    .unwrap();
+    let delete = SyncAction::new(SyncActionType::Delete, card, Some("guid".into()), None).unwrap();
 
     assert!(!create.is_destructive());
     assert!(!skip.is_destructive());
@@ -611,13 +606,7 @@ fn sync_action_requires_confirmation() {
         None,
     )
     .unwrap();
-    let delete = SyncAction::new(
-        SyncActionType::Delete,
-        card,
-        Some("guid".into()),
-        None,
-    )
-    .unwrap();
+    let delete = SyncAction::new(SyncActionType::Delete, card, Some("guid".into()), None).unwrap();
 
     assert!(!create.requires_confirmation());
     assert!(!update.requires_confirmation());

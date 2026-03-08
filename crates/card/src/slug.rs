@@ -125,7 +125,12 @@ impl SlugService {
     }
 
     /// Generate slug: "{topic}-{keyword}-{index}-{lang}".
-    pub fn generate_slug(topic: &str, keyword: &str, index: u32, lang: &str) -> Result<String, SlugError> {
+    pub fn generate_slug(
+        topic: &str,
+        keyword: &str,
+        index: u32,
+        lang: &str,
+    ) -> Result<String, SlugError> {
         let lang_lower = validate_lang(lang)?;
         let (topic_slug, keyword_slug) = slugify_components(topic, keyword);
 
@@ -157,7 +162,9 @@ impl SlugService {
             return Err(SlugError::EmptyInput { field: "slug" });
         }
         if source_path.is_empty() {
-            return Err(SlugError::EmptyInput { field: "source_path" });
+            return Err(SlugError::EmptyInput {
+                field: "source_path",
+            });
         }
         let content = format!("{slug}:{source_path}");
         Self::compute_hash(&content, 32)
@@ -181,7 +188,9 @@ impl SlugService {
         let lang_candidate = parts[parts.len() - 1];
         let index_candidate = parts[parts.len() - 2];
 
-        let lang = if lang_candidate.len() == 2 && lang_candidate.chars().all(|c| c.is_ascii_alphabetic()) {
+        let lang = if lang_candidate.len() == 2
+            && lang_candidate.chars().all(|c| c.is_ascii_alphabetic())
+        {
             lang_candidate.to_string()
         } else {
             return SlugComponents {
@@ -227,7 +236,10 @@ impl SlugService {
             return false;
         }
         // Only lowercase alphanumeric and hyphens
-        if !slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+        if !slug
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        {
             return false;
         }
         // No leading/trailing hyphens
@@ -319,7 +331,10 @@ mod tests {
     #[test]
     fn slugify_replaces_separators_with_hyphens() {
         // spaces, underscores, dots, slashes -> hyphens
-        assert_eq!(SlugService::slugify("hello_world.test/path\\here"), "hello-world-test-path-here");
+        assert_eq!(
+            SlugService::slugify("hello_world.test/path\\here"),
+            "hello-world-test-path-here"
+        );
     }
 
     #[test]
@@ -368,7 +383,12 @@ mod tests {
     fn slugify_japanese_characters_stripped() {
         // Non-latin characters that don't decompose to ASCII are removed
         let result = SlugService::slugify("日本語テスト");
-        assert!(result.is_empty() || result.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
+        assert!(
+            result.is_empty()
+                || result
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        );
     }
 
     #[test]
@@ -402,14 +422,20 @@ mod tests {
     fn compute_hash_length_0_errors() {
         let result = SlugService::compute_hash("hello", 0);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), SlugError::InvalidHashLength(0)));
+        assert!(matches!(
+            result.unwrap_err(),
+            SlugError::InvalidHashLength(0)
+        ));
     }
 
     #[test]
     fn compute_hash_length_65_errors() {
         let result = SlugService::compute_hash("hello", 65);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), SlugError::InvalidHashLength(65)));
+        assert!(matches!(
+            result.unwrap_err(),
+            SlugError::InvalidHashLength(65)
+        ));
     }
 
     #[test]
@@ -477,7 +503,11 @@ mod tests {
         let long_topic = "a".repeat(80);
         let long_keyword = "b".repeat(80);
         let slug = SlugService::generate_slug(&long_topic, &long_keyword, 0, "en").unwrap();
-        assert!(slug.len() <= MAX_SLUG_LENGTH, "slug too long: {} chars", slug.len());
+        assert!(
+            slug.len() <= MAX_SLUG_LENGTH,
+            "slug too long: {} chars",
+            slug.len()
+        );
     }
 
     #[test]
@@ -527,7 +557,8 @@ mod tests {
 
     #[test]
     fn deterministic_guid_length_32() {
-        let guid = SlugService::generate_deterministic_guid("my-slug-0-en", "notes/test.md").unwrap();
+        let guid =
+            SlugService::generate_deterministic_guid("my-slug-0-en", "notes/test.md").unwrap();
         assert_eq!(guid.len(), 32);
         assert!(guid.chars().all(|c| c.is_ascii_hexdigit()));
     }
@@ -550,14 +581,22 @@ mod tests {
     fn deterministic_guid_empty_slug_errors() {
         let result = SlugService::generate_deterministic_guid("", "path.md");
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), SlugError::EmptyInput { field: "slug" }));
+        assert!(matches!(
+            result.unwrap_err(),
+            SlugError::EmptyInput { field: "slug" }
+        ));
     }
 
     #[test]
     fn deterministic_guid_empty_source_path_errors() {
         let result = SlugService::generate_deterministic_guid("my-slug-0-en", "");
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), SlugError::EmptyInput { field: "source_path" }));
+        assert!(matches!(
+            result.unwrap_err(),
+            SlugError::EmptyInput {
+                field: "source_path"
+            }
+        ));
     }
 
     // ========== extract_components ==========

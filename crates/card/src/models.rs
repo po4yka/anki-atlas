@@ -112,7 +112,9 @@ impl CardManifest {
         require_non_empty(&mut errors, "slug", &slug);
         require_non_empty(&mut errors, "slug_base", &slug_base);
         if !is_valid_lang(&lang) {
-            errors.push(format!("lang must be a valid 2-letter language code, got '{lang}'"));
+            errors.push(format!(
+                "lang must be a valid 2-letter language code, got '{lang}'"
+            ));
         }
         require_non_empty(&mut errors, "source_path", &source_path);
         require_non_empty(&mut errors, "source_anchor", &source_anchor);
@@ -218,7 +220,9 @@ impl Card {
             errors.push("apf_html must be at least 10 chars after trim".into());
         }
         if !VALID_NOTE_TYPES.contains(&note_type.as_str()) {
-            errors.push(format!("note_type must be one of {VALID_NOTE_TYPES:?}, got '{note_type}'"));
+            errors.push(format!(
+                "note_type must be one of {VALID_NOTE_TYPES:?}, got '{note_type}'"
+            ));
         }
         if manifest.slug != slug {
             errors.push(format!(
@@ -262,7 +266,12 @@ impl Card {
     pub fn content_hash(&self) -> String {
         let mut sorted_tags = self.tags.clone();
         sorted_tags.sort();
-        let input = format!("{}|{}|{}", self.apf_html, self.note_type, sorted_tags.join(","));
+        let input = format!(
+            "{}|{}|{}",
+            self.apf_html,
+            self.note_type,
+            sorted_tags.join(",")
+        );
         let hash = Sha256::digest(input.as_bytes());
         hash[..3].iter().map(|b| format!("{b:02x}")).collect()
     }
@@ -320,7 +329,10 @@ impl SyncAction {
 
     /// True for UPDATE or DELETE.
     pub fn is_destructive(&self) -> bool {
-        matches!(self.action_type, SyncActionType::Update | SyncActionType::Delete)
+        matches!(
+            self.action_type,
+            SyncActionType::Update | SyncActionType::Delete
+        )
     }
 
     /// True for DELETE.

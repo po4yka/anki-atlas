@@ -380,10 +380,18 @@ fn find_cards_by_note_id() {
 #[test]
 fn find_cards_by_source_path() {
     let reg = memory_registry();
-    reg.add_card(&make_card_entry_for_note("slug-a-0-en", "note-001", "notes/a.md"))
-        .unwrap();
-    reg.add_card(&make_card_entry_for_note("slug-b-0-en", "note-002", "notes/b.md"))
-        .unwrap();
+    reg.add_card(&make_card_entry_for_note(
+        "slug-a-0-en",
+        "note-001",
+        "notes/a.md",
+    ))
+    .unwrap();
+    reg.add_card(&make_card_entry_for_note(
+        "slug-b-0-en",
+        "note-002",
+        "notes/b.md",
+    ))
+    .unwrap();
 
     let results = reg.find_cards(None, Some("notes/a.md"), None).unwrap();
     assert_eq!(results.len(), 1);
@@ -414,7 +422,9 @@ fn find_cards_combined_filters() {
         .unwrap();
 
     // Filter by note_id AND source_path
-    let results = reg.find_cards(Some("note-001"), Some("a.md"), None).unwrap();
+    let results = reg
+        .find_cards(Some("note-001"), Some("a.md"), None)
+        .unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].slug, "slug-a-0-en");
 }
@@ -628,10 +638,18 @@ fn update_mapping_replaces_all_cards() {
 #[test]
 fn update_mapping_does_not_affect_other_notes() {
     let reg = memory_registry();
-    reg.add_card(&make_card_entry_for_note("note1-a-0-en", "note-001", "a.md"))
-        .unwrap();
-    reg.add_card(&make_card_entry_for_note("note2-a-0-en", "note-002", "b.md"))
-        .unwrap();
+    reg.add_card(&make_card_entry_for_note(
+        "note1-a-0-en",
+        "note-001",
+        "a.md",
+    ))
+    .unwrap();
+    reg.add_card(&make_card_entry_for_note(
+        "note2-a-0-en",
+        "note-002",
+        "b.md",
+    ))
+    .unwrap();
 
     let new_cards = vec![make_card_entry_for_note("note1-b-0-en", "note-001", "a.md")];
     reg.update_mapping("note-001", &new_cards).unwrap();
@@ -703,11 +721,8 @@ fn migration_v1_to_v2_adds_notes_table() {
     let db_path = dir.path().join("v1.db");
 
     // Copy in-memory to file
-    conn.execute_batch(&format!(
-        "VACUUM INTO '{}'",
-        db_path.to_str().unwrap()
-    ))
-    .unwrap();
+    conn.execute_batch(&format!("VACUUM INTO '{}'", db_path.to_str().unwrap()))
+        .unwrap();
     drop(conn);
 
     // Open with CardRegistry which should auto-migrate
