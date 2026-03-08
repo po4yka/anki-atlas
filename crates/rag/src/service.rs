@@ -34,6 +34,7 @@ pub struct FewShotExample {
 
 /// High-level RAG operations for flashcard generation.
 pub struct RagService<S: VectorStore> {
+    #[allow(dead_code)] // used in future GREEN phase
     store: Arc<S>,
 }
 

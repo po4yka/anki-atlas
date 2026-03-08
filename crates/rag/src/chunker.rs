@@ -1,4 +1,6 @@
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use strum::{Display, EnumString};
 
@@ -57,19 +59,159 @@ impl DocumentChunker {
     /// Parse and chunk markdown content.
     pub fn chunk_content(
         &self,
-        _content: &str,
-        _source_file: &str,
-        _frontmatter: Option<&HashMap<String, String>>,
+        content: &str,
+        source_file: &str,
+        frontmatter: Option<&HashMap<String, String>>,
     ) -> Vec<DocumentChunk> {
-        // TODO: implement
-        Vec::new()
+        let path_hash = sha256_hex(source_file.as_bytes(), 8);
+        let file_stem = std::path::Path::new(source_file)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+
+        let base_metadata: HashMap<String, String> =
+            frontmatter.cloned().unwrap_or_default();
+
+        let mut chunks = Vec::new();
+
+        // Extract code blocks first
+        if self.config.include_code_blocks {
+            let code_re = Regex::new(r"(?s)```\w*\n(.*?)```").expect("valid regex");
+            for (i, cap) in code_re.captures_iter(content).enumerate() {
+                let code = cap[1].trim();
+                if code.is_empty() {
+                    continue;
+                }
+                let section_name = format!("code_{i}");
+                let chunk_id = format!("{file_stem}_{section_name}_{path_hash}");
+                let truncated = self.truncate(code);
+                chunks.push(DocumentChunk {
+                    chunk_id,
+                    content_hash: sha256_hex(truncated.as_bytes(), 16),
+                    content: truncated,
+                    chunk_type: ChunkType::CodeExample,
+                    source_file: source_file.to_string(),
+                    metadata: base_metadata.clone(),
+                });
+            }
+        }
+
+        // Split by headings
+        let heading_re = Regex::new(r"(?m)^(#{1,6})\s+(.+)$").expect("valid regex");
+        let heading_positions: Vec<(usize, String)> = heading_re
+            .captures_iter(content)
+            .map(|cap| {
+                let m = cap.get(0).expect("full match");
+                (m.start(), cap[2].to_string())
+            })
+            .collect();
+
+        if !heading_positions.is_empty() {
+            for (idx, (start, heading)) in heading_positions.iter().enumerate() {
+                let end = heading_positions
+                    .get(idx + 1)
+                    .map(|(pos, _)| *pos)
+                    .unwrap_or(content.len());
+                let section_content = content[*start..end].to_string();
+                // Strip heading line itself
+                let body = section_content
+                    .lines()
+                    .skip(1)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+                    .trim()
+                    .to_string();
+
+                if body.len() < self.config.min_chunk_size {
+                    continue;
+                }
+
+                let chunk_type = classify_heading(heading);
+                let section_slug = slugify(heading);
+                let chunk_id = format!("{file_stem}_{section_slug}_{path_hash}");
+                let truncated = self.truncate(&body);
+
+                chunks.push(DocumentChunk {
+                    chunk_id,
+                    content_hash: sha256_hex(truncated.as_bytes(), 16),
+                    content: truncated,
+                    chunk_type,
+                    source_file: source_file.to_string(),
+                    metadata: base_metadata.clone(),
+                });
+            }
+        }
+
+        // Fallback: no heading-based or code chunks -> FullContent
+        if chunks.is_empty() {
+            let trimmed = content.trim();
+            if trimmed.len() >= self.config.min_chunk_size {
+                let chunk_id = format!("{file_stem}_full_{path_hash}");
+                let truncated = self.truncate(trimmed);
+                chunks.push(DocumentChunk {
+                    chunk_id,
+                    content_hash: sha256_hex(truncated.as_bytes(), 16),
+                    content: truncated,
+                    chunk_type: ChunkType::FullContent,
+                    source_file: source_file.to_string(),
+                    metadata: base_metadata,
+                });
+            }
+        }
+
+        chunks
     }
 
     /// Read and chunk a single markdown file.
-    pub fn chunk_file(&self, _path: &std::path::Path) -> Vec<DocumentChunk> {
-        // TODO: implement
-        Vec::new()
+    pub fn chunk_file(&self, path: &std::path::Path) -> Vec<DocumentChunk> {
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(_) => return Vec::new(),
+        };
+        let source = path.to_string_lossy().to_string();
+        self.chunk_content(&content, &source, None)
     }
+
+    fn truncate(&self, text: &str) -> String {
+        if text.len() <= self.config.chunk_size {
+            return text.to_string();
+        }
+        // Find last space within chunk_size
+        let boundary = text[..self.config.chunk_size]
+            .rfind(' ')
+            .unwrap_or(self.config.chunk_size);
+        format!("{}...", &text[..boundary])
+    }
+}
+
+fn classify_heading(heading: &str) -> ChunkType {
+    let lower = heading.to_lowercase();
+    if lower.contains("summary") {
+        ChunkType::Summary
+    } else if lower.contains("key point") {
+        ChunkType::KeyPoints
+    } else if lower.contains("question") {
+        ChunkType::Question
+    } else if lower.contains("answer") {
+        ChunkType::Answer
+    } else {
+        ChunkType::Section
+    }
+}
+
+fn slugify(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '_' })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string()
+}
+
+fn sha256_hex(data: &[u8], hex_len: usize) -> String {
+    let hash = Sha256::digest(data);
+    let full_hex = format!("{hash:x}");
+    full_hex[..hex_len].to_string()
 }
 
 #[cfg(test)]
