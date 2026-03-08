@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::embeddings::EmbeddingProvider;
-use crate::qdrant::VectorRepository;
+use crate::embeddings::{self, EmbeddingProvider};
+use crate::qdrant::{NotePayload, QdrantRepository, VectorRepository};
 
 /// A note prepared for indexing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,7 +53,10 @@ pub struct IndexService<E: EmbeddingProvider, V: VectorRepository> {
 
 impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
     pub fn new(embedding: E, vector_repo: V) -> Self {
-        todo!("IndexService::new")
+        Self {
+            embedding: Arc::new(embedding),
+            vector_repo: Arc::new(vector_repo),
+        }
     }
 
     /// Index a batch of notes. Skips notes whose content_hash is unchanged
@@ -63,12 +66,81 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         notes: &[NoteForIndexing],
         force_reindex: bool,
     ) -> Result<IndexStats, IndexError> {
-        todo!("IndexService::index_notes")
+        if notes.is_empty() {
+            return Ok(IndexStats::default());
+        }
+
+        let note_ids: Vec<i64> = notes.iter().map(|n| n.note_id).collect();
+        let existing_hashes = self.vector_repo.get_existing_hashes(&note_ids).await?;
+
+        let model_name = self.embedding.model_name();
+
+        // Determine which notes need embedding
+        let mut to_embed: Vec<&NoteForIndexing> = Vec::new();
+        let mut skipped = 0usize;
+
+        for note in notes {
+            let new_hash = embeddings::content_hash(model_name, &note.normalized_text);
+            if !force_reindex {
+                if let Some(existing) = existing_hashes.get(&note.note_id) {
+                    if *existing == new_hash {
+                        skipped += 1;
+                        continue;
+                    }
+                }
+            }
+            to_embed.push(note);
+        }
+
+        let mut stats = IndexStats {
+            notes_processed: notes.len(),
+            notes_skipped: skipped,
+            ..Default::default()
+        };
+
+        if to_embed.is_empty() {
+            return Ok(stats);
+        }
+
+        // Embed texts
+        let texts: Vec<String> = to_embed.iter().map(|n| n.normalized_text.clone()).collect();
+        let vectors = self.embedding.embed(&texts).await?;
+
+        // Build payloads
+        let payloads: Vec<NotePayload> = to_embed
+            .iter()
+            .map(|n| NotePayload {
+                note_id: n.note_id,
+                model_id: n.model_id,
+                deck_names: n.deck_names.clone(),
+                tags: n.tags.clone(),
+                content_hash: embeddings::content_hash(model_name, &n.normalized_text),
+                mature: n.mature,
+                lapses: n.lapses,
+                reps: n.reps,
+                fail_rate: n.fail_rate,
+            })
+            .collect();
+
+        // Generate sparse vectors
+        let sparse_vectors: Vec<_> = to_embed
+            .iter()
+            .map(|n| QdrantRepository::text_to_sparse_vector(&n.normalized_text))
+            .collect();
+
+        let upserted = self
+            .vector_repo
+            .upsert_vectors(&vectors, &payloads, Some(&sparse_vectors))
+            .await?;
+
+        stats.notes_embedded = upserted;
+
+        Ok(stats)
     }
 
     /// Delete notes from the vector store by ID.
     pub async fn delete_notes(&self, note_ids: &[i64]) -> Result<usize, IndexError> {
-        todo!("IndexService::delete_notes")
+        Ok(self.vector_repo.delete_vectors(note_ids).await?)
     }
 }
 
