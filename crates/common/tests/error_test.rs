@@ -48,7 +48,10 @@ fn collection_display() {
         message: "create failed".to_string(),
         context: HashMap::new(),
     };
-    assert_eq!(err.to_string(), "collection operation failed: create failed");
+    assert_eq!(
+        err.to_string(),
+        "collection operation failed: create failed"
+    );
 }
 
 #[test]
@@ -334,19 +337,28 @@ fn with_context_on_embedding_model_changed_is_noop() {
 
 #[test]
 fn all_variants_implement_debug() {
-    let _ = format!("{:?}", AnkiAtlasError::DatabaseConnection {
-        message: "x".to_string(),
-        context: HashMap::new(),
-    });
-    let _ = format!("{:?}", AnkiAtlasError::DimensionMismatch {
-        collection: "c".to_string(),
-        expected: 1,
-        actual: 2,
-    });
-    let _ = format!("{:?}", AnkiAtlasError::EmbeddingModelChanged {
-        stored: "a".to_string(),
-        current: "b".to_string(),
-    });
+    let _ = format!(
+        "{:?}",
+        AnkiAtlasError::DatabaseConnection {
+            message: "x".to_string(),
+            context: HashMap::new(),
+        }
+    );
+    let _ = format!(
+        "{:?}",
+        AnkiAtlasError::DimensionMismatch {
+            collection: "c".to_string(),
+            expected: 1,
+            actual: 2,
+        }
+    );
+    let _ = format!(
+        "{:?}",
+        AnkiAtlasError::EmbeddingModelChanged {
+            stored: "a".to_string(),
+            current: "b".to_string(),
+        }
+    );
 }
 
 // ── Re-exports from crate root ──────────────────────────────────────────

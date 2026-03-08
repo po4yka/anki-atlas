@@ -54,7 +54,10 @@ impl Settings {
     /// Validates all fields after loading.
     pub fn load() -> Result<Self, ConfigError> {
         let settings = Self {
-            postgres_url: env_or("ANKIATLAS_POSTGRES_URL", "postgresql://localhost:5432/ankiatlas"),
+            postgres_url: env_or(
+                "ANKIATLAS_POSTGRES_URL",
+                "postgresql://localhost:5432/ankiatlas",
+            ),
             qdrant_url: env_or("ANKIATLAS_QDRANT_URL", "http://localhost:6333"),
             qdrant_quantization: env_or("ANKIATLAS_QDRANT_QUANTIZATION", "scalar")
                 .parse_quantization()?,
@@ -72,9 +75,11 @@ impl Settings {
                 .parse_u32("embedding_dimension")?,
             rerank_enabled: env_or("ANKIATLAS_RERANK_ENABLED", "false")
                 .parse_bool("rerank_enabled")?,
-            rerank_model: env_or("ANKIATLAS_RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"),
-            rerank_top_n: env_or("ANKIATLAS_RERANK_TOP_N", "50")
-                .parse_u32("rerank_top_n")?,
+            rerank_model: env_or(
+                "ANKIATLAS_RERANK_MODEL",
+                "cross-encoder/ms-marco-MiniLM-L-6-v2",
+            ),
+            rerank_top_n: env_or("ANKIATLAS_RERANK_TOP_N", "50").parse_u32("rerank_top_n")?,
             rerank_batch_size: env_or("ANKIATLAS_RERANK_BATCH_SIZE", "32")
                 .parse_u32("rerank_batch_size")?,
             api_host: env_or("ANKIATLAS_API_HOST", "0.0.0.0"),

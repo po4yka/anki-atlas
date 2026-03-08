@@ -167,7 +167,10 @@ fn configure_logging_human_readable_is_not_json() {
     tracing::info!("human-readable-test");
 
     let output = reader.contents();
-    assert!(!output.is_empty(), "human-readable logging should produce output");
+    assert!(
+        !output.is_empty(),
+        "human-readable logging should produce output"
+    );
 
     // Should NOT be valid JSON (human-readable format)
     for line in output.lines() {

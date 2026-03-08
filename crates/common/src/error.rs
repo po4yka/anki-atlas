@@ -7,16 +7,28 @@ pub type ErrorContext = HashMap<String, String>;
 #[derive(Debug, Error)]
 pub enum AnkiAtlasError {
     #[error("database connection failed: {message}")]
-    DatabaseConnection { message: String, context: ErrorContext },
+    DatabaseConnection {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("migration failed: {message}")]
-    Migration { message: String, context: ErrorContext },
+    Migration {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("vector store connection failed: {message}")]
-    VectorStoreConnection { message: String, context: ErrorContext },
+    VectorStoreConnection {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("collection operation failed: {message}")]
-    Collection { message: String, context: ErrorContext },
+    Collection {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("dimension mismatch on '{collection}': expected {expected}, got {actual}")]
     DimensionMismatch {
@@ -26,55 +38,103 @@ pub enum AnkiAtlasError {
     },
 
     #[error("embedding error: {message}")]
-    Embedding { message: String, context: ErrorContext },
+    Embedding {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("embedding API error: {message}")]
-    EmbeddingApi { message: String, context: ErrorContext },
+    EmbeddingApi {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("embedding timeout: {message}")]
-    EmbeddingTimeout { message: String, context: ErrorContext },
+    EmbeddingTimeout {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("embedding model changed: '{stored}' -> '{current}'. Use --force-reindex.")]
     EmbeddingModelChanged { stored: String, current: String },
 
     #[error("sync error: {message}")]
-    Sync { message: String, context: ErrorContext },
+    Sync {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("collection not found: {message}")]
-    CollectionNotFound { message: String, context: ErrorContext },
+    CollectionNotFound {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("sync conflict: {message}")]
-    SyncConflict { message: String, context: ErrorContext },
+    SyncConflict {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("AnkiConnect error: {message}")]
-    AnkiConnect { message: String, context: ErrorContext },
+    AnkiConnect {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("Anki reader error: {message}")]
-    AnkiReader { message: String, context: ErrorContext },
+    AnkiReader {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("configuration error: {message}")]
-    Configuration { message: String, context: ErrorContext },
+    Configuration {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("not found: {message}")]
-    NotFound { message: String, context: ErrorContext },
+    NotFound {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("conflict: {message}")]
-    Conflict { message: String, context: ErrorContext },
+    Conflict {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("card generation error: {message}")]
-    CardGeneration { message: String, context: ErrorContext },
+    CardGeneration {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("card validation error: {message}")]
-    CardValidation { message: String, context: ErrorContext },
+    CardValidation {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("provider error: {message}")]
-    Provider { message: String, context: ErrorContext },
+    Provider {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("obsidian parse error: {message}")]
-    ObsidianParse { message: String, context: ErrorContext },
+    ObsidianParse {
+        message: String,
+        context: ErrorContext,
+    },
 
     #[error("job backend unavailable: {message}")]
-    JobBackendUnavailable { message: String, context: ErrorContext },
+    JobBackendUnavailable {
+        message: String,
+        context: ErrorContext,
+    },
 }
 
 /// Alias used throughout the codebase.

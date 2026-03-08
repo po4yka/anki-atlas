@@ -28,7 +28,10 @@ fn quantization_serde_lowercase() {
 fn quantization_debug() {
     let q = Quantization::Scalar;
     let debug = format!("{q:?}");
-    assert!(debug.contains("Scalar"), "Debug should contain variant name");
+    assert!(
+        debug.contains("Scalar"),
+        "Debug should contain variant name"
+    );
 }
 
 // ── Settings::load() defaults ───────────────────────────────────────────
@@ -103,13 +106,22 @@ fn settings_load_returns_defaults_when_no_env_vars() {
 fn settings_load_reads_ankiatlas_prefixed_env_vars() {
     temp_env::with_vars(
         vec![
-            ("ANKIATLAS_POSTGRES_URL", Some("postgresql://custom:1234/db")),
+            (
+                "ANKIATLAS_POSTGRES_URL",
+                Some("postgresql://custom:1234/db"),
+            ),
             ("ANKIATLAS_QDRANT_URL", Some("https://qdrant.example.com")),
-            ("ANKIATLAS_REDIS_URL", Some("redis://redis.example.com:6379/1")),
+            (
+                "ANKIATLAS_REDIS_URL",
+                Some("redis://redis.example.com:6379/1"),
+            ),
             ("ANKIATLAS_API_PORT", Some("9090")),
             ("ANKIATLAS_DEBUG", Some("true")),
             ("ANKIATLAS_API_KEY", Some("secret-key-123")),
-            ("ANKIATLAS_ANKI_COLLECTION_PATH", Some("/path/to/collection.anki2")),
+            (
+                "ANKIATLAS_ANKI_COLLECTION_PATH",
+                Some("/path/to/collection.anki2"),
+            ),
             ("ANKIATLAS_EMBEDDING_DIMENSION", Some("768")),
         ],
         || {
@@ -206,24 +218,21 @@ fn validate_accepts_rediss_url() {
 
 #[test]
 fn validate_rejects_invalid_embedding_dimension() {
-    temp_env::with_vars(
-        vec![("ANKIATLAS_EMBEDDING_DIMENSION", Some("512"))],
-        || {
-            let result = Settings::load();
-            assert!(result.is_err(), "Should reject dimension 512 (not in valid set)");
-        },
-    );
+    temp_env::with_vars(vec![("ANKIATLAS_EMBEDDING_DIMENSION", Some("512"))], || {
+        let result = Settings::load();
+        assert!(
+            result.is_err(),
+            "Should reject dimension 512 (not in valid set)"
+        );
+    });
 }
 
 #[test]
 fn validate_rejects_zero_embedding_dimension() {
-    temp_env::with_vars(
-        vec![("ANKIATLAS_EMBEDDING_DIMENSION", Some("0"))],
-        || {
-            let result = Settings::load();
-            assert!(result.is_err(), "Should reject dimension 0");
-        },
-    );
+    temp_env::with_vars(vec![("ANKIATLAS_EMBEDDING_DIMENSION", Some("0"))], || {
+        let result = Settings::load();
+        assert!(result.is_err(), "Should reject dimension 0");
+    });
 }
 
 #[test]
@@ -269,35 +278,26 @@ fn validate_rejects_zero_job_result_ttl() {
 
 #[test]
 fn validate_rejects_zero_job_max_retries() {
-    temp_env::with_vars(
-        vec![("ANKIATLAS_JOB_MAX_RETRIES", Some("0"))],
-        || {
-            let result = Settings::load();
-            assert!(result.is_err(), "Should reject job_max_retries = 0");
-        },
-    );
+    temp_env::with_vars(vec![("ANKIATLAS_JOB_MAX_RETRIES", Some("0"))], || {
+        let result = Settings::load();
+        assert!(result.is_err(), "Should reject job_max_retries = 0");
+    });
 }
 
 #[test]
 fn validate_rejects_zero_rerank_top_n() {
-    temp_env::with_vars(
-        vec![("ANKIATLAS_RERANK_TOP_N", Some("0"))],
-        || {
-            let result = Settings::load();
-            assert!(result.is_err(), "Should reject rerank_top_n = 0");
-        },
-    );
+    temp_env::with_vars(vec![("ANKIATLAS_RERANK_TOP_N", Some("0"))], || {
+        let result = Settings::load();
+        assert!(result.is_err(), "Should reject rerank_top_n = 0");
+    });
 }
 
 #[test]
 fn validate_rejects_zero_rerank_batch_size() {
-    temp_env::with_vars(
-        vec![("ANKIATLAS_RERANK_BATCH_SIZE", Some("0"))],
-        || {
-            let result = Settings::load();
-            assert!(result.is_err(), "Should reject rerank_batch_size = 0");
-        },
-    );
+    temp_env::with_vars(vec![("ANKIATLAS_RERANK_BATCH_SIZE", Some("0"))], || {
+        let result = Settings::load();
+        assert!(result.is_err(), "Should reject rerank_batch_size = 0");
+    });
 }
 
 // ── ConfigError type ────────────────────────────────────────────────────

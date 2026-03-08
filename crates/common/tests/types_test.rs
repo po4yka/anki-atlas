@@ -45,10 +45,16 @@ fn language_all_variants_serde_roundtrip() {
     for (variant, expected_str) in cases {
         let json = serde_json::to_string(&variant).unwrap();
         let expected_json = format!(r#""{expected_str}""#);
-        assert_eq!(json, expected_json, "Serialization mismatch for {variant:?}");
+        assert_eq!(
+            json, expected_json,
+            "Serialization mismatch for {variant:?}"
+        );
 
         let deserialized: Language = serde_json::from_str(&expected_json).unwrap();
-        assert_eq!(deserialized, variant, "Deserialization mismatch for {expected_str}");
+        assert_eq!(
+            deserialized, variant,
+            "Deserialization mismatch for {expected_str}"
+        );
     }
 }
 
