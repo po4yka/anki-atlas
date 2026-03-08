@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 
 use crate::error::RagError;
 use crate::store::{MetadataFilter, SearchResult, VectorStore};
@@ -36,8 +37,9 @@ pub struct FewShotExample {
 }
 
 /// High-level RAG operations for flashcard generation.
+///
+/// Accepts pre-computed embedding vectors (caller controls embedding model).
 pub struct RagService<S: VectorStore> {
-    #[allow(dead_code)] // used in future GREEN phase
     store: Arc<S>,
 }
 
@@ -47,6 +49,7 @@ impl<S: VectorStore> RagService<S> {
     }
 
     /// Check whether a card is a potential duplicate.
+    #[instrument(skip(self, query_embedding))]
     pub async fn find_duplicates(
         &self,
         query_embedding: &[f32],
@@ -85,6 +88,7 @@ impl<S: VectorStore> RagService<S> {
     }
 
     /// Retrieve related concepts for context enrichment.
+    #[instrument(skip(self, query_embedding))]
     pub async fn get_context(
         &self,
         query_embedding: &[f32],
@@ -92,10 +96,7 @@ impl<S: VectorStore> RagService<S> {
         topic: Option<&str>,
         min_similarity: f32,
     ) -> Result<Vec<RelatedConcept>, RagError> {
-        let filter = topic.map(|t| MetadataFilter {
-            field: "topic".to_string(),
-            value: t.to_string(),
-        });
+        let filter = topic_filter(topic);
 
         let results = self
             .store
@@ -123,16 +124,14 @@ impl<S: VectorStore> RagService<S> {
     }
 
     /// Retrieve few-shot examples for generation prompts.
+    #[instrument(skip(self, query_embedding))]
     pub async fn get_few_shot_examples(
         &self,
         query_embedding: &[f32],
         k: usize,
         topic: Option<&str>,
     ) -> Result<Vec<FewShotExample>, RagError> {
-        let filter = topic.map(|t| MetadataFilter {
-            field: "topic".to_string(),
-            value: t.to_string(),
-        });
+        let filter = topic_filter(topic);
 
         let results = self
             .store
@@ -159,11 +158,17 @@ impl<S: VectorStore> RagService<S> {
     }
 }
 
+fn topic_filter(topic: Option<&str>) -> Option<MetadataFilter> {
+    topic.map(|t| MetadataFilter {
+        field: "topic".to_string(),
+        value: t.to_string(),
+    })
+}
+
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        s[..max].to_string()
+    match s.char_indices().nth(max) {
+        None => s.to_string(),
+        Some((byte_idx, _)) => s[..byte_idx].to_string(),
     }
 }
 
