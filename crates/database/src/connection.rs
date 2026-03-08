@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-
-use common::error::{AnkiAtlasError, Result};
+use common::error::Result;
 use sqlx::{PgPool, Postgres, Transaction};
 use tracing::instrument;
+
+use crate::connection_error;
 
 /// Acquire a connection from the pool, execute a closure, and return the result.
 /// The connection is automatically returned to the pool.
@@ -11,13 +11,7 @@ pub async fn with_connection<F, T>(pool: &PgPool, f: F) -> Result<T>
 where
     F: for<'c> FnOnce(&'c mut sqlx::PgConnection) -> futures::future::BoxFuture<'c, Result<T>>,
 {
-    let mut conn = pool
-        .acquire()
-        .await
-        .map_err(|e| AnkiAtlasError::DatabaseConnection {
-            message: e.to_string(),
-            context: HashMap::new(),
-        })?;
+    let mut conn = pool.acquire().await.map_err(connection_error)?;
     f(conn.as_mut()).await
 }
 
@@ -27,22 +21,11 @@ pub async fn with_transaction<F, T>(pool: &PgPool, f: F) -> Result<T>
 where
     F: for<'c> FnOnce(&'c mut Transaction<'_, Postgres>) -> futures::future::BoxFuture<'c, Result<T>>,
 {
-    let mut txn = pool
-        .begin()
-        .await
-        .map_err(|e| AnkiAtlasError::DatabaseConnection {
-            message: e.to_string(),
-            context: HashMap::new(),
-        })?;
+    let mut txn = pool.begin().await.map_err(connection_error)?;
 
     match f(&mut txn).await {
         Ok(value) => {
-            txn.commit()
-                .await
-                .map_err(|e| AnkiAtlasError::DatabaseConnection {
-                    message: e.to_string(),
-                    context: HashMap::new(),
-                })?;
+            txn.commit().await.map_err(connection_error)?;
             Ok(value)
         }
         Err(e) => {

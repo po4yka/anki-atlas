@@ -1,9 +1,10 @@
-use std::collections::HashMap;
 use std::collections::HashSet;
 
-use common::error::{AnkiAtlasError, Result};
+use common::error::Result;
 use sqlx::PgPool;
 use tracing::{info, instrument};
+
+use crate::migration_error;
 
 /// Result of running migrations.
 #[derive(Debug, Clone, Default)]
@@ -46,20 +47,13 @@ pub async fn run_migrations(pool: &PgPool) -> Result<MigrationResult> {
     )
     .execute(pool)
     .await
-    .map_err(|e| AnkiAtlasError::Migration {
-        message: format!("failed to create schema_migrations table: {e}"),
-        context: HashMap::new(),
-    })?;
+    .map_err(migration_error("failed to create schema_migrations table"))?;
 
     // 2. Load already-applied migrations
-    let applied_rows: Vec<String> =
-        sqlx::query_scalar("SELECT name FROM schema_migrations")
-            .fetch_all(pool)
-            .await
-            .map_err(|e| AnkiAtlasError::Migration {
-                message: format!("failed to query schema_migrations: {e}"),
-                context: HashMap::new(),
-            })?;
+    let applied_rows: Vec<String> = sqlx::query_scalar("SELECT name FROM schema_migrations")
+        .fetch_all(pool)
+        .await
+        .map_err(migration_error("failed to query schema_migrations"))?;
     let already_applied: HashSet<&str> = applied_rows.iter().map(|s| s.as_str()).collect();
 
     // 3. Apply each migration
@@ -68,41 +62,33 @@ pub async fn run_migrations(pool: &PgPool) -> Result<MigrationResult> {
     for (name, sql) in MIGRATIONS {
         if already_applied.contains(name) {
             info!(migration = name, "skipping already-applied migration");
-            result.skipped.push((*name).to_string());
+            result.skipped.push(name.to_string());
             continue;
         }
 
         info!(migration = name, "applying migration");
 
-        // Run in its own transaction
-        let mut txn = pool.begin().await.map_err(|e| AnkiAtlasError::Migration {
-            message: format!("failed to begin transaction for migration {name}: {e}"),
-            context: HashMap::new(),
-        })?;
+        let mut txn = pool
+            .begin()
+            .await
+            .map_err(migration_error(&format!("failed to begin transaction for {name}")))?;
 
         sqlx::query(sql)
             .execute(&mut *txn)
             .await
-            .map_err(|e| AnkiAtlasError::Migration {
-                message: format!("migration {name} failed: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(migration_error(&format!("migration {name} failed")))?;
 
         sqlx::query("INSERT INTO schema_migrations (name) VALUES ($1)")
             .bind(name)
             .execute(&mut *txn)
             .await
-            .map_err(|e| AnkiAtlasError::Migration {
-                message: format!("failed to record migration {name}: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(migration_error(&format!("failed to record migration {name}")))?;
 
-        txn.commit().await.map_err(|e| AnkiAtlasError::Migration {
-            message: format!("failed to commit migration {name}: {e}"),
-            context: HashMap::new(),
-        })?;
+        txn.commit()
+            .await
+            .map_err(migration_error(&format!("failed to commit migration {name}")))?;
 
-        result.applied.push((*name).to_string());
+        result.applied.push(name.to_string());
     }
 
     Ok(result)

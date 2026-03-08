@@ -1,11 +1,12 @@
-use std::collections::HashMap;
 use std::time::Duration;
 
 use common::config::Settings;
-use common::error::{AnkiAtlasError, Result};
+use common::error::Result;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use tracing::instrument;
+
+use crate::connection_error;
 
 /// Create a new PgPool from settings.
 ///
@@ -21,10 +22,7 @@ pub async fn create_pool(settings: &Settings) -> Result<PgPool> {
         .acquire_timeout(Duration::from_secs(10))
         .connect(&settings.postgres_url)
         .await
-        .map_err(|e| AnkiAtlasError::DatabaseConnection {
-            message: e.to_string(),
-            context: HashMap::new(),
-        })
+        .map_err(connection_error)
 }
 
 /// Check if the database is reachable by executing `SELECT 1`.
