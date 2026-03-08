@@ -99,7 +99,12 @@ impl DocumentChunker {
                 if code.is_empty() {
                     continue;
                 }
-                chunks.push(self.make_chunk(&format!("code_{i}"), code, ChunkType::CodeExample, &ctx));
+                chunks.push(self.make_chunk(
+                    &format!("code_{i}"),
+                    code,
+                    ChunkType::CodeExample,
+                    &ctx,
+                ));
             }
         }
 
@@ -236,7 +241,10 @@ mod tests {
 
     #[test]
     fn chunk_type_parse_from_snake_case() {
-        assert_eq!("key_points".parse::<ChunkType>().unwrap(), ChunkType::KeyPoints);
+        assert_eq!(
+            "key_points".parse::<ChunkType>().unwrap(),
+            ChunkType::KeyPoints
+        );
         assert_eq!("summary".parse::<ChunkType>().unwrap(), ChunkType::Summary);
     }
 
@@ -355,8 +363,13 @@ mod tests {
         let md = "This is just plain text without any markdown headings or code blocks but it is long enough to pass minimum.";
         let chunks = chunker.chunk_content(md, "notes/test.md", None);
 
-        assert!(!chunks.is_empty(), "Expected at least one chunk for plain text");
-        let has_full = chunks.iter().any(|c| c.chunk_type == ChunkType::FullContent);
+        assert!(
+            !chunks.is_empty(),
+            "Expected at least one chunk for plain text"
+        );
+        let has_full = chunks
+            .iter()
+            .any(|c| c.chunk_type == ChunkType::FullContent);
         assert!(has_full, "Expected FullContent fallback, got: {:?}", chunks);
     }
 
@@ -426,7 +439,10 @@ mod tests {
         assert!(!chunks1.is_empty());
         assert_eq!(chunks1.len(), chunks2.len());
         for (c1, c2) in chunks1.iter().zip(chunks2.iter()) {
-            assert_eq!(c1.chunk_id, c2.chunk_id, "Chunk IDs should be deterministic");
+            assert_eq!(
+                c1.chunk_id, c2.chunk_id,
+                "Chunk IDs should be deterministic"
+            );
         }
     }
 
@@ -456,7 +472,11 @@ mod tests {
         assert!(!chunks1.is_empty());
         for (c1, c2) in chunks1.iter().zip(chunks2.iter()) {
             assert_eq!(c1.content_hash, c2.content_hash);
-            assert_eq!(c1.content_hash.len(), 16, "Content hash should be 16 hex chars");
+            assert_eq!(
+                c1.content_hash.len(),
+                16,
+                "Content hash should be 16 hex chars"
+            );
             assert!(
                 c1.content_hash.chars().all(|c| c.is_ascii_hexdigit()),
                 "Content hash should be hex: {}",

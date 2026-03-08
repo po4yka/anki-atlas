@@ -67,7 +67,10 @@ impl<S: VectorStore> RagService<S> {
             });
         }
 
-        let max_similarity = results.iter().map(|r| r.similarity()).fold(0.0_f32, f32::max);
+        let max_similarity = results
+            .iter()
+            .map(|r| r.similarity())
+            .fold(0.0_f32, f32::max);
 
         let recommendation = if max_similarity >= 0.95 {
             "Highly likely duplicate -- skip this card"
@@ -209,7 +212,10 @@ mod tests {
         let svc = make_service(mock);
         let result = svc.find_duplicates(&[1.0, 2.0], 0.85, 5).await.unwrap();
 
-        assert!(result.is_duplicate, "Should detect duplicate when results exist");
+        assert!(
+            result.is_duplicate,
+            "Should detect duplicate when results exist"
+        );
         assert!(result.confidence > 0.85);
         assert_eq!(result.similar_items.len(), 1);
     }
@@ -238,7 +244,10 @@ mod tests {
         let svc = make_service(mock);
         let result = svc.find_duplicates(&[1.0], 0.85, 5).await.unwrap();
 
-        assert_eq!(result.recommendation, "Highly likely duplicate -- skip this card");
+        assert_eq!(
+            result.recommendation,
+            "Highly likely duplicate -- skip this card"
+        );
     }
 
     #[tokio::test]
@@ -328,7 +337,11 @@ mod tests {
         let svc = make_service(mock);
         let concepts = svc.get_context(&[1.0], 2, None, 0.3).await.unwrap();
 
-        assert!(concepts.len() <= 2, "Should return at most k=2 results, got {}", concepts.len());
+        assert!(
+            concepts.len() <= 2,
+            "Should return at most k=2 results, got {}",
+            concepts.len()
+        );
     }
 
     #[tokio::test]
@@ -356,10 +369,7 @@ mod tests {
             .returning(|_, _, _, _| Ok(vec![]));
 
         let svc = make_service(mock);
-        let _ = svc
-            .get_context(&[1.0], 5, Some("rust"), 0.3)
-            .await
-            .unwrap();
+        let _ = svc.get_context(&[1.0], 5, Some("rust"), 0.3).await.unwrap();
     }
 
     #[tokio::test]
@@ -377,9 +387,8 @@ mod tests {
     #[tokio::test]
     async fn get_context_maps_metadata_to_concept_fields() {
         let mut mock = MockVectorStore::new();
-        mock.expect_search().returning(|_, _, _, _| {
-            Ok(vec![make_search_result("c1", "content", 0.1, "a.md")])
-        });
+        mock.expect_search()
+            .returning(|_, _, _, _| Ok(vec![make_search_result("c1", "content", 0.1, "a.md")]));
 
         let svc = make_service(mock);
         let concepts = svc.get_context(&[1.0], 5, None, 0.3).await.unwrap();
@@ -447,7 +456,11 @@ mod tests {
         let svc = make_service(mock);
         let examples = svc.get_few_shot_examples(&[1.0], 2, None).await.unwrap();
 
-        assert!(examples.len() <= 2, "Should return at most k=2, got {}", examples.len());
+        assert!(
+            examples.len() <= 2,
+            "Should return at most k=2, got {}",
+            examples.len()
+        );
     }
 
     #[tokio::test]
@@ -465,9 +478,8 @@ mod tests {
     #[tokio::test]
     async fn get_few_shot_examples_maps_metadata() {
         let mut mock = MockVectorStore::new();
-        mock.expect_search().returning(|_, _, _, _| {
-            Ok(vec![make_search_result("c1", "content", 0.1, "f.md")])
-        });
+        mock.expect_search()
+            .returning(|_, _, _, _| Ok(vec![make_search_result("c1", "content", 0.1, "f.md")]));
 
         let svc = make_service(mock);
         let examples = svc.get_few_shot_examples(&[1.0], 3, None).await.unwrap();
