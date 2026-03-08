@@ -694,12 +694,17 @@ pub static COGNITIVE_BIAS_TOPIC_TAGS: &[&str] = &[
     "bias_specific",
 ];
 
-/// Check if a tag is a known topic tag (O(1) lookup).
+/// All topic tag slices for iteration.
+pub(crate) static ALL_TOPIC_TAG_SETS: &[&[&str]] = &[
+    KOTLIN_TOPIC_TAGS,
+    ANDROID_TOPIC_TAGS,
+    COMPSCI_TOPIC_TAGS,
+    COGNITIVE_BIAS_TOPIC_TAGS,
+];
+
+/// Check if a tag is a known topic tag.
 pub fn is_known_topic_tag(tag: &str) -> bool {
-    KOTLIN_TOPIC_TAGS.contains(&tag)
-        || ANDROID_TOPIC_TAGS.contains(&tag)
-        || COMPSCI_TOPIC_TAGS.contains(&tag)
-        || COGNITIVE_BIAS_TOPIC_TAGS.contains(&tag)
+    ALL_TOPIC_TAG_SETS.iter().any(|set| set.contains(&tag))
 }
 
 /// Valid difficulty meta tag values.

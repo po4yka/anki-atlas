@@ -114,7 +114,7 @@ pub fn validate_tag(tag: &str) -> Vec<String> {
     }
 
     // Check for duplicate separators
-    if tag.contains("::") && tag.contains("::::") {
+    if tag.contains("::::") {
         issues.push("Duplicate '::' separator found".to_owned());
     }
     if tag.contains("--") {
@@ -145,17 +145,10 @@ pub fn suggest_tag(input_tag: &str, max_results: usize) -> Vec<String> {
     }
 
     // Add all topic tags
-    for tag in crate::tags::KOTLIN_TOPIC_TAGS {
-        candidates.insert(*tag);
-    }
-    for tag in crate::tags::ANDROID_TOPIC_TAGS {
-        candidates.insert(*tag);
-    }
-    for tag in crate::tags::COMPSCI_TOPIC_TAGS {
-        candidates.insert(*tag);
-    }
-    for tag in crate::tags::COGNITIVE_BIAS_TOPIC_TAGS {
-        candidates.insert(*tag);
+    for set in crate::tags::ALL_TOPIC_TAG_SETS {
+        for tag in *set {
+            candidates.insert(*tag);
+        }
     }
 
     let mut scored: Vec<(usize, &str)> = Vec::new();
