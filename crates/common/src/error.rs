@@ -6,74 +6,74 @@ pub type ErrorContext = HashMap<String, String>;
 
 #[derive(Debug, Error)]
 pub enum AnkiAtlasError {
-    #[error("TODO")]
+    #[error("database connection failed: {message}")]
     DatabaseConnection { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("migration failed: {message}")]
     Migration { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("vector store connection failed: {message}")]
     VectorStoreConnection { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("collection operation failed: {message}")]
     Collection { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("dimension mismatch on '{collection}': expected {expected}, got {actual}")]
     DimensionMismatch {
         collection: String,
         expected: u32,
         actual: u32,
     },
 
-    #[error("TODO")]
+    #[error("embedding error: {message}")]
     Embedding { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("embedding API error: {message}")]
     EmbeddingApi { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("embedding timeout: {message}")]
     EmbeddingTimeout { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("embedding model changed: '{stored}' -> '{current}'. Use --force-reindex.")]
     EmbeddingModelChanged { stored: String, current: String },
 
-    #[error("TODO")]
+    #[error("sync error: {message}")]
     Sync { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("collection not found: {message}")]
     CollectionNotFound { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("sync conflict: {message}")]
     SyncConflict { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("AnkiConnect error: {message}")]
     AnkiConnect { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("Anki reader error: {message}")]
     AnkiReader { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("configuration error: {message}")]
     Configuration { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("not found: {message}")]
     NotFound { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("conflict: {message}")]
     Conflict { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("card generation error: {message}")]
     CardGeneration { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("card validation error: {message}")]
     CardValidation { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("provider error: {message}")]
     Provider { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("obsidian parse error: {message}")]
     ObsidianParse { message: String, context: ErrorContext },
 
-    #[error("TODO")]
+    #[error("job backend unavailable: {message}")]
     JobBackendUnavailable { message: String, context: ErrorContext },
 }
 
@@ -86,8 +86,38 @@ pub trait WithContext {
 }
 
 impl WithContext for AnkiAtlasError {
-    fn with_context(self, _key: impl Into<String>, _value: impl Into<String>) -> Self {
-        // TODO(ralph): implement context insertion
+    fn with_context(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        macro_rules! insert_context {
+            ($ctx:expr) => {{
+                $ctx.insert(key.into(), value.into());
+            }};
+        }
+        match &mut self {
+            Self::DatabaseConnection { context, .. }
+            | Self::Migration { context, .. }
+            | Self::VectorStoreConnection { context, .. }
+            | Self::Collection { context, .. }
+            | Self::Embedding { context, .. }
+            | Self::EmbeddingApi { context, .. }
+            | Self::EmbeddingTimeout { context, .. }
+            | Self::Sync { context, .. }
+            | Self::CollectionNotFound { context, .. }
+            | Self::SyncConflict { context, .. }
+            | Self::AnkiConnect { context, .. }
+            | Self::AnkiReader { context, .. }
+            | Self::Configuration { context, .. }
+            | Self::NotFound { context, .. }
+            | Self::Conflict { context, .. }
+            | Self::CardGeneration { context, .. }
+            | Self::CardValidation { context, .. }
+            | Self::Provider { context, .. }
+            | Self::ObsidianParse { context, .. }
+            | Self::JobBackendUnavailable { context, .. } => {
+                insert_context!(context);
+            }
+            // Variants without context field — noop
+            Self::DimensionMismatch { .. } | Self::EmbeddingModelChanged { .. } => {}
+        }
         self
     }
 }
