@@ -15,8 +15,10 @@ pub struct LlmResponse {
 impl LlmResponse {
     /// Total tokens used (prompt + completion), if both are known.
     pub fn total_tokens(&self) -> Option<u32> {
-        // TODO: implement
-        None
+        match (self.prompt_tokens, self.completion_tokens) {
+            (Some(p), Some(c)) => Some(p + c),
+            _ => None,
+        }
     }
 }
 
