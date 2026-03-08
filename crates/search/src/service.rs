@@ -112,10 +112,7 @@ where
         let semantic_results = if fts_only {
             vec![]
         } else {
-            let embedded = self
-                .embedding
-                .embed(&[query.to_string()])
-                .await?;
+            let embedded = self.embedding.embed(&[query.to_string()]).await?;
             let query_vector = &embedded[0];
             let raw = self
                 .vector_repo
@@ -172,8 +169,7 @@ where
                 if !docs.is_empty() {
                     match reranker.rerank(query, &docs).await {
                         Ok(scores) => {
-                            let score_map: HashMap<i64, f64> =
-                                scores.into_iter().collect();
+                            let score_map: HashMap<i64, f64> = scores.into_iter().collect();
                             for r in &mut results {
                                 if let Some(&s) = score_map.get(&r.note_id) {
                                     r.rerank_score = Some(s);
@@ -486,8 +482,14 @@ mod tests {
     #[tokio::test]
     async fn service_new_without_reranker() {
         let pool = fake_pool();
-        let _svc: SearchService<FakeEmbedding, FakeVectorRepo, FakeReranker> =
-            SearchService::new(FakeEmbedding, FakeVectorRepo::empty(), None, pool, false, 20);
+        let _svc: SearchService<FakeEmbedding, FakeVectorRepo, FakeReranker> = SearchService::new(
+            FakeEmbedding,
+            FakeVectorRepo::empty(),
+            None,
+            pool,
+            false,
+            20,
+        );
     }
 
     // ── SearchService::search tests ──────────────────────────────
@@ -630,17 +632,7 @@ mod tests {
         );
 
         let result = svc
-            .search(
-                "test",
-                None,
-                50,
-                1.0,
-                1.0,
-                true,
-                false,
-                None,
-                None,
-            )
+            .search("test", None, 50, 1.0, 1.0, true, false, None, None)
             .await
             .unwrap();
 
@@ -663,17 +655,7 @@ mod tests {
 
         // Even though reranker fails, search should succeed with rerank_applied=false
         let result = svc
-            .search(
-                "test query",
-                None,
-                50,
-                1.0,
-                1.0,
-                true,
-                false,
-                None,
-                None,
-            )
+            .search("test query", None, 50, 1.0, 1.0, true, false, None, None)
             .await
             .unwrap();
 
@@ -759,17 +741,7 @@ mod tests {
 
         // Should degrade gracefully when no reranker is available
         let result = svc
-            .search(
-                "test query",
-                None,
-                50,
-                1.0,
-                1.0,
-                true,
-                false,
-                None,
-                None,
-            )
+            .search("test query", None, 50, 1.0, 1.0, true, false, None, None)
             .await
             .unwrap();
 
@@ -779,8 +751,7 @@ mod tests {
     #[tokio::test]
     async fn search_limit_respected() {
         let pool = fake_pool();
-        let many_results: Vec<(i64, f32)> =
-            (1..=20).map(|i| (i, 1.0 - i as f32 * 0.01)).collect();
+        let many_results: Vec<(i64, f32)> = (1..=20).map(|i| (i, 1.0 - i as f32 * 0.01)).collect();
         let svc = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::new(many_results),

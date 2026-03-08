@@ -64,9 +64,15 @@ mod tests {
 
     #[test]
     fn new_creates_reranker_with_correct_fields() {
-        let reranker =
-            CrossEncoderReranker::new("cross-encoder/ms-marco-MiniLM-L-6-v2", 32, "http://localhost:8080/rerank");
-        assert_eq!(reranker.model_name(), "cross-encoder/ms-marco-MiniLM-L-6-v2");
+        let reranker = CrossEncoderReranker::new(
+            "cross-encoder/ms-marco-MiniLM-L-6-v2",
+            32,
+            "http://localhost:8080/rerank",
+        );
+        assert_eq!(
+            reranker.model_name(),
+            "cross-encoder/ms-marco-MiniLM-L-6-v2"
+        );
     }
 
     #[test]
@@ -81,8 +87,7 @@ mod tests {
 
     #[tokio::test]
     async fn rerank_empty_documents_returns_empty() {
-        let reranker =
-            CrossEncoderReranker::new("test-model", 32, "http://localhost:8080/rerank");
+        let reranker = CrossEncoderReranker::new("test-model", 32, "http://localhost:8080/rerank");
         let result = reranker.rerank("test query", &[]).await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -107,15 +112,14 @@ mod tests {
     #[tokio::test]
     async fn mock_reranker_returns_configured_scores() {
         let mut mock = MockReranker::new();
-        mock.expect_rerank()
-            .returning(|_query, docs| {
-                let scores: Vec<(i64, f64)> = docs
-                    .iter()
-                    .enumerate()
-                    .map(|(i, (id, _))| (*id, 1.0 - i as f64 * 0.1))
-                    .collect();
-                Box::pin(async move { Ok(scores) })
-            });
+        mock.expect_rerank().returning(|_query, docs| {
+            let scores: Vec<(i64, f64)> = docs
+                .iter()
+                .enumerate()
+                .map(|(i, (id, _))| (*id, 1.0 - i as f64 * 0.1))
+                .collect();
+            Box::pin(async move { Ok(scores) })
+        });
 
         let docs = vec![
             (1, "first document".to_string()),
@@ -132,12 +136,9 @@ mod tests {
     #[tokio::test]
     async fn mock_reranker_can_return_error() {
         let mut mock = MockReranker::new();
-        mock.expect_rerank()
-            .returning(|_query, _docs| {
-                Box::pin(async {
-                    Err(SearchError::Rerank("model unavailable".to_string()))
-                })
-            });
+        mock.expect_rerank().returning(|_query, _docs| {
+            Box::pin(async { Err(SearchError::Rerank("model unavailable".to_string())) })
+        });
 
         let docs = vec![(1, "doc".to_string())];
         let result = mock.rerank("query", &docs).await;
@@ -149,12 +150,10 @@ mod tests {
     #[tokio::test]
     async fn mock_reranker_preserves_document_ids() {
         let mut mock = MockReranker::new();
-        mock.expect_rerank()
-            .returning(|_query, docs| {
-                let scores: Vec<(i64, f64)> =
-                    docs.iter().map(|(id, _)| (*id, 0.5)).collect();
-                Box::pin(async move { Ok(scores) })
-            });
+        mock.expect_rerank().returning(|_query, docs| {
+            let scores: Vec<(i64, f64)> = docs.iter().map(|(id, _)| (*id, 0.5)).collect();
+            Box::pin(async move { Ok(scores) })
+        });
 
         let docs = vec![
             (42, "answer to everything".to_string()),
@@ -169,17 +168,12 @@ mod tests {
     #[tokio::test]
     async fn rerank_returns_scores_in_arbitrary_order() {
         let mut mock = MockReranker::new();
-        mock.expect_rerank()
-            .returning(|_query, docs| {
-                let scores: Vec<(i64, f64)> =
-                    docs.iter().rev().map(|(id, _)| (*id, 0.5)).collect();
-                Box::pin(async move { Ok(scores) })
-            });
+        mock.expect_rerank().returning(|_query, docs| {
+            let scores: Vec<(i64, f64)> = docs.iter().rev().map(|(id, _)| (*id, 0.5)).collect();
+            Box::pin(async move { Ok(scores) })
+        });
 
-        let docs = vec![
-            (1, "first".to_string()),
-            (2, "second".to_string()),
-        ];
+        let docs = vec![(1, "first".to_string()), (2, "second".to_string())];
         let result = mock.rerank("query", &docs).await.unwrap();
         assert_eq!(result.len(), 2);
         let ids: Vec<i64> = result.iter().map(|(id, _)| *id).collect();

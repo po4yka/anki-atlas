@@ -113,7 +113,11 @@ pub fn reciprocal_rank_fusion(
     }
 
     let mut results: Vec<SearchResult> = entries.into_values().collect();
-    results.sort_by(|a, b| b.rrf_score.partial_cmp(&a.rrf_score).unwrap_or(std::cmp::Ordering::Equal));
+    results.sort_by(|a, b| {
+        b.rrf_score
+            .partial_cmp(&a.rrf_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     results.truncate(limit);
 
     let stats = FusionStats {
@@ -236,10 +240,7 @@ mod tests {
     #[test]
     fn rrf_fts_only_results() {
         let semantic: Vec<(i64, f64)> = vec![];
-        let fts = vec![
-            (100, 0.9, Some("headline A".to_string())),
-            (200, 0.8, None),
-        ];
+        let fts = vec![(100, 0.9, Some("headline A".to_string())), (200, 0.8, None)];
 
         let (results, stats) = reciprocal_rank_fusion(&semantic, &fts, 60, 50, 1.0, 1.0);
 
@@ -256,10 +257,7 @@ mod tests {
     #[test]
     fn rrf_overlapping_results_counts_both() {
         let semantic = vec![(100, 0.95), (200, 0.85)];
-        let fts = vec![
-            (200, 0.9, Some("hl".to_string())),
-            (300, 0.8, None),
-        ];
+        let fts = vec![(200, 0.9, Some("hl".to_string())), (300, 0.8, None)];
 
         let (results, stats) = reciprocal_rank_fusion(&semantic, &fts, 60, 50, 1.0, 1.0);
 
