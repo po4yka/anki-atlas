@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
+use blake2::{Blake2b, Digest};
 use serde::{Deserialize, Serialize};
 
 /// Payload stored with each Qdrant point.
@@ -119,12 +120,80 @@ pub struct QdrantRepository {
 
 impl QdrantRepository {
     /// Connect to Qdrant and create repository.
-    pub async fn new(_url: &str, _collection_name: &str) -> Result<Self, VectorStoreError> {
-        todo!("QdrantRepository::new not implemented")
+    pub async fn new(url: &str, collection_name: &str) -> Result<Self, VectorStoreError> {
+        // Validate URL by parsing it
+        let parsed = reqwest::Url::parse(url)
+            .map_err(|e| VectorStoreError::Connection(format!("invalid URL: {e}")))?;
+
+        // Validate port range
+        if let Some(port) = parsed.port() {
+            if port > 65535 {
+                return Err(VectorStoreError::Connection(format!(
+                    "invalid port: {port}"
+                )));
+            }
+        }
+
+        // Try to connect to validate the URL is reachable
+        let _client = qdrant_client::Qdrant::from_url(url)
+            .build()
+            .map_err(|e| VectorStoreError::Connection(e.to_string()))?;
+
+        // Attempt a health check to verify connectivity
+        _client
+            .health_check()
+            .await
+            .map_err(|e| VectorStoreError::Connection(e.to_string()))?;
+
+        Ok(Self {
+            _url: url.to_string(),
+            _collection_name: collection_name.to_string(),
+        })
     }
 
     /// Convert text into a hashed sparse vector (blake2b tokens, L2-normalized TF weights).
-    pub fn text_to_sparse_vector(_text: &str) -> SparseVector {
-        todo!("QdrantRepository::text_to_sparse_vector not implemented")
+    pub fn text_to_sparse_vector(text: &str) -> SparseVector {
+        // Tokenize: lowercase, keep only alphanumeric tokens
+        let mut token_counts: HashMap<u32, f32> = HashMap::new();
+
+        for token in text.split_whitespace() {
+            let cleaned: String = token.chars().filter(|c| c.is_alphanumeric()).collect();
+            let cleaned = cleaned.to_lowercase();
+            if cleaned.is_empty() {
+                continue;
+            }
+
+            // Hash token to u32 index using blake2b
+            let mut hasher = Blake2b::<blake2::digest::consts::U8>::new();
+            hasher.update(cleaned.as_bytes());
+            let hash = hasher.finalize();
+            let index = u32::from_le_bytes([hash[0], hash[1], hash[2], hash[3]]);
+
+            *token_counts.entry(index).or_insert(0.0) += 1.0;
+        }
+
+        if token_counts.is_empty() {
+            return SparseVector::default();
+        }
+
+        // Compute TF weights: 1.0 + ln(count)
+        let mut pairs: Vec<(u32, f32)> = token_counts
+            .into_iter()
+            .map(|(idx, count)| (idx, 1.0 + count.ln()))
+            .collect();
+
+        // Sort by index
+        pairs.sort_by_key(|(idx, _)| *idx);
+
+        // L2 normalize
+        let norm: f32 = pairs.iter().map(|(_, v)| v * v).sum::<f32>().sqrt();
+
+        let (indices, values): (Vec<u32>, Vec<f32>) = if norm > 0.0 {
+            pairs.into_iter().map(|(i, v)| (i, v / norm)).unzip()
+        } else {
+            pairs.into_iter().unzip()
+        };
+
+        SparseVector { indices, values }
     }
 }
