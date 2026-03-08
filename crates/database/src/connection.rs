@@ -19,7 +19,9 @@ where
 #[instrument(skip_all)]
 pub async fn with_transaction<F, T>(pool: &PgPool, f: F) -> Result<T>
 where
-    F: for<'c> FnOnce(&'c mut Transaction<'_, Postgres>) -> futures::future::BoxFuture<'c, Result<T>>,
+    F: for<'c> FnOnce(
+        &'c mut Transaction<'_, Postgres>,
+    ) -> futures::future::BoxFuture<'c, Result<T>>,
 {
     let mut txn = pool.begin().await.map_err(connection_error)?;
 

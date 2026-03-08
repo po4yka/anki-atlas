@@ -68,10 +68,9 @@ pub async fn run_migrations(pool: &PgPool) -> Result<MigrationResult> {
 
         info!(migration = name, "applying migration");
 
-        let mut txn = pool
-            .begin()
-            .await
-            .map_err(migration_error(&format!("failed to begin transaction for {name}")))?;
+        let mut txn = pool.begin().await.map_err(migration_error(&format!(
+            "failed to begin transaction for {name}"
+        )))?;
 
         sqlx::query(sql)
             .execute(&mut *txn)
@@ -82,11 +81,13 @@ pub async fn run_migrations(pool: &PgPool) -> Result<MigrationResult> {
             .bind(name)
             .execute(&mut *txn)
             .await
-            .map_err(migration_error(&format!("failed to record migration {name}")))?;
+            .map_err(migration_error(&format!(
+                "failed to record migration {name}"
+            )))?;
 
-        txn.commit()
-            .await
-            .map_err(migration_error(&format!("failed to commit migration {name}")))?;
+        txn.commit().await.map_err(migration_error(&format!(
+            "failed to commit migration {name}"
+        )))?;
 
         result.applied.push(name.to_string());
     }

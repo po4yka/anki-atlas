@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use database::connection::{with_connection, with_transaction};
-use database::migrations::{run_migrations, MigrationResult};
+use database::migrations::{MigrationResult, run_migrations};
 use database::pool::{check_connection, create_pool};
-use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
@@ -61,7 +61,9 @@ async fn test_create_pool_connects_successfully() {
     let port = container.get_host_port_ipv4(5432).await.unwrap();
     let settings = settings_for_container(&host.to_string(), port);
 
-    let pool = create_pool(&settings).await.expect("create_pool should succeed");
+    let pool = create_pool(&settings)
+        .await
+        .expect("create_pool should succeed");
 
     // Pool should be usable
     let row: (i32,) = sqlx::query_as("SELECT 1").fetch_one(&pool).await.unwrap();
@@ -74,13 +76,19 @@ async fn test_create_pool_fails_with_bad_url() {
     settings.postgres_url = "postgresql://localhost:1/nonexistent".to_string();
 
     let result = create_pool(&settings).await;
-    assert!(result.is_err(), "create_pool should fail with unreachable database");
+    assert!(
+        result.is_err(),
+        "create_pool should fail with unreachable database"
+    );
 }
 
 #[tokio::test]
 async fn test_check_connection_returns_true_for_live_db() {
     let (pool, _container) = setup_pool().await;
-    assert!(check_connection(&pool).await, "check_connection should return true for live db");
+    assert!(
+        check_connection(&pool).await,
+        "check_connection should return true for live db"
+    );
 }
 
 #[tokio::test]
@@ -104,7 +112,9 @@ async fn test_check_connection_returns_false_for_closed_pool() {
 async fn test_run_migrations_creates_schema_migrations_table() {
     let (pool, _container) = setup_pool().await;
 
-    let _result = run_migrations(&pool).await.expect("migrations should succeed");
+    let _result = run_migrations(&pool)
+        .await
+        .expect("migrations should succeed");
 
     // Verify schema_migrations table exists
     let exists: bool = sqlx::query_scalar(
@@ -113,14 +123,19 @@ async fn test_run_migrations_creates_schema_migrations_table() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert!(exists, "schema_migrations table should exist after migrations");
+    assert!(
+        exists,
+        "schema_migrations table should exist after migrations"
+    );
 }
 
 #[tokio::test]
 async fn test_run_migrations_applies_initial_schema() {
     let (pool, _container) = setup_pool().await;
 
-    let result = run_migrations(&pool).await.expect("migrations should succeed");
+    let result = run_migrations(&pool)
+        .await
+        .expect("migrations should succeed");
 
     assert!(
         result.applied.contains(&"001_initial_schema".to_string()),
@@ -158,10 +173,14 @@ async fn test_run_migrations_applies_initial_schema() {
 async fn test_run_migrations_applies_trigram_search() {
     let (pool, _container) = setup_pool().await;
 
-    let result = run_migrations(&pool).await.expect("migrations should succeed");
+    let result = run_migrations(&pool)
+        .await
+        .expect("migrations should succeed");
 
     assert!(
-        result.applied.contains(&"002_pg_trgm_lexical_search".to_string()),
+        result
+            .applied
+            .contains(&"002_pg_trgm_lexical_search".to_string()),
         "002_pg_trgm_lexical_search should be in applied list"
     );
 }
@@ -171,24 +190,41 @@ async fn test_run_migrations_is_idempotent() {
     let (pool, _container) = setup_pool().await;
 
     // First run: both should be applied
-    let first = run_migrations(&pool).await.expect("first run should succeed");
-    assert_eq!(first.applied.len(), 2, "first run should apply 2 migrations");
+    let first = run_migrations(&pool)
+        .await
+        .expect("first run should succeed");
+    assert_eq!(
+        first.applied.len(),
+        2,
+        "first run should apply 2 migrations"
+    );
     assert_eq!(first.skipped.len(), 0, "first run should skip nothing");
 
     // Second run: both should be skipped
-    let second = run_migrations(&pool).await.expect("second run should succeed");
+    let second = run_migrations(&pool)
+        .await
+        .expect("second run should succeed");
     assert_eq!(second.applied.len(), 0, "second run should apply nothing");
-    assert_eq!(second.skipped.len(), 2, "second run should skip 2 migrations");
+    assert_eq!(
+        second.skipped.len(),
+        2,
+        "second run should skip 2 migrations"
+    );
 }
 
 #[tokio::test]
 async fn test_run_migrations_returns_correct_applied_and_skipped() {
     let (pool, _container) = setup_pool().await;
 
-    let result = run_migrations(&pool).await.expect("migrations should succeed");
+    let result = run_migrations(&pool)
+        .await
+        .expect("migrations should succeed");
 
     // Both migrations should be applied on first run
-    assert_eq!(result.applied, vec!["001_initial_schema", "002_pg_trgm_lexical_search"]);
+    assert_eq!(
+        result.applied,
+        vec!["001_initial_schema", "002_pg_trgm_lexical_search"]
+    );
     assert!(result.skipped.is_empty());
 }
 
@@ -281,7 +317,10 @@ async fn test_with_transaction_rolls_back_on_error() {
     })
     .await;
 
-    assert!(result.is_err(), "with_transaction should propagate the error");
+    assert!(
+        result.is_err(),
+        "with_transaction should propagate the error"
+    );
 
     // Verify data was NOT committed
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM test_rollback")
@@ -327,7 +366,9 @@ fn embedded_migrations_match_python_source() {
 
     // Verify key content from migration 2
     assert!(
-        migrations[1].1.contains("CREATE EXTENSION IF NOT EXISTS pg_trgm"),
+        migrations[1]
+            .1
+            .contains("CREATE EXTENSION IF NOT EXISTS pg_trgm"),
         "002 should enable pg_trgm extension"
     );
 }

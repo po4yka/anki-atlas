@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use common::config::Settings;
 use common::error::Result;
-use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 use tracing::instrument;
 
 use crate::connection_error;
