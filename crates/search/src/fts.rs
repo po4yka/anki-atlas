@@ -56,11 +56,21 @@ pub struct SearchFilters {
 /// Execute lexical search with FTS -> fuzzy -> autocomplete fallback chain.
 pub async fn search_lexical(
     _pool: &sqlx::PgPool,
-    _query: &str,
+    query: &str,
     _filters: Option<&SearchFilters>,
     _limit: i64,
 ) -> Result<LexicalSearchResult, SearchError> {
-    todo!("search_lexical not yet implemented")
+    if query.trim().is_empty() {
+        return Ok(LexicalSearchResult {
+            results: vec![],
+            mode: LexicalMode::None,
+            used_fallback: false,
+            query_suggestions: vec![],
+            autocomplete_suggestions: vec![],
+        });
+    }
+
+    todo!("search_lexical: FTS -> fuzzy -> autocomplete fallback chain")
 }
 
 #[cfg(test)]
