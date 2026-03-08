@@ -798,4 +798,40 @@ mod tests {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<NoteDetail>();
     }
+
+    // ── get_notes_details tests ─────────────────────────────────
+
+    #[tokio::test]
+    async fn get_notes_details_empty_ids_returns_empty_map() {
+        let pool = fake_pool();
+        let svc = SearchService::new(
+            FakeEmbedding,
+            FakeVectorRepo::empty(),
+            Some(FakeReranker::new()),
+            pool,
+            false,
+            20,
+        );
+
+        // Empty slice should return empty HashMap without hitting DB
+        let result = svc.get_notes_details(&[]).await.unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_notes_details_with_ids_returns_db_error() {
+        let pool = fake_pool();
+        let svc = SearchService::new(
+            FakeEmbedding,
+            FakeVectorRepo::empty(),
+            Some(FakeReranker::new()),
+            pool,
+            false,
+            20,
+        );
+
+        // With actual IDs and a fake pool, should return a DB error (not panic)
+        let result = svc.get_notes_details(&[1, 2, 3]).await;
+        assert!(result.is_err());
+    }
 }

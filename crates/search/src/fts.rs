@@ -53,6 +53,16 @@ pub struct SearchFilters {
     pub min_reps: Option<i32>,
 }
 
+/// Check if filters require joining cards/decks tables.
+///
+/// Filters on `deck_names`, `deck_names_exclude`, `min_ivl`, `max_lapses`,
+/// and `min_reps` require a LEFT JOIN to `cards` and `decks`.
+/// Filters on `tags`, `tags_exclude`, and `model_ids` apply to `notes` directly.
+#[allow(dead_code)]
+pub(crate) fn needs_card_join(_filters: &SearchFilters) -> bool {
+    todo!("needs_card_join: determine if filters require cards/decks join")
+}
+
 /// Execute lexical search with FTS -> fuzzy -> autocomplete fallback chain.
 pub async fn search_lexical(
     _pool: &sqlx::PgPool,
@@ -336,5 +346,129 @@ mod tests {
         assert_ne!(LexicalMode::Fts, LexicalMode::Fuzzy);
         assert_ne!(LexicalMode::Fuzzy, LexicalMode::Autocomplete);
         assert_ne!(LexicalMode::Autocomplete, LexicalMode::None);
+    }
+
+    // --- needs_card_join tests ---
+
+    #[test]
+    fn needs_card_join_false_with_default_filters() {
+        assert!(!needs_card_join(&SearchFilters::default()));
+    }
+
+    #[test]
+    fn needs_card_join_false_with_tags_only() {
+        let f = SearchFilters {
+            tags: Some(vec!["rust".into()]),
+            ..Default::default()
+        };
+        assert!(!needs_card_join(&f));
+    }
+
+    #[test]
+    fn needs_card_join_false_with_tags_exclude_only() {
+        let f = SearchFilters {
+            tags_exclude: Some(vec!["old".into()]),
+            ..Default::default()
+        };
+        assert!(!needs_card_join(&f));
+    }
+
+    #[test]
+    fn needs_card_join_false_with_model_ids_only() {
+        let f = SearchFilters {
+            model_ids: Some(vec![1, 2]),
+            ..Default::default()
+        };
+        assert!(!needs_card_join(&f));
+    }
+
+    #[test]
+    fn needs_card_join_false_with_notes_only_combo() {
+        // All notes-table filters combined should still not require join
+        let f = SearchFilters {
+            tags: Some(vec!["rust".into()]),
+            tags_exclude: Some(vec!["old".into()]),
+            model_ids: Some(vec![42]),
+            ..Default::default()
+        };
+        assert!(!needs_card_join(&f));
+    }
+
+    #[test]
+    fn needs_card_join_true_for_deck_names() {
+        let f = SearchFilters {
+            deck_names: Some(vec!["Default".into()]),
+            ..Default::default()
+        };
+        assert!(needs_card_join(&f));
+    }
+
+    #[test]
+    fn needs_card_join_true_for_deck_names_exclude() {
+        let f = SearchFilters {
+            deck_names_exclude: Some(vec!["Archive".into()]),
+            ..Default::default()
+        };
+        assert!(needs_card_join(&f));
+    }
+
+    #[test]
+    fn needs_card_join_true_for_min_ivl() {
+        let f = SearchFilters {
+            min_ivl: Some(21),
+            ..Default::default()
+        };
+        assert!(needs_card_join(&f));
+    }
+
+    #[test]
+    fn needs_card_join_true_for_max_lapses() {
+        let f = SearchFilters {
+            max_lapses: Some(5),
+            ..Default::default()
+        };
+        assert!(needs_card_join(&f));
+    }
+
+    #[test]
+    fn needs_card_join_true_for_min_reps() {
+        let f = SearchFilters {
+            min_reps: Some(3),
+            ..Default::default()
+        };
+        assert!(needs_card_join(&f));
+    }
+
+    // --- search_lexical fallback chain (non-empty query) ---
+
+    #[tokio::test]
+    async fn search_lexical_nonempty_query_returns_result() {
+        // Non-empty query should execute the FTS fallback chain, not panic.
+        // With an invalid pool, should return a SearchError::Database, not todo!().
+        let pool = sqlx::PgPool::connect_lazy("postgres://invalid:5432/fake").unwrap();
+        let result = search_lexical(&pool, "hello world", None, 10).await;
+        // Should be Err(Database) since pool can't connect, but must not panic
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn search_lexical_nonempty_with_filters_returns_result() {
+        let pool = sqlx::PgPool::connect_lazy("postgres://invalid:5432/fake").unwrap();
+        let filters = SearchFilters {
+            tags: Some(vec!["rust".into()]),
+            deck_names: Some(vec!["Default".into()]),
+            ..Default::default()
+        };
+        let result = search_lexical(&pool, "test query", Some(&filters), 20).await;
+        // Should attempt DB query with filters applied, return DB error
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn search_lexical_nonempty_respects_limit() {
+        let pool = sqlx::PgPool::connect_lazy("postgres://invalid:5432/fake").unwrap();
+        let result = search_lexical(&pool, "query", None, 5).await;
+        // Should attempt query with LIMIT 5, return DB error
+        assert!(result.is_err());
     }
 }
