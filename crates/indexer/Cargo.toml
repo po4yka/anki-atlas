@@ -6,3 +6,22 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+common = { path = "../common" }
+database = { path = "../database" }
+async-trait = "0.1"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+qdrant-client = "1"
+sha2 = "0.10"
+blake2 = "0.10"
+hex = "0.4"
+thiserror = "2"
+tracing = "0.1"
+regex = "1"
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "macros"] }
+
+[dev-dependencies]
+mockall = "0.13"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
