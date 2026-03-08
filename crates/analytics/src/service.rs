@@ -45,6 +45,7 @@ where
         todo!()
     }
 
+    /// Get coverage metrics for a topic.
     pub async fn get_coverage(
         &self,
         _topic_path: &str,
@@ -53,6 +54,7 @@ where
         todo!()
     }
 
+    /// Find gaps in topic coverage under a root path.
     pub async fn get_gaps(
         &self,
         _topic_path: &str,
@@ -61,6 +63,7 @@ where
         todo!()
     }
 
+    /// Get weak notes (high lapse rate) in a topic subtree.
     pub async fn get_weak_notes(
         &self,
         _topic_path: &str,
@@ -69,6 +72,7 @@ where
         todo!()
     }
 
+    /// Find clusters of near-duplicate notes.
     pub async fn find_duplicates(
         &self,
         _threshold: f64,
@@ -79,6 +83,7 @@ where
         todo!()
     }
 
+    /// Get coverage tree for all topics (optionally filtered by root path).
     pub async fn get_taxonomy_tree(
         &self,
         _root_path: Option<&str>,
