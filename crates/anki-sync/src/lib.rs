@@ -1,3 +1,4 @@
+pub mod core;
 pub mod engine;
 pub mod progress;
 pub mod recovery;
@@ -13,6 +14,7 @@ pub(crate) fn now_secs() -> f64 {
         .as_secs_f64()
 }
 
+pub use core::{sync_anki_collection, SyncService, SyncStats};
 pub use engine::{SyncEngine, SyncResult};
 pub use progress::{ProgressTracker, SyncPhase, SyncProgress, VALID_STATS};
 pub use recovery::{CardRecovery, CardTransaction, RollbackAction};
