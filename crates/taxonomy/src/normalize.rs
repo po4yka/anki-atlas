@@ -1,4 +1,4 @@
-use crate::tags::{is_known_topic_tag, lookup_tag, META_TAGS, META_TAG_PREFIXES, TOPIC_PREFIXES};
+use crate::tags::{META_TAG_PREFIXES, META_TAGS, TOPIC_PREFIXES, is_known_topic_tag, lookup_tag};
 
 /// Normalize a single tag to canonical form.
 pub fn normalize_tag(tag: &str) -> String {
@@ -95,10 +95,7 @@ pub fn validate_tag(tag: &str) -> Vec<String> {
         if parts.len() > 1 {
             let topic_part = parts[1];
             if topic_part != topic_part.to_lowercase()
-                && !topic_part
-                    .chars()
-                    .next()
-                    .is_some_and(|c| c.is_uppercase())
+                && !topic_part.chars().next().is_some_and(|c| c.is_uppercase())
             {
                 issues.push(format!("Topic should be lowercase: '{topic_part}'"));
             }

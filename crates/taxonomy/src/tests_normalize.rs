@@ -158,7 +158,9 @@ fn validate_tag_too_deep() {
     let issues = validate_tag("a::b::c");
     assert!(!issues.is_empty());
     assert!(
-        issues.iter().any(|i| i.contains("deep") || i.contains("levels")),
+        issues
+            .iter()
+            .any(|i| i.contains("deep") || i.contains("levels")),
         "expected depth warning, got: {issues:?}"
     );
 }
@@ -195,7 +197,9 @@ fn validate_tag_duplicate_colons() {
 fn validate_tag_duplicate_hyphens() {
     let issues = validate_tag("foo--bar");
     assert!(
-        issues.iter().any(|i| i.contains("Duplicate") || i.contains("'-'")),
+        issues
+            .iter()
+            .any(|i| i.contains("Duplicate") || i.contains("'-'")),
         "expected duplicate hyphen warning, got: {issues:?}"
     );
 }
@@ -209,7 +213,10 @@ fn validate_tag_valid_prefixed_tag() {
 #[test]
 fn validate_tag_cognitive_bias_special() {
     let issues = validate_tag("cognitive_bias");
-    assert!(issues.is_empty(), "expected no issues for cognitive_bias, got: {issues:?}");
+    assert!(
+        issues.is_empty(),
+        "expected no issues for cognitive_bias, got: {issues:?}"
+    );
 }
 
 // === suggest_tag ===
