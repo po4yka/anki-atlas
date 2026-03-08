@@ -3,6 +3,7 @@ use strum::{Display, EnumString};
 
 /// Supported card languages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, EnumString, Display)]
+#[serde(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase")]
 pub enum Language {
     En,
