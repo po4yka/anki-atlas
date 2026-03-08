@@ -1,6 +1,5 @@
 use anki_reader::reader::{read_anki_collection, AnkiReader};
 use rusqlite::Connection;
-use std::io::Write;
 use tempfile::NamedTempFile;
 
 /// Helper: create a minimal Anki SQLite database with legacy schema.
