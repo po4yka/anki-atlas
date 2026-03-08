@@ -49,7 +49,7 @@ pub struct TopicLabeler<E: indexer::embeddings::EmbeddingProvider> {
 
 impl<E: indexer::embeddings::EmbeddingProvider> TopicLabeler<E> {
     pub fn new(embedding: E, db: sqlx::PgPool) -> Self {
-        todo!()
+        Self { embedding, db }
     }
 
     /// Embed all topic descriptions/labels. Returns path -> embedding vector.

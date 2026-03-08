@@ -46,7 +46,7 @@ pub struct DuplicateDetector<V: indexer::qdrant::VectorRepository> {
 
 impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
     pub fn new(vector_repo: V, db: sqlx::PgPool) -> Self {
-        todo!()
+        Self { vector_repo, db }
     }
 
     /// Find clusters of near-duplicate notes.
@@ -63,10 +63,13 @@ impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
 
 /// Internal: union-find with path compression.
 /// Always uses smaller ID as root for determinism.
+/// Used by `DuplicateDetector::find_duplicates` (implementation pending).
+#[allow(dead_code)]
 pub(crate) struct UnionFind {
     parent: std::collections::HashMap<i64, i64>,
 }
 
+#[allow(dead_code)]
 impl UnionFind {
     pub(crate) fn new() -> Self {
         Self {
@@ -75,14 +78,19 @@ impl UnionFind {
     }
 
     pub(crate) fn find(&mut self, x: i64) -> i64 {
-        if !self.parent.contains_key(&x) {
-            self.parent.insert(x, x);
-            return x;
+        match self.parent.entry(x) {
+            std::collections::hash_map::Entry::Vacant(e) => {
+                e.insert(x);
+                return x;
+            }
+            std::collections::hash_map::Entry::Occupied(e) => {
+                let p = *e.get();
+                if p == x {
+                    return x;
+                }
+            }
         }
         let p = self.parent[&x];
-        if p == x {
-            return x;
-        }
         let root = self.find(p);
         self.parent.insert(x, root);
         root

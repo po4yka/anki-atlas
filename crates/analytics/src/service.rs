@@ -21,7 +21,11 @@ where
     V: indexer::qdrant::VectorRepository,
 {
     pub fn new(embedding: E, vector_repo: V, db: sqlx::PgPool) -> Self {
-        todo!()
+        Self {
+            embedding,
+            vector_repo,
+            db,
+        }
     }
 
     /// Load taxonomy from YAML (syncing to DB) or from DB.
