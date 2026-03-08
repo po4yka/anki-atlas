@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::Serialize;
 
 /// Fused search result with score breakdown from all retrieval stages.
@@ -17,7 +19,14 @@ pub struct SearchResult {
 impl SearchResult {
     /// Return list of contributing sources ("semantic", "fts").
     pub fn sources(&self) -> Vec<&'static str> {
-        todo!("SearchResult::sources not implemented")
+        let mut sources = Vec::new();
+        if self.semantic_score.is_some() {
+            sources.push("semantic");
+        }
+        if self.fts_score.is_some() {
+            sources.push("fts");
+        }
+        sources
     }
 }
 
@@ -34,14 +43,87 @@ pub struct FusionStats {
 ///
 /// RRF score = sum( weight / (k + rank) ) across sources.
 pub fn reciprocal_rank_fusion(
-    _semantic_results: &[(i64, f64)],
-    _fts_results: &[(i64, f64, Option<String>)],
-    _k: usize,
-    _limit: usize,
-    _semantic_weight: f64,
-    _fts_weight: f64,
+    semantic_results: &[(i64, f64)],
+    fts_results: &[(i64, f64, Option<String>)],
+    k: usize,
+    limit: usize,
+    semantic_weight: f64,
+    fts_weight: f64,
 ) -> (Vec<SearchResult>, FusionStats) {
-    todo!("reciprocal_rank_fusion not implemented")
+    let mut entries: HashMap<i64, SearchResult> = HashMap::new();
+
+    for (rank_idx, &(note_id, score)) in semantic_results.iter().enumerate() {
+        let rank = rank_idx + 1; // 1-indexed
+        let rrf_score = semantic_weight / (k as f64 + rank as f64);
+        entries.insert(
+            note_id,
+            SearchResult {
+                note_id,
+                rrf_score,
+                semantic_score: Some(score),
+                semantic_rank: Some(rank),
+                fts_score: None,
+                fts_rank: None,
+                headline: None,
+                rerank_score: None,
+                rerank_rank: None,
+            },
+        );
+    }
+
+    for (rank_idx, (note_id, score, headline)) in fts_results.iter().enumerate() {
+        let rank = rank_idx + 1; // 1-indexed
+        let rrf_contrib = fts_weight / (k as f64 + rank as f64);
+        if let Some(entry) = entries.get_mut(note_id) {
+            entry.rrf_score += rrf_contrib;
+            entry.fts_score = Some(*score);
+            entry.fts_rank = Some(rank);
+            if headline.is_some() {
+                entry.headline.clone_from(headline);
+            }
+        } else {
+            entries.insert(
+                *note_id,
+                SearchResult {
+                    note_id: *note_id,
+                    rrf_score: rrf_contrib,
+                    semantic_score: None,
+                    semantic_rank: None,
+                    fts_score: Some(*score),
+                    fts_rank: Some(rank),
+                    headline: headline.clone(),
+                    rerank_score: None,
+                    rerank_rank: None,
+                },
+            );
+        }
+    }
+
+    let total = entries.len();
+    let mut semantic_only = 0;
+    let mut fts_only = 0;
+    let mut both = 0;
+    for entry in entries.values() {
+        match (entry.semantic_score.is_some(), entry.fts_score.is_some()) {
+            (true, true) => both += 1,
+            (true, false) => semantic_only += 1,
+            (false, true) => fts_only += 1,
+            (false, false) => {}
+        }
+    }
+
+    let mut results: Vec<SearchResult> = entries.into_values().collect();
+    results.sort_by(|a, b| b.rrf_score.partial_cmp(&a.rrf_score).unwrap_or(std::cmp::Ordering::Equal));
+    results.truncate(limit);
+
+    let stats = FusionStats {
+        semantic_only,
+        fts_only,
+        both,
+        total,
+    };
+
+    (results, stats)
 }
 
 #[cfg(test)]
