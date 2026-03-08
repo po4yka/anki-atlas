@@ -1,13 +1,41 @@
+use std::collections::HashMap;
+use std::time::Duration;
+
 use common::config::Settings;
-use common::error::Result;
+use common::error::{AnkiAtlasError, Result};
+use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+use tracing::instrument;
 
 /// Create a new PgPool from settings.
-pub async fn create_pool(_settings: &Settings) -> Result<PgPool> {
-    todo!()
+///
+/// Pool configuration:
+/// - min_connections: 2
+/// - max_connections: 10
+/// - acquire_timeout: 10 seconds
+#[instrument(skip_all)]
+pub async fn create_pool(settings: &Settings) -> Result<PgPool> {
+    PgPoolOptions::new()
+        .min_connections(2)
+        .max_connections(10)
+        .acquire_timeout(Duration::from_secs(10))
+        .connect(&settings.postgres_url)
+        .await
+        .map_err(|e| AnkiAtlasError::DatabaseConnection {
+            message: e.to_string(),
+            context: HashMap::new(),
+        })
 }
 
 /// Check if the database is reachable by executing `SELECT 1`.
-pub async fn check_connection(_pool: &PgPool) -> bool {
-    todo!()
+/// Returns `false` on any error (connection timeout = 5s).
+#[instrument(skip_all)]
+pub async fn check_connection(pool: &PgPool) -> bool {
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        sqlx::query("SELECT 1").execute(pool),
+    )
+    .await
+    .map(|r| r.is_ok())
+    .unwrap_or(false)
 }
