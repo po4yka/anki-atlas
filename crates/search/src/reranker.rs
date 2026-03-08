@@ -14,6 +14,7 @@ pub trait Reranker: Send + Sync {
 }
 
 /// Cross-encoder reranker that calls an external inference endpoint.
+#[allow(dead_code)]
 pub struct CrossEncoderReranker {
     model_name: String,
     batch_size: usize,
@@ -27,12 +28,17 @@ impl CrossEncoderReranker {
         batch_size: usize,
         endpoint: impl Into<String>,
     ) -> Self {
-        todo!()
+        Self {
+            model_name: model_name.into(),
+            batch_size,
+            client: reqwest::Client::new(),
+            endpoint: endpoint.into(),
+        }
     }
 
     /// Get the model name.
     pub fn model_name(&self) -> &str {
-        todo!()
+        &self.model_name
     }
 }
 
@@ -40,9 +46,12 @@ impl CrossEncoderReranker {
 impl Reranker for CrossEncoderReranker {
     async fn rerank(
         &self,
-        query: &str,
+        _query: &str,
         documents: &[(i64, String)],
     ) -> Result<Vec<(i64, f64)>, SearchError> {
+        if documents.is_empty() {
+            return Ok(Vec::new());
+        }
         todo!()
     }
 }
