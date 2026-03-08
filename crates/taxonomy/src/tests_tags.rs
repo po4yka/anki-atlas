@@ -149,7 +149,7 @@ fn tag_mapping_len_matches_python() {
 
 #[test]
 fn kotlin_topic_tags_count() {
-    assert_eq!(KOTLIN_TOPIC_TAGS.len(), 24);
+    assert_eq!(KOTLIN_TOPIC_TAGS.len(), 25);
 }
 
 #[test]
