@@ -10,7 +10,11 @@ fn content_empty_front_is_error() {
     let result = v.validate("", "Valid back content here", &[]);
     assert!(!result.is_valid());
     let errors = result.errors();
-    assert!(errors.iter().any(|i| i.message.contains("Front side is empty")));
+    assert!(
+        errors
+            .iter()
+            .any(|i| i.message.contains("Front side is empty"))
+    );
 }
 
 #[test]
@@ -19,7 +23,11 @@ fn content_whitespace_only_front_is_error() {
     let result = v.validate("   \n\t  ", "Valid back content here", &[]);
     assert!(!result.is_valid());
     let errors = result.errors();
-    assert!(errors.iter().any(|i| i.message.contains("Front side is empty")));
+    assert!(
+        errors
+            .iter()
+            .any(|i| i.message.contains("Front side is empty"))
+    );
 }
 
 #[test]
@@ -28,7 +36,11 @@ fn content_empty_back_is_error() {
     let result = v.validate("Valid front content here", "", &[]);
     assert!(!result.is_valid());
     let errors = result.errors();
-    assert!(errors.iter().any(|i| i.message.contains("Back side is empty")));
+    assert!(
+        errors
+            .iter()
+            .any(|i| i.message.contains("Back side is empty"))
+    );
 }
 
 #[test]
@@ -37,7 +49,11 @@ fn content_short_front_is_warning() {
     let result = v.validate("Short", "Valid back content here", &[]);
     assert!(result.is_valid()); // warnings don't make invalid
     let warnings = result.warnings();
-    assert!(warnings.iter().any(|i| i.message.contains("Front side is very short")));
+    assert!(
+        warnings
+            .iter()
+            .any(|i| i.message.contains("Front side is very short"))
+    );
 }
 
 #[test]
@@ -46,7 +62,11 @@ fn content_short_back_is_warning() {
     let result = v.validate("Valid front content here", "Short", &[]);
     assert!(result.is_valid());
     let warnings = result.warnings();
-    assert!(warnings.iter().any(|i| i.message.contains("Back side is very short")));
+    assert!(
+        warnings
+            .iter()
+            .any(|i| i.message.contains("Back side is very short"))
+    );
 }
 
 #[test]
@@ -56,7 +76,11 @@ fn content_long_front_is_warning() {
     let result = v.validate(&long_front, "Valid back content here", &[]);
     assert!(result.is_valid());
     let warnings = result.warnings();
-    assert!(warnings.iter().any(|i| i.message.contains("exceeds 5000 chars")));
+    assert!(
+        warnings
+            .iter()
+            .any(|i| i.message.contains("exceeds 5000 chars"))
+    );
 }
 
 #[test]
@@ -66,7 +90,11 @@ fn content_long_back_is_warning() {
     let result = v.validate("Valid front content here", &long_back, &[]);
     assert!(result.is_valid());
     let warnings = result.warnings();
-    assert!(warnings.iter().any(|i| i.message.contains("exceeds 5000 chars")));
+    assert!(
+        warnings
+            .iter()
+            .any(|i| i.message.contains("exceeds 5000 chars"))
+    );
 }
 
 #[test]
@@ -76,7 +104,11 @@ fn content_unmatched_code_fence_front_is_error() {
     let result = v.validate(front, "Valid back content here", &[]);
     assert!(!result.is_valid());
     let errors = result.errors();
-    assert!(errors.iter().any(|i| i.message.contains("Unmatched code fence")));
+    assert!(
+        errors
+            .iter()
+            .any(|i| i.message.contains("Unmatched code fence"))
+    );
 }
 
 #[test]
@@ -86,7 +118,11 @@ fn content_unmatched_code_fence_back_is_error() {
     let result = v.validate("Valid front content here", back, &[]);
     assert!(!result.is_valid());
     let errors = result.errors();
-    assert!(errors.iter().any(|i| i.message.contains("Unmatched code fence")));
+    assert!(
+        errors
+            .iter()
+            .any(|i| i.message.contains("Unmatched code fence"))
+    );
 }
 
 #[test]
@@ -95,7 +131,12 @@ fn content_matched_code_fences_are_ok() {
     let front = "Question about:\n```\nsome code\n```\nWhat does it do?";
     let result = v.validate(front, "Valid back content here", &[]);
     // No code fence errors
-    assert!(result.errors().iter().all(|i| !i.message.contains("code fence")));
+    assert!(
+        result
+            .errors()
+            .iter()
+            .all(|i| !i.message.contains("code fence"))
+    );
 }
 
 #[test]
@@ -124,7 +165,12 @@ fn content_exactly_at_min_length_no_warning() {
     let front = "a".repeat(10);
     let result = v.validate(&front, "Valid back content here", &[]);
     // Front is exactly min_length, should not warn about being short
-    assert!(result.warnings().iter().all(|i| !i.message.contains("Front side is very short")));
+    assert!(
+        result
+            .warnings()
+            .iter()
+            .all(|i| !i.message.contains("Front side is very short"))
+    );
 }
 
 #[test]
@@ -132,7 +178,12 @@ fn content_exactly_at_max_length_no_warning() {
     let v = ContentValidator::new();
     let front = "a".repeat(5000);
     let result = v.validate(&front, "Valid back content here", &[]);
-    assert!(result.warnings().iter().all(|i| !i.message.contains("exceeds")));
+    assert!(
+        result
+            .warnings()
+            .iter()
+            .all(|i| !i.message.contains("exceeds"))
+    );
 }
 
 // ─── FormatValidator ────────────────────────────────────────────────────────

@@ -48,7 +48,10 @@ impl ContentValidator {
             ));
         }
 
-        let fence_count = content.lines().filter(|l| l.trim_start().starts_with("```")).count();
+        let fence_count = content
+            .lines()
+            .filter(|l| l.trim_start().starts_with("```"))
+            .count();
         if fence_count % 2 != 0 {
             issues.push(ValidationIssue::error(
                 format!("Unmatched code fence in {}", label.to_lowercase()),
@@ -116,8 +119,8 @@ pub struct HtmlValidator;
 
 const FORBIDDEN_TAGS: &[&str] = &["script", "style", "iframe", "object", "applet"];
 const VOID_ELEMENTS: &[&str] = &[
-    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
-    "source", "track", "wbr",
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
+    "track", "wbr",
 ];
 
 impl HtmlValidator {
@@ -252,7 +255,10 @@ impl Validator for TagValidator {
                 continue;
             }
 
-            if !tag.chars().all(|c| c.is_ascii_alphanumeric() || "_:/-".contains(c)) {
+            if !tag
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "_:/-".contains(c))
+            {
                 issues.push(ValidationIssue::warning(
                     format!("Tag '{tag}' contains invalid characters"),
                     "tags",

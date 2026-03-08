@@ -48,13 +48,21 @@ fn score_clarity(front: &str) -> f64 {
     let lower = front.to_lowercase();
 
     let vague_patterns = [
-        "explain", "describe", "tell me about", "tell about", "discuss", "elaborate",
+        "explain",
+        "describe",
+        "tell me about",
+        "tell about",
+        "discuss",
+        "elaborate",
     ];
     if vague_patterns.iter().any(|p| lower.contains(p)) {
         score -= 0.4;
     }
 
-    let yes_no_starters = ["is ", "does ", "can ", "do ", "are ", "was ", "were ", "has ", "have ", "will ", "would ", "should ", "could "];
+    let yes_no_starters = [
+        "is ", "does ", "can ", "do ", "are ", "was ", "were ", "has ", "have ", "will ", "would ",
+        "should ", "could ", "did ",
+    ];
     if yes_no_starters.iter().any(|s| lower.starts_with(s)) {
         score -= 0.3;
     }
@@ -134,9 +142,7 @@ fn score_memorability(back: &str) -> f64 {
         .lines()
         .filter(|line| {
             let trimmed = line.trim_start();
-            trimmed.starts_with("- ")
-                || trimmed.starts_with("* ")
-                || is_numbered_item(trimmed)
+            trimmed.starts_with("- ") || trimmed.starts_with("* ") || is_numbered_item(trimmed)
         })
         .count();
 

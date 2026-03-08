@@ -1,4 +1,4 @@
-use validation::{assess_quality, QualityScore};
+use validation::{QualityScore, assess_quality};
 
 // ── QualityScore::overall ──────────────────────────────────────────
 
@@ -43,7 +43,10 @@ fn overall_all_zero() {
 
 #[test]
 fn well_formed_card_scores_all_ones() {
-    let score = assess_quality("What is polymorphism?", "The ability of objects to take many forms.");
+    let score = assess_quality(
+        "What is polymorphism?",
+        "The ability of objects to take many forms.",
+    );
     assert!((score.overall() - 1.0).abs() < f64::EPSILON);
     assert!((score.clarity - 1.0).abs() < f64::EPSILON);
     assert!((score.atomicity - 1.0).abs() < f64::EPSILON);
@@ -58,7 +61,10 @@ fn well_formed_card_scores_all_ones() {
 fn clarity_penalizes_explain() {
     let score = assess_quality("Explain how TCP works?", "It works via handshake.");
     assert!(score.clarity < 1.0, "explain should penalize clarity");
-    assert!((score.clarity - 0.6).abs() < f64::EPSILON, "clarity should be 1.0 - 0.4 = 0.6");
+    assert!(
+        (score.clarity - 0.6).abs() < f64::EPSILON,
+        "clarity should be 1.0 - 0.4 = 0.6"
+    );
 }
 
 #[test]
@@ -106,7 +112,10 @@ fn clarity_vague_is_case_insensitive() {
 #[test]
 fn clarity_penalizes_yes_no_starter_is() {
     let score = assess_quality("Is Rust memory safe?", "Yes.");
-    assert!(score.clarity < 1.0, "yes/no starter should penalize clarity");
+    assert!(
+        score.clarity < 1.0,
+        "yes/no starter should penalize clarity"
+    );
     // 1.0 - 0.3 (yes/no) = 0.7
     assert!((score.clarity - 0.7).abs() < f64::EPSILON);
 }
@@ -200,7 +209,10 @@ fn atomicity_penalizes_single_and_or() {
 
 #[test]
 fn atomicity_penalizes_multiple_and_or() {
-    let score = assess_quality("What is ownership and borrowing and lifetimes?", "Concepts.");
+    let score = assess_quality(
+        "What is ownership and borrowing and lifetimes?",
+        "Concepts.",
+    );
     // 2+ occurrences -> -0.4
     assert!((score.atomicity - 0.6).abs() < f64::EPSILON);
 }
@@ -311,7 +323,9 @@ fn memorability_penalizes_long_answer_over_150_words() {
 #[test]
 fn memorability_cumulative_bullets_and_length() {
     // >7 bullets (-0.5) + >150 words (-0.3) = 0.2
-    let mut lines: Vec<String> = (0..8).map(|i| format!("- item {i} with some extra words to pad it out more")).collect();
+    let mut lines: Vec<String> = (0..8)
+        .map(|i| format!("- item {i} with some extra words to pad it out more"))
+        .collect();
     // Add more filler words to push over 150
     let filler: Vec<&str> = std::iter::repeat("filler").take(120).collect();
     lines.push(filler.join(" "));

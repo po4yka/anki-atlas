@@ -85,18 +85,13 @@ impl ValidationResult {
     /// Merge multiple results into one.
     pub fn merge(results: &[ValidationResult]) -> ValidationResult {
         ValidationResult {
-            issues: results
-                .iter()
-                .flat_map(|r| r.issues.clone())
-                .collect(),
+            issues: results.iter().flat_map(|r| r.issues.clone()).collect(),
         }
     }
 
     /// Empty (passing) result.
     pub fn ok() -> ValidationResult {
-        ValidationResult {
-            issues: Vec::new(),
-        }
+        ValidationResult { issues: Vec::new() }
     }
 }
 
