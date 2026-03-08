@@ -28,49 +28,73 @@ pub enum SlugError {
     EmptyInput { field: &'static str },
 }
 
+/// Collapse runs of multiple hyphens into a single hyphen.
+fn collapse_hyphens(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_hyphen = false;
+    for ch in s.chars() {
+        if ch == '-' {
+            if !prev_hyphen {
+                out.push('-');
+            }
+            prev_hyphen = true;
+        } else {
+            out.push(ch);
+            prev_hyphen = false;
+        }
+    }
+    out
+}
+
+/// Validate a language code: must be exactly 2 ASCII letters. Returns lowercased.
+fn validate_lang(lang: &str) -> Result<String, SlugError> {
+    let lower = lang.to_lowercase();
+    if lower.len() != 2 || !lower.chars().all(|c| c.is_ascii_alphabetic()) {
+        return Err(SlugError::InvalidLang(lang.to_string()));
+    }
+    Ok(lower)
+}
+
+/// Slugify topic and keyword with defaults for empty inputs.
+fn slugify_components(topic: &str, keyword: &str) -> (String, String) {
+    let topic_slug = if topic.is_empty() {
+        "untitled".to_string()
+    } else {
+        SlugService::slugify(topic)
+    };
+    let keyword_slug = if keyword.is_empty() {
+        "card".to_string()
+    } else {
+        SlugService::slugify(keyword)
+    };
+    (topic_slug, keyword_slug)
+}
+
 /// Stateless slug generation utilities.
 pub struct SlugService;
 
 impl SlugService {
     /// Convert arbitrary text to a URL-friendly slug.
     pub fn slugify(text: &str) -> String {
-        // NFKD normalize and strip combining marks
+        // NFKD normalize, strip combining marks, replace ß
         let normalized: String = text
             .nfkd()
             .filter(|c| !unicode_normalization::char::is_combining_mark(*c))
             .collect();
+        let lower = normalized.replace('ß', "s").to_lowercase();
 
-        // Replace ß with ss before lowercasing
-        let normalized = normalized.replace('ß', "s");
-
-        // Lowercase
-        let lower = normalized.to_lowercase();
-
-        // Replace separators (space, _, ., /, \) with hyphens, remove non-[a-z0-9-]
+        // Replace separators with hyphens, remove non-[a-z0-9-]
         let mut result = String::with_capacity(lower.len());
         for ch in lower.chars() {
             if ch.is_ascii_alphanumeric() {
                 result.push(ch);
-            } else if ch == ' ' || ch == '_' || ch == '.' || ch == '/' || ch == '\\' || ch == '-' {
+            } else if matches!(ch, ' ' | '_' | '.' | '/' | '\\' | '-') {
                 result.push('-');
             }
-            // else: strip non-alphanumeric
         }
 
         // Collapse multiple hyphens
-        let mut collapsed = String::with_capacity(result.len());
-        let mut prev_hyphen = false;
-        for ch in result.chars() {
-            if ch == '-' {
-                if !prev_hyphen {
-                    collapsed.push('-');
-                }
-                prev_hyphen = true;
-            } else {
-                collapsed.push(ch);
-                prev_hyphen = false;
-            }
-        }
+        let collapsed = collapse_hyphens(&result);
 
         // Strip leading/trailing hyphens
         let trimmed = collapsed.trim_matches('-');
@@ -102,21 +126,8 @@ impl SlugService {
 
     /// Generate slug: "{topic}-{keyword}-{index}-{lang}".
     pub fn generate_slug(topic: &str, keyword: &str, index: u32, lang: &str) -> Result<String, SlugError> {
-        let lang_lower = lang.to_lowercase();
-        if lang_lower.len() != 2 || !lang_lower.chars().all(|c| c.is_ascii_alphabetic()) {
-            return Err(SlugError::InvalidLang(lang.to_string()));
-        }
-
-        let topic_slug = if topic.is_empty() {
-            "untitled".to_string()
-        } else {
-            Self::slugify(topic)
-        };
-        let keyword_slug = if keyword.is_empty() {
-            "card".to_string()
-        } else {
-            Self::slugify(keyword)
-        };
+        let lang_lower = validate_lang(lang)?;
+        let (topic_slug, keyword_slug) = slugify_components(topic, keyword);
 
         let suffix = format!("-{index}-{lang_lower}");
         let available = MAX_SLUG_LENGTH.saturating_sub(suffix.len());
@@ -131,23 +142,12 @@ impl SlugService {
             full_base
         };
 
-        let slug = format!("{base}{suffix}");
-        Ok(slug)
+        Ok(format!("{base}{suffix}"))
     }
 
     /// Generate slug base without language suffix: "{topic}-{keyword}-{index}".
     pub fn generate_slug_base(topic: &str, keyword: &str, index: u32) -> Result<String, SlugError> {
-        let topic_slug = if topic.is_empty() {
-            "untitled".to_string()
-        } else {
-            Self::slugify(topic)
-        };
-        let keyword_slug = if keyword.is_empty() {
-            "card".to_string()
-        } else {
-            Self::slugify(keyword)
-        };
-
+        let (topic_slug, keyword_slug) = slugify_components(topic, keyword);
         Ok(format!("{topic_slug}-{keyword_slug}-{index}"))
     }
 
