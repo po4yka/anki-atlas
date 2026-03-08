@@ -46,16 +46,9 @@ pub trait LlmProvider: Send + Sync {
         let mut json_opts = opts.clone();
         json_opts.json_mode = true;
         let response = self.generate(model, prompt, &json_opts).await?;
-        serde_json::from_str(&response.text).map_err(|_| {
-            let response_text = if response.text.len() > 500 {
-                response.text[..500].to_string()
-            } else {
-                response.text.clone()
-            };
-            LlmError::InvalidJson {
-                message: "invalid JSON in LLM response".to_string(),
-                response_text,
-            }
+        serde_json::from_str(&response.text).map_err(|e| LlmError::InvalidJson {
+            message: format!("LLM returned invalid JSON: {e}"),
+            response_text: response.text[..response.text.len().min(500)].to_string(),
         })
     }
 
