@@ -35,6 +35,7 @@ pub struct OllamaProvider {
 }
 
 impl OllamaProvider {
+    /// Create a new Ollama provider with the given configuration.
     pub fn new(config: OllamaConfig) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
