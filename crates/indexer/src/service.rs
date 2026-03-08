@@ -105,7 +105,10 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         }
 
         // Embed texts
-        let texts: Vec<String> = to_embed.iter().map(|(n, _)| n.normalized_text.clone()).collect();
+        let texts: Vec<String> = to_embed
+            .iter()
+            .map(|(n, _)| n.normalized_text.clone())
+            .collect();
         let vectors = self.embedding.embed(&texts).await?;
 
         // Build payloads using cached hashes
@@ -345,11 +348,10 @@ mod tests {
         let mut existing = HashMap::new();
         existing.insert(1_i64, hash);
 
-        repo.expect_get_existing_hashes()
-            .returning(move |_| {
-                let e = existing.clone();
-                Box::pin(async move { Ok(e) })
-            });
+        repo.expect_get_existing_hashes().returning(move |_| {
+            let e = existing.clone();
+            Box::pin(async move { Ok(e) })
+        });
 
         repo.expect_upsert_vectors()
             .withf(|vectors, payloads, _| vectors.len() == 1 && payloads[0].note_id == 2)
@@ -376,11 +378,10 @@ mod tests {
         let mut existing = HashMap::new();
         existing.insert(1_i64, hash);
 
-        repo.expect_get_existing_hashes()
-            .returning(move |_| {
-                let e = existing.clone();
-                Box::pin(async move { Ok(e) })
-            });
+        repo.expect_get_existing_hashes().returning(move |_| {
+            let e = existing.clone();
+            Box::pin(async move { Ok(e) })
+        });
 
         repo.expect_upsert_vectors()
             .withf(|vectors, _, _| vectors.len() == 2)
@@ -521,10 +522,7 @@ mod tests {
             fn dimension(&self) -> usize {
                 4
             }
-            async fn embed(
-                &self,
-                _texts: &[String],
-            ) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+            async fn embed(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
                 Err(EmbeddingError::BatchFailed {
                     source: "test error".into(),
                 })
@@ -551,10 +549,9 @@ mod tests {
         repo.expect_get_existing_hashes()
             .returning(|_| Box::pin(async { Ok(HashMap::new()) }));
 
-        repo.expect_upsert_vectors()
-            .returning(|_, _, _| {
-                Box::pin(async { Err(VectorStoreError::Client("upsert failed".into())) })
-            });
+        repo.expect_upsert_vectors().returning(|_, _, _| {
+            Box::pin(async { Err(VectorStoreError::Client("upsert failed".into())) })
+        });
 
         let service = IndexService::new(embedding, repo);
         let notes = vec![make_note(1, "test")];
@@ -604,10 +601,9 @@ mod tests {
         let embedding = MockEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
-        repo.expect_delete_vectors()
-            .returning(|_| {
-                Box::pin(async { Err(VectorStoreError::Client("delete failed".into())) })
-            });
+        repo.expect_delete_vectors().returning(|_| {
+            Box::pin(async { Err(VectorStoreError::Client("delete failed".into())) })
+        });
 
         let service = IndexService::new(embedding, repo);
         let result = service.delete_notes(&[1]).await;
@@ -631,16 +627,14 @@ mod tests {
         existing.insert(1_i64, hash1);
         existing.insert(3_i64, hash3);
 
-        repo.expect_get_existing_hashes()
-            .returning(move |_| {
-                let e = existing.clone();
-                Box::pin(async move { Ok(e) })
-            });
+        repo.expect_get_existing_hashes().returning(move |_| {
+            let e = existing.clone();
+            Box::pin(async move { Ok(e) })
+        });
 
         repo.expect_upsert_vectors()
             .withf(|vectors, payloads, _| {
-                vectors.len() == 2
-                    && payloads.iter().all(|p| p.note_id == 2 || p.note_id == 4)
+                vectors.len() == 2 && payloads.iter().all(|p| p.note_id == 2 || p.note_id == 4)
             })
             .returning(|vectors, _, _| {
                 let len = vectors.len();
@@ -715,11 +709,10 @@ mod tests {
         let mut existing = HashMap::new();
         existing.insert(1_i64, "stale_hash_value".to_string());
 
-        repo.expect_get_existing_hashes()
-            .returning(move |_| {
-                let e = existing.clone();
-                Box::pin(async move { Ok(e) })
-            });
+        repo.expect_get_existing_hashes().returning(move |_| {
+            let e = existing.clone();
+            Box::pin(async move { Ok(e) })
+        });
 
         repo.expect_upsert_vectors()
             .withf(|vectors, payloads, _| vectors.len() == 1 && payloads[0].note_id == 1)
@@ -747,11 +740,10 @@ mod tests {
 
         repo.expect_get_existing_hashes()
             .returning(|_| Box::pin(async { Ok(HashMap::new()) }));
-        repo.expect_upsert_vectors()
-            .returning(|vectors, _, _| {
-                let len = vectors.len();
-                Box::pin(async move { Ok(len) })
-            });
+        repo.expect_upsert_vectors().returning(|vectors, _, _| {
+            let len = vectors.len();
+            Box::pin(async move { Ok(len) })
+        });
 
         repo.expect_delete_vectors()
             .withf(|ids| ids == &[1, 2])

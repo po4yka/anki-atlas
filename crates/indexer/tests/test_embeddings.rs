@@ -1,6 +1,6 @@
 use indexer::embeddings::{
-    content_hash, create_embedding_provider, EmbeddingError, EmbeddingProvider,
-    EmbeddingProviderConfig, MockEmbeddingProvider,
+    EmbeddingError, EmbeddingProvider, EmbeddingProviderConfig, MockEmbeddingProvider,
+    content_hash, create_embedding_provider,
 };
 
 // ── MockEmbeddingProvider ──────────────────────────────────────────
@@ -82,7 +82,10 @@ fn content_hash_length_is_16_hex_chars() {
 fn content_hash_includes_model_name() {
     let hash_a = content_hash("model_a", "same text");
     let hash_b = content_hash("model_b", "same text");
-    assert_ne!(hash_a, hash_b, "different models must produce different hashes");
+    assert_ne!(
+        hash_a, hash_b,
+        "different models must produce different hashes"
+    );
 }
 
 #[test]
@@ -131,8 +134,7 @@ fn config_deserialize_openai() {
 
 #[test]
 fn config_deserialize_google() {
-    let json =
-        r#"{"type": "google", "model": "text-embedding-004", "dimension": 768}"#;
+    let json = r#"{"type": "google", "model": "text-embedding-004", "dimension": 768}"#;
     let config: EmbeddingProviderConfig = serde_json::from_str(json).unwrap();
     match config {
         EmbeddingProviderConfig::Google {
