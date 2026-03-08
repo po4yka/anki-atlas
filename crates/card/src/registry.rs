@@ -5,6 +5,14 @@ use serde::{Deserialize, Serialize};
 /// Schema version for migration tracking.
 pub const SCHEMA_VERSION: u32 = 2;
 
+/// Column list for card queries (must match row_to_card_entry field order).
+const CARD_COLUMNS: &str =
+    "slug, note_id, source_path, front, back, content_hash, metadata_hash, \
+     language, tags, anki_note_id, created_at, updated_at, synced_at";
+
+/// Column list for note queries (must match row_to_note_entry field order).
+const NOTE_COLUMNS: &str = "note_id, source_path, title, content_hash, created_at, updated_at";
+
 /// Registry entry for a tracked card.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CardEntry {
@@ -270,19 +278,10 @@ impl CardRegistry {
 
     /// Get card by slug.
     pub fn get_card(&self, slug: &str) -> Result<Option<CardEntry>, RegistryError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT slug, note_id, source_path, front, back,
-                    content_hash, metadata_hash, language, tags, anki_note_id,
-                    created_at, updated_at, synced_at
-             FROM cards WHERE slug = ?1",
-        )?;
-
+        let sql = format!("SELECT {CARD_COLUMNS} FROM cards WHERE slug = ?1");
+        let mut stmt = self.conn.prepare(&sql)?;
         let mut rows = stmt.query_map(params![slug], row_to_card_entry)?;
-
-        match rows.next() {
-            Some(row) => Ok(Some(row?)),
-            None => Ok(None),
-        }
+        rows.next().transpose().map_err(Into::into)
     }
 
     /// Update card by slug. Returns Ok(true) if updated.
@@ -331,40 +330,25 @@ impl CardRegistry {
         source_path: Option<&str>,
         content_hash: Option<&str>,
     ) -> Result<Vec<CardEntry>, RegistryError> {
-        let mut sql = String::from(
-            "SELECT slug, note_id, source_path, front, back,
-                    content_hash, metadata_hash, language, tags, anki_note_id,
-                    created_at, updated_at, synced_at
-             FROM cards WHERE 1=1",
-        );
-
+        let mut sql = format!("SELECT {CARD_COLUMNS} FROM cards WHERE 1=1");
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
-        if let Some(v) = note_id {
-            param_values.push(Box::new(v.to_string()));
-            sql.push_str(&format!(" AND note_id = ?{}", param_values.len()));
-        }
-        if let Some(v) = source_path {
-            param_values.push(Box::new(v.to_string()));
-            sql.push_str(&format!(" AND source_path = ?{}", param_values.len()));
-        }
-        if let Some(v) = content_hash {
-            param_values.push(Box::new(v.to_string()));
-            sql.push_str(&format!(" AND content_hash = ?{}", param_values.len()));
+        for (column, value) in [
+            ("note_id", note_id),
+            ("source_path", source_path),
+            ("content_hash", content_hash),
+        ] {
+            if let Some(v) = value {
+                param_values.push(Box::new(v.to_string()));
+                sql.push_str(&format!(" AND {column} = ?{}", param_values.len()));
+            }
         }
 
         let param_refs: Vec<&dyn rusqlite::types::ToSql> =
             param_values.iter().map(|p| p.as_ref()).collect();
-
         let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt.query_map(param_refs.as_slice(), row_to_card_entry)?;
-
-        let mut results = Vec::new();
-        for row in rows {
-            results.push(row?);
-        }
-
-        Ok(results)
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     // --- Note CRUD ---
@@ -396,34 +380,18 @@ impl CardRegistry {
 
     /// Get note by note_id.
     pub fn get_note(&self, note_id: &str) -> Result<Option<NoteEntry>, RegistryError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT note_id, source_path, title, content_hash, created_at, updated_at
-             FROM notes WHERE note_id = ?1",
-        )?;
-
+        let sql = format!("SELECT {NOTE_COLUMNS} FROM notes WHERE note_id = ?1");
+        let mut stmt = self.conn.prepare(&sql)?;
         let mut rows = stmt.query_map(params![note_id], row_to_note_entry)?;
-
-        match rows.next() {
-            Some(row) => Ok(Some(row?)),
-            None => Ok(None),
-        }
+        rows.next().transpose().map_err(Into::into)
     }
 
     /// List all notes ordered by note_id.
     pub fn list_notes(&self) -> Result<Vec<NoteEntry>, RegistryError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT note_id, source_path, title, content_hash, created_at, updated_at
-             FROM notes ORDER BY note_id",
-        )?;
-
+        let sql = format!("SELECT {NOTE_COLUMNS} FROM notes ORDER BY note_id");
+        let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt.query_map([], row_to_note_entry)?;
-
-        let mut results = Vec::new();
-        for row in rows {
-            results.push(row?);
-        }
-
-        Ok(results)
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     // --- Stats ---
