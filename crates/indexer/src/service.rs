@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tracing::instrument;
 
 use crate::embeddings::{self, EmbeddingProvider};
 use crate::qdrant::{NotePayload, QdrantRepository, VectorRepository};
@@ -61,6 +62,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
 
     /// Index a batch of notes. Skips notes whose content_hash is unchanged
     /// unless `force_reindex` is true.
+    #[instrument(skip(self, notes), fields(note_count = notes.len()))]
     pub async fn index_notes(
         &self,
         notes: &[NoteForIndexing],
@@ -75,8 +77,8 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
 
         let model_name = self.embedding.model_name();
 
-        // Determine which notes need embedding
-        let mut to_embed: Vec<&NoteForIndexing> = Vec::new();
+        // Compute hashes once and determine which notes need embedding
+        let mut to_embed: Vec<(&NoteForIndexing, String)> = Vec::new();
         let mut skipped = 0usize;
 
         for note in notes {
@@ -89,7 +91,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
                     }
                 }
             }
-            to_embed.push(note);
+            to_embed.push((note, new_hash));
         }
 
         let mut stats = IndexStats {
@@ -103,18 +105,18 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         }
 
         // Embed texts
-        let texts: Vec<String> = to_embed.iter().map(|n| n.normalized_text.clone()).collect();
+        let texts: Vec<String> = to_embed.iter().map(|(n, _)| n.normalized_text.clone()).collect();
         let vectors = self.embedding.embed(&texts).await?;
 
-        // Build payloads
+        // Build payloads using cached hashes
         let payloads: Vec<NotePayload> = to_embed
             .iter()
-            .map(|n| NotePayload {
+            .map(|(n, hash)| NotePayload {
                 note_id: n.note_id,
                 model_id: n.model_id,
                 deck_names: n.deck_names.clone(),
                 tags: n.tags.clone(),
-                content_hash: embeddings::content_hash(model_name, &n.normalized_text),
+                content_hash: hash.clone(),
                 mature: n.mature,
                 lapses: n.lapses,
                 reps: n.reps,
@@ -125,7 +127,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         // Generate sparse vectors
         let sparse_vectors: Vec<_> = to_embed
             .iter()
-            .map(|n| QdrantRepository::text_to_sparse_vector(&n.normalized_text))
+            .map(|(n, _)| QdrantRepository::text_to_sparse_vector(&n.normalized_text))
             .collect();
 
         let upserted = self
@@ -139,6 +141,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
     }
 
     /// Delete notes from the vector store by ID.
+    #[instrument(skip(self), fields(note_count = note_ids.len()))]
     pub async fn delete_notes(&self, note_ids: &[i64]) -> Result<usize, IndexError> {
         Ok(self.vector_repo.delete_vectors(note_ids).await?)
     }
