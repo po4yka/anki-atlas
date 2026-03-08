@@ -34,48 +34,246 @@ pub struct SlugService;
 impl SlugService {
     /// Convert arbitrary text to a URL-friendly slug.
     pub fn slugify(text: &str) -> String {
-        todo!()
+        // NFKD normalize and strip combining marks
+        let normalized: String = text
+            .nfkd()
+            .filter(|c| !unicode_normalization::char::is_combining_mark(*c))
+            .collect();
+
+        // Replace ß with ss before lowercasing
+        let normalized = normalized.replace('ß', "s");
+
+        // Lowercase
+        let lower = normalized.to_lowercase();
+
+        // Replace separators (space, _, ., /, \) with hyphens, remove non-[a-z0-9-]
+        let mut result = String::with_capacity(lower.len());
+        for ch in lower.chars() {
+            if ch.is_ascii_alphanumeric() {
+                result.push(ch);
+            } else if ch == ' ' || ch == '_' || ch == '.' || ch == '/' || ch == '\\' || ch == '-' {
+                result.push('-');
+            }
+            // else: strip non-alphanumeric
+        }
+
+        // Collapse multiple hyphens
+        let mut collapsed = String::with_capacity(result.len());
+        let mut prev_hyphen = false;
+        for ch in result.chars() {
+            if ch == '-' {
+                if !prev_hyphen {
+                    collapsed.push('-');
+                }
+                prev_hyphen = true;
+            } else {
+                collapsed.push(ch);
+                prev_hyphen = false;
+            }
+        }
+
+        // Strip leading/trailing hyphens
+        let trimmed = collapsed.trim_matches('-');
+
+        // Truncate to MAX_COMPONENT_LENGTH at word boundary
+        if trimmed.len() <= MAX_COMPONENT_LENGTH {
+            return trimmed.to_string();
+        }
+
+        // Find last hyphen before MAX_COMPONENT_LENGTH
+        let truncated = &trimmed[..MAX_COMPONENT_LENGTH];
+        if let Some(pos) = truncated.rfind('-') {
+            truncated[..pos].to_string()
+        } else {
+            truncated.to_string()
+        }
     }
 
     /// SHA-256[:length] of content. length must be in 1..=64.
     pub fn compute_hash(content: &str, length: usize) -> Result<String, SlugError> {
-        todo!()
+        if length == 0 || length > 64 {
+            return Err(SlugError::InvalidHashLength(length));
+        }
+        let mut hasher = Sha256::new();
+        hasher.update(content.as_bytes());
+        let hash = format!("{:x}", hasher.finalize());
+        Ok(hash[..length].to_string())
     }
 
     /// Generate slug: "{topic}-{keyword}-{index}-{lang}".
     pub fn generate_slug(topic: &str, keyword: &str, index: u32, lang: &str) -> Result<String, SlugError> {
-        todo!()
+        let lang_lower = lang.to_lowercase();
+        if lang_lower.len() != 2 || !lang_lower.chars().all(|c| c.is_ascii_alphabetic()) {
+            return Err(SlugError::InvalidLang(lang.to_string()));
+        }
+
+        let topic_slug = if topic.is_empty() {
+            "untitled".to_string()
+        } else {
+            Self::slugify(topic)
+        };
+        let keyword_slug = if keyword.is_empty() {
+            "card".to_string()
+        } else {
+            Self::slugify(keyword)
+        };
+
+        let suffix = format!("-{index}-{lang_lower}");
+        let available = MAX_SLUG_LENGTH.saturating_sub(suffix.len());
+
+        let full_base = format!("{topic_slug}-{keyword_slug}");
+        let base = if full_base.len() > available {
+            let half = available / 2;
+            let t = Self::truncate_at_boundary(&topic_slug, half);
+            let k = Self::truncate_at_boundary(&keyword_slug, half);
+            format!("{t}-{k}")
+        } else {
+            full_base
+        };
+
+        let slug = format!("{base}{suffix}");
+        Ok(slug)
     }
 
     /// Generate slug base without language suffix: "{topic}-{keyword}-{index}".
     pub fn generate_slug_base(topic: &str, keyword: &str, index: u32) -> Result<String, SlugError> {
-        todo!()
+        let topic_slug = if topic.is_empty() {
+            "untitled".to_string()
+        } else {
+            Self::slugify(topic)
+        };
+        let keyword_slug = if keyword.is_empty() {
+            "card".to_string()
+        } else {
+            Self::slugify(keyword)
+        };
+
+        Ok(format!("{topic_slug}-{keyword_slug}-{index}"))
     }
 
     /// Deterministic GUID: SHA-256[:32] of "{slug}:{source_path}".
     pub fn generate_deterministic_guid(slug: &str, source_path: &str) -> Result<String, SlugError> {
-        todo!()
+        if slug.is_empty() {
+            return Err(SlugError::EmptyInput { field: "slug" });
+        }
+        if source_path.is_empty() {
+            return Err(SlugError::EmptyInput { field: "source_path" });
+        }
+        let content = format!("{slug}:{source_path}");
+        Self::compute_hash(&content, 32)
     }
 
     /// Extract components from a slug -> { topic, keyword, index, lang }.
     pub fn extract_components(slug: &str) -> SlugComponents {
-        todo!()
+        if slug.is_empty() {
+            return SlugComponents::default();
+        }
+
+        let parts: Vec<&str> = slug.split('-').collect();
+        if parts.len() < 3 {
+            return SlugComponents {
+                topic: slug.to_string(),
+                ..Default::default()
+            };
+        }
+
+        // Parse from the right: last = lang, second-to-last = index
+        let lang_candidate = parts[parts.len() - 1];
+        let index_candidate = parts[parts.len() - 2];
+
+        let lang = if lang_candidate.len() == 2 && lang_candidate.chars().all(|c| c.is_ascii_alphabetic()) {
+            lang_candidate.to_string()
+        } else {
+            return SlugComponents {
+                topic: slug.to_string(),
+                ..Default::default()
+            };
+        };
+
+        let index = if let Ok(idx) = index_candidate.parse::<u32>() {
+            idx
+        } else {
+            return SlugComponents {
+                topic: slug.to_string(),
+                ..Default::default()
+            };
+        };
+
+        // Remaining parts are topic + keyword
+        let remaining = &parts[..parts.len() - 2];
+        let (topic, keyword) = if remaining.is_empty() {
+            (String::new(), String::new())
+        } else if remaining.len() == 1 {
+            (remaining[0].to_string(), String::new())
+        } else {
+            let mid = remaining.len() / 2;
+            let topic = remaining[..mid].join("-");
+            let keyword = remaining[mid..].join("-");
+            (topic, keyword)
+        };
+
+        SlugComponents {
+            topic,
+            keyword,
+            index,
+            lang,
+        }
     }
 
     /// Validate: >= 3 chars, matches [a-z0-9][a-z0-9-]*[a-z0-9], no "--",
     /// ends with "-{2-letter-lang}".
     pub fn is_valid_slug(slug: &str) -> bool {
-        todo!()
+        if slug.len() < 3 {
+            return false;
+        }
+        // Only lowercase alphanumeric and hyphens
+        if !slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+            return false;
+        }
+        // No leading/trailing hyphens
+        if slug.starts_with('-') || slug.ends_with('-') {
+            return false;
+        }
+        // No double hyphens
+        if slug.contains("--") {
+            return false;
+        }
+        // Must end with "-{2-letter-lang}"
+        if let Some(pos) = slug.rfind('-') {
+            let lang = &slug[pos + 1..];
+            lang.len() == 2 && lang.chars().all(|c| c.is_ascii_alphabetic())
+        } else {
+            false
+        }
     }
 
     /// SHA-256[:12] of "{front.trim()}|{back.trim()}".
     pub fn compute_content_hash(front: &str, back: &str) -> String {
-        todo!()
+        let content = format!("{}|{}", front.trim(), back.trim());
+        // unwrap safe: length 12 is valid
+        Self::compute_hash(&content, 12).expect("length 12 is valid")
     }
 
     /// SHA-256[:6] of "{note_type}|{sorted,tags}".
     pub fn compute_metadata_hash(note_type: &str, tags: &[String]) -> String {
-        todo!()
+        let mut sorted_tags: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+        sorted_tags.sort();
+        let content = format!("{}|{}", note_type, sorted_tags.join(","));
+        // unwrap safe: length 6 is valid
+        Self::compute_hash(&content, 6).expect("length 6 is valid")
+    }
+
+    /// Truncate a string at a word boundary (hyphen), stripping trailing hyphens.
+    fn truncate_at_boundary(s: &str, max_len: usize) -> String {
+        if s.len() <= max_len {
+            return s.to_string();
+        }
+        let truncated = &s[..max_len];
+        if let Some(pos) = truncated.rfind('-') {
+            truncated[..pos].trim_end_matches('-').to_string()
+        } else {
+            truncated.trim_end_matches('-').to_string()
+        }
     }
 }
 
