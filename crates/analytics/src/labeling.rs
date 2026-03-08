@@ -41,6 +41,20 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     }
 }
 
+/// Rank topics by cosine similarity to a note embedding.
+/// Returns assignments above `min_confidence`, limited to `max_topics`,
+/// sorted by confidence descending.
+#[allow(dead_code)]
+pub(crate) fn rank_topics_for_note(
+    _note_id: i64,
+    _note_embedding: &[f32],
+    _topic_embeddings: &HashMap<String, (i64, Vec<f32>)>,
+    _min_confidence: f32,
+    _max_topics: usize,
+) -> Vec<TopicAssignment> {
+    todo!()
+}
+
 /// Topic labeler. Generic over embedding provider.
 pub struct TopicLabeler<E: indexer::embeddings::EmbeddingProvider> {
     pub embedding: E,
@@ -129,5 +143,86 @@ mod tests {
         let a = vec![0.6_f32, 0.8]; // unit vector
         let sim = cosine_similarity(&a, &a);
         assert!((sim - 1.0).abs() < 1e-5, "expected ~1.0, got {sim}");
+    }
+
+    // --- rank_topics_for_note ---
+
+    fn make_topic_embeddings(
+        entries: &[(&str, i64, Vec<f32>)],
+    ) -> HashMap<String, (i64, Vec<f32>)> {
+        entries
+            .iter()
+            .map(|(path, id, emb)| (path.to_string(), (*id, emb.clone())))
+            .collect()
+    }
+
+    #[test]
+    fn rank_topics_skips_below_min_confidence() {
+        // Note embedding is unit vector along x-axis
+        let note_emb = vec![1.0_f32, 0.0, 0.0];
+        // Topic A: nearly aligned (high similarity ~0.98)
+        // Topic B: mostly orthogonal (low similarity ~0.17)
+        let topics = make_topic_embeddings(&[
+            ("topicA", 1, vec![0.98, 0.2, 0.0]),
+            ("topicB", 2, vec![0.1, 0.98, 0.17]),
+        ]);
+        let result = rank_topics_for_note(42, &note_emb, &topics, 0.8, 10);
+        // Only topicA should pass the 0.8 threshold
+        assert_eq!(result.len(), 1, "should skip topics below min_confidence");
+        assert_eq!(result[0].topic_path, "topicA");
+        assert!(result[0].confidence >= 0.8);
+    }
+
+    #[test]
+    fn rank_topics_respects_max_topics_limit() {
+        let note_emb = vec![1.0_f32, 0.0, 0.0];
+        // All topics have high similarity
+        let topics = make_topic_embeddings(&[
+            ("a", 1, vec![1.0, 0.0, 0.0]),
+            ("b", 2, vec![0.99, 0.14, 0.0]),
+            ("c", 3, vec![0.98, 0.2, 0.0]),
+            ("d", 4, vec![0.97, 0.24, 0.0]),
+        ]);
+        let result = rank_topics_for_note(42, &note_emb, &topics, 0.0, 2);
+        assert_eq!(result.len(), 2, "should limit to max_topics=2");
+    }
+
+    #[test]
+    fn rank_topics_sorted_by_confidence_descending() {
+        let note_emb = vec![1.0_f32, 0.0, 0.0];
+        let topics = make_topic_embeddings(&[
+            ("low", 1, vec![0.7, 0.7, 0.0]),
+            ("high", 2, vec![1.0, 0.0, 0.0]),
+            ("mid", 3, vec![0.9, 0.4, 0.0]),
+        ]);
+        let result = rank_topics_for_note(42, &note_emb, &topics, 0.0, 10);
+        assert!(result.len() >= 2);
+        for w in result.windows(2) {
+            assert!(
+                w[0].confidence >= w[1].confidence,
+                "expected descending order: {} >= {}",
+                w[0].confidence,
+                w[1].confidence
+            );
+        }
+    }
+
+    #[test]
+    fn rank_topics_empty_topic_embeddings() {
+        let note_emb = vec![1.0_f32, 0.0];
+        let topics = HashMap::new();
+        let result = rank_topics_for_note(42, &note_emb, &topics, 0.0, 10);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn rank_topics_sets_method_to_embedding() {
+        let note_emb = vec![1.0_f32, 0.0];
+        let topics = make_topic_embeddings(&[("t", 1, vec![1.0, 0.0])]);
+        let result = rank_topics_for_note(42, &note_emb, &topics, 0.0, 10);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].method, "embedding");
+        assert_eq!(result[0].note_id, 42);
+        assert_eq!(result[0].topic_id, 1);
     }
 }

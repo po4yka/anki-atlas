@@ -52,6 +52,13 @@ pub struct WeakNote {
     pub normalized_text: String,
 }
 
+/// Classify a topic gap based on note count vs threshold.
+/// Returns `Missing` when note_count == 0, `Undercovered` otherwise.
+#[allow(dead_code)]
+pub fn classify_gap(_note_count: i64, _threshold: i64) -> GapType {
+    todo!()
+}
+
 /// Get coverage metrics for a topic (optionally including subtree).
 pub async fn get_topic_coverage(
     _pool: &sqlx::PgPool,
@@ -110,5 +117,22 @@ mod tests {
         assert_eq!(missing, GapType::Missing);
         let under: GapType = serde_json::from_str("\"undercovered\"").unwrap();
         assert_eq!(under, GapType::Undercovered);
+    }
+
+    // --- classify_gap ---
+
+    #[test]
+    fn classify_gap_zero_notes_is_missing() {
+        assert_eq!(classify_gap(0, 5), GapType::Missing);
+    }
+
+    #[test]
+    fn classify_gap_below_threshold_is_undercovered() {
+        assert_eq!(classify_gap(3, 5), GapType::Undercovered);
+    }
+
+    #[test]
+    fn classify_gap_one_note_is_undercovered() {
+        assert_eq!(classify_gap(1, 10), GapType::Undercovered);
     }
 }
