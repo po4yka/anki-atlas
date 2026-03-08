@@ -11,7 +11,11 @@ pub enum Severity {
 
 impl std::fmt::Display for Severity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        match self {
+            Severity::Error => write!(f, "error"),
+            Severity::Warning => write!(f, "warning"),
+            Severity::Info => write!(f, "info"),
+        }
     }
 }
 
@@ -26,15 +30,27 @@ pub struct ValidationIssue {
 
 impl ValidationIssue {
     pub fn error(message: impl Into<String>, location: impl Into<String>) -> Self {
-        todo!()
+        Self {
+            severity: Severity::Error,
+            message: message.into(),
+            location: location.into(),
+        }
     }
 
     pub fn warning(message: impl Into<String>, location: impl Into<String>) -> Self {
-        todo!()
+        Self {
+            severity: Severity::Warning,
+            message: message.into(),
+            location: location.into(),
+        }
     }
 
     pub fn info(message: impl Into<String>, location: impl Into<String>) -> Self {
-        todo!()
+        Self {
+            severity: Severity::Info,
+            message: message.into(),
+            location: location.into(),
+        }
     }
 }
 
@@ -47,27 +63,40 @@ pub struct ValidationResult {
 impl ValidationResult {
     /// True when no ERROR-level issues exist.
     pub fn is_valid(&self) -> bool {
-        todo!()
+        !self.issues.iter().any(|i| i.severity == Severity::Error)
     }
 
     /// Filter to ERROR-level issues only.
     pub fn errors(&self) -> Vec<&ValidationIssue> {
-        todo!()
+        self.issues
+            .iter()
+            .filter(|i| i.severity == Severity::Error)
+            .collect()
     }
 
     /// Filter to WARNING-level issues only.
     pub fn warnings(&self) -> Vec<&ValidationIssue> {
-        todo!()
+        self.issues
+            .iter()
+            .filter(|i| i.severity == Severity::Warning)
+            .collect()
     }
 
     /// Merge multiple results into one.
     pub fn merge(results: &[ValidationResult]) -> ValidationResult {
-        todo!()
+        ValidationResult {
+            issues: results
+                .iter()
+                .flat_map(|r| r.issues.clone())
+                .collect(),
+        }
     }
 
     /// Empty (passing) result.
     pub fn ok() -> ValidationResult {
-        todo!()
+        ValidationResult {
+            issues: Vec::new(),
+        }
     }
 }
 
@@ -83,11 +112,16 @@ pub struct ValidationPipeline {
 
 impl ValidationPipeline {
     pub fn new(validators: Vec<Box<dyn Validator>>) -> Self {
-        todo!()
+        Self { validators }
     }
 
     /// Run all validators and return merged result.
     pub fn run(&self, front: &str, back: &str, tags: &[String]) -> ValidationResult {
-        todo!()
+        let results: Vec<ValidationResult> = self
+            .validators
+            .iter()
+            .map(|v| v.validate(front, back, tags))
+            .collect();
+        ValidationResult::merge(&results)
     }
 }
