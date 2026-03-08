@@ -2,7 +2,13 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use strum::{Display, EnumString};
+
+static CODE_BLOCK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?s)```\w*\n(.*?)```").expect("valid regex"));
+static HEADING_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^(#{1,6})\s+(.+)$").expect("valid regex"));
 
 /// Type of document chunk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, EnumString, Display)]
@@ -46,6 +52,14 @@ impl Default for ChunkerConfig {
     }
 }
 
+/// Shared context for building chunks from a single document.
+struct ChunkContext<'a> {
+    file_stem: &'a str,
+    path_hash: String,
+    source_file: &'a str,
+    metadata: HashMap<String, String>,
+}
+
 /// Split markdown documents into typed chunks for embedding.
 pub struct DocumentChunker {
     config: ChunkerConfig,
@@ -57,48 +71,40 @@ impl DocumentChunker {
     }
 
     /// Parse and chunk markdown content.
+    ///
+    /// Extracts heading-based sections, code blocks, and falls back to
+    /// full content if no structured chunks found.
     pub fn chunk_content(
         &self,
         content: &str,
         source_file: &str,
         frontmatter: Option<&HashMap<String, String>>,
     ) -> Vec<DocumentChunk> {
-        let path_hash = sha256_hex(source_file.as_bytes(), 8);
-        let file_stem = std::path::Path::new(source_file)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown");
-
-        let base_metadata: HashMap<String, String> =
-            frontmatter.cloned().unwrap_or_default();
+        let ctx = ChunkContext {
+            file_stem: std::path::Path::new(source_file)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown"),
+            path_hash: sha256_hex(source_file.as_bytes(), 8),
+            source_file,
+            metadata: frontmatter.cloned().unwrap_or_default(),
+        };
 
         let mut chunks = Vec::new();
 
         // Extract code blocks first
         if self.config.include_code_blocks {
-            let code_re = Regex::new(r"(?s)```\w*\n(.*?)```").expect("valid regex");
-            for (i, cap) in code_re.captures_iter(content).enumerate() {
+            for (i, cap) in CODE_BLOCK_RE.captures_iter(content).enumerate() {
                 let code = cap[1].trim();
                 if code.is_empty() {
                     continue;
                 }
-                let section_name = format!("code_{i}");
-                let chunk_id = format!("{file_stem}_{section_name}_{path_hash}");
-                let truncated = self.truncate(code);
-                chunks.push(DocumentChunk {
-                    chunk_id,
-                    content_hash: sha256_hex(truncated.as_bytes(), 16),
-                    content: truncated,
-                    chunk_type: ChunkType::CodeExample,
-                    source_file: source_file.to_string(),
-                    metadata: base_metadata.clone(),
-                });
+                chunks.push(self.make_chunk(&format!("code_{i}"), code, ChunkType::CodeExample, &ctx));
             }
         }
 
         // Split by headings
-        let heading_re = Regex::new(r"(?m)^(#{1,6})\s+(.+)$").expect("valid regex");
-        let heading_positions: Vec<(usize, String)> = heading_re
+        let heading_positions: Vec<(usize, String)> = HEADING_RE
             .captures_iter(content)
             .map(|cap| {
                 let m = cap.get(0).expect("full match");
@@ -106,56 +112,31 @@ impl DocumentChunker {
             })
             .collect();
 
-        if !heading_positions.is_empty() {
-            for (idx, (start, heading)) in heading_positions.iter().enumerate() {
-                let end = heading_positions
-                    .get(idx + 1)
-                    .map(|(pos, _)| *pos)
-                    .unwrap_or(content.len());
-                let section_content = content[*start..end].to_string();
-                // Strip heading line itself
-                let body = section_content
-                    .lines()
-                    .skip(1)
-                    .collect::<Vec<_>>()
-                    .join("\n")
-                    .trim()
-                    .to_string();
+        for (idx, (start, heading)) in heading_positions.iter().enumerate() {
+            let end = heading_positions
+                .get(idx + 1)
+                .map(|(pos, _)| *pos)
+                .unwrap_or(content.len());
 
-                if body.len() < self.config.min_chunk_size {
-                    continue;
-                }
+            let body = content[*start..end]
+                .lines()
+                .skip(1)
+                .collect::<Vec<_>>()
+                .join("\n");
+            let body = body.trim();
 
-                let chunk_type = classify_heading(heading);
-                let section_slug = slugify(heading);
-                let chunk_id = format!("{file_stem}_{section_slug}_{path_hash}");
-                let truncated = self.truncate(&body);
-
-                chunks.push(DocumentChunk {
-                    chunk_id,
-                    content_hash: sha256_hex(truncated.as_bytes(), 16),
-                    content: truncated,
-                    chunk_type,
-                    source_file: source_file.to_string(),
-                    metadata: base_metadata.clone(),
-                });
+            if body.len() < self.config.min_chunk_size {
+                continue;
             }
+
+            chunks.push(self.make_chunk(&slugify(heading), body, classify_heading(heading), &ctx));
         }
 
         // Fallback: no heading-based or code chunks -> FullContent
         if chunks.is_empty() {
             let trimmed = content.trim();
             if trimmed.len() >= self.config.min_chunk_size {
-                let chunk_id = format!("{file_stem}_full_{path_hash}");
-                let truncated = self.truncate(trimmed);
-                chunks.push(DocumentChunk {
-                    chunk_id,
-                    content_hash: sha256_hex(truncated.as_bytes(), 16),
-                    content: truncated,
-                    chunk_type: ChunkType::FullContent,
-                    source_file: source_file.to_string(),
-                    metadata: base_metadata,
-                });
+                chunks.push(self.make_chunk("full", trimmed, ChunkType::FullContent, &ctx));
             }
         }
 
@@ -170,6 +151,26 @@ impl DocumentChunker {
         };
         let source = path.to_string_lossy().to_string();
         self.chunk_content(&content, &source, None)
+    }
+
+    fn make_chunk(
+        &self,
+        section_name: &str,
+        body: &str,
+        chunk_type: ChunkType,
+        ctx: &ChunkContext<'_>,
+    ) -> DocumentChunk {
+        let chunk_id = format!("{}_{section_name}_{}", ctx.file_stem, ctx.path_hash);
+        let content = self.truncate(body);
+        let content_hash = sha256_hex(content.as_bytes(), 16);
+        DocumentChunk {
+            chunk_id,
+            content,
+            chunk_type,
+            source_file: ctx.source_file.to_string(),
+            content_hash,
+            metadata: ctx.metadata.clone(),
+        }
     }
 
     fn truncate(&self, text: &str) -> String {
