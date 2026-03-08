@@ -8,6 +8,14 @@ use anki_reader::normalizer::{build_card_deck_map, build_deck_map, normalize_not
 use anki_reader::read_anki_collection;
 use common::error::{AnkiAtlasError, Result};
 
+/// Convert any error into `AnkiAtlasError::Sync`.
+fn sync_err(e: impl std::fmt::Display) -> AnkiAtlasError {
+    AnkiAtlasError::Sync {
+        message: e.to_string(),
+        context: Default::default(),
+    }
+}
+
 /// Statistics from a PostgreSQL sync operation.
 #[derive(Debug, Clone, Default)]
 pub struct SyncStats {
@@ -36,10 +44,7 @@ impl SyncService {
         let path = collection_path.as_ref();
 
         // 1. Read collection
-        let mut collection = read_anki_collection(path).map_err(|e| AnkiAtlasError::Sync {
-            message: e.to_string(),
-            context: Default::default(),
-        })?;
+        let mut collection = read_anki_collection(path).map_err(sync_err)?;
 
         // 2. Build maps and normalize notes
         let deck_map = build_deck_map(&collection.decks);
@@ -52,10 +57,7 @@ impl SyncService {
         let mut stats = SyncStats::default();
 
         // 4. Single transaction for all upserts
-        let mut tx = self.pool.begin().await.map_err(|e| AnkiAtlasError::Sync {
-            message: e.to_string(),
-            context: Default::default(),
-        })?;
+        let mut tx = self.pool.begin().await.map_err(sync_err)?;
 
         // 4a. Upsert decks
         for deck in &collection.decks {
@@ -73,10 +75,7 @@ impl SyncService {
             .bind(&deck.config)
             .execute(&mut *tx)
             .await
-            .map_err(|e| AnkiAtlasError::Sync {
-                message: e.to_string(),
-                context: Default::default(),
-            })?;
+            .map_err(sync_err)?;
             stats.decks_upserted += 1;
         }
 
@@ -101,10 +100,7 @@ impl SyncService {
             .bind(&model.config)
             .execute(&mut *tx)
             .await
-            .map_err(|e| AnkiAtlasError::Sync {
-                message: e.to_string(),
-                context: Default::default(),
-            })?;
+            .map_err(sync_err)?;
             stats.models_upserted += 1;
         }
 
@@ -137,10 +133,7 @@ impl SyncService {
             .bind(note.usn)
             .execute(&mut *tx)
             .await
-            .map_err(|e| AnkiAtlasError::Sync {
-                message: e.to_string(),
-                context: Default::default(),
-            })?;
+            .map_err(sync_err)?;
             stats.notes_upserted += 1;
         }
 
@@ -154,10 +147,7 @@ impl SyncService {
         .bind(&note_ids)
         .fetch_all(&mut *tx)
         .await
-        .map_err(|e| AnkiAtlasError::Sync {
-            message: e.to_string(),
-            context: Default::default(),
-        })?;
+        .map_err(sync_err)?;
         stats.notes_deleted = deleted.len() as i32;
 
         // 4e. Upsert cards
@@ -194,10 +184,7 @@ impl SyncService {
             .bind(card.usn)
             .execute(&mut *tx)
             .await
-            .map_err(|e| AnkiAtlasError::Sync {
-                message: e.to_string(),
-                context: Default::default(),
-            })?;
+            .map_err(sync_err)?;
             stats.cards_upserted += 1;
         }
 
@@ -225,10 +212,7 @@ impl SyncService {
             .bind(cs.total_time_ms)
             .execute(&mut *tx)
             .await
-            .map_err(|e| AnkiAtlasError::Sync {
-                message: e.to_string(),
-                context: Default::default(),
-            })?;
+            .map_err(sync_err)?;
             stats.card_stats_upserted += 1;
         }
 
@@ -236,35 +220,21 @@ impl SyncService {
         let now = chrono::Utc::now().to_rfc3339();
         let collection_path_str = path.display().to_string();
 
-        sqlx::query(
-            "INSERT INTO sync_metadata (key, value) VALUES ('last_sync_at', $1)
-             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
-        )
-        .bind(serde_json::Value::String(now))
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| AnkiAtlasError::Sync {
-            message: e.to_string(),
-            context: Default::default(),
-        })?;
-
-        sqlx::query(
-            "INSERT INTO sync_metadata (key, value) VALUES ('last_collection_path', $1)
-             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
-        )
-        .bind(serde_json::Value::String(collection_path_str))
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| AnkiAtlasError::Sync {
-            message: e.to_string(),
-            context: Default::default(),
-        })?;
+        for (key, value) in [("last_sync_at", now), ("last_collection_path", collection_path_str)]
+        {
+            sqlx::query(
+                "INSERT INTO sync_metadata (key, value) VALUES ($1, $2)
+                 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            )
+            .bind(key)
+            .bind(serde_json::Value::String(value))
+            .execute(&mut *tx)
+            .await
+            .map_err(sync_err)?;
+        }
 
         // Commit transaction
-        tx.commit().await.map_err(|e| AnkiAtlasError::Sync {
-            message: e.to_string(),
-            context: Default::default(),
-        })?;
+        tx.commit().await.map_err(sync_err)?;
 
         stats.duration_ms = start.elapsed().as_millis() as i64;
         Ok(stats)
