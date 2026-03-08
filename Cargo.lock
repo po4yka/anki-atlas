@@ -3858,6 +3858,15 @@ dependencies = [
 [[package]]
 name = "validation"
 version = "0.1.0"
+dependencies = [
+ "card",
+ "common",
+ "once_cell",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
 
 [[package]]
 name = "valuable"
