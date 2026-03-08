@@ -1,8 +1,6 @@
-#![allow(unused, unreachable_code)]
-
 use std::path::{Path, PathBuf};
 
-use crate::parser::ParsedNote;
+use crate::parser::{discover_notes, parse_note, ParsedNote, DEFAULT_IGNORE_DIRS};
 
 /// Progress callback: (phase, current, total).
 pub type ProgressCallback = Box<dyn Fn(&str, usize, usize) + Send + Sync>;
@@ -28,7 +26,17 @@ pub struct SyncResult {
 impl SyncResult {
     /// Combine two results.
     pub fn merge(self, other: SyncResult) -> SyncResult {
-        todo!()
+        SyncResult {
+            generated: self.generated + other.generated,
+            updated: self.updated + other.updated,
+            skipped: self.skipped + other.skipped,
+            failed: self.failed + other.failed,
+            errors: self
+                .errors
+                .into_iter()
+                .chain(other.errors)
+                .collect(),
+        }
     }
 }
 
@@ -52,7 +60,10 @@ pub struct ObsidianSyncWorkflow<G: CardGenerator> {
 
 impl<G: CardGenerator> ObsidianSyncWorkflow<G> {
     pub fn new(generator: G, on_progress: Option<ProgressCallback>) -> Self {
-        todo!()
+        Self {
+            generator,
+            on_progress,
+        }
     }
 
     /// Discover and parse all notes in vault.
@@ -61,12 +72,50 @@ impl<G: CardGenerator> ObsidianSyncWorkflow<G> {
         vault_path: &Path,
         source_dirs: Option<&[&str]>,
     ) -> Vec<ParsedNote> {
-        todo!()
+        let dirs_to_scan: Vec<PathBuf> = match source_dirs {
+            Some(dirs) => dirs
+                .iter()
+                .map(|d| vault_path.join(d))
+                .filter(|p| p.exists())
+                .collect(),
+            None => vec![vault_path.to_path_buf()],
+        };
+
+        let mut notes = Vec::new();
+        for dir in &dirs_to_scan {
+            let paths = match discover_notes(dir, &["*.md"], DEFAULT_IGNORE_DIRS) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            for path in paths {
+                if let Ok(note) = parse_note(&path, Some(vault_path)) {
+                    notes.push(note);
+                }
+            }
+        }
+        notes
     }
 
     /// Full pipeline: scan -> process all notes -> aggregate results.
     pub fn run(&self, vault_path: &Path, source_dirs: Option<&[&str]>) -> SyncResult {
-        todo!()
+        let notes = self.scan_vault(vault_path, source_dirs);
+        let total = notes.len();
+        let mut result = SyncResult::default();
+
+        for (i, note) in notes.iter().enumerate() {
+            if let Some(cb) = &self.on_progress {
+                cb("generating", i + 1, total);
+            }
+
+            let cards = self.generator.generate(note);
+            if cards.is_empty() {
+                result.failed += 1;
+            } else {
+                result.generated += cards.len();
+            }
+        }
+
+        result
     }
 }
 
