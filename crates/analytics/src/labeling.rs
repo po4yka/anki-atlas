@@ -46,13 +46,32 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 /// sorted by confidence descending.
 #[allow(dead_code)]
 pub(crate) fn rank_topics_for_note(
-    _note_id: i64,
-    _note_embedding: &[f32],
-    _topic_embeddings: &HashMap<String, (i64, Vec<f32>)>,
-    _min_confidence: f32,
-    _max_topics: usize,
+    note_id: i64,
+    note_embedding: &[f32],
+    topic_embeddings: &HashMap<String, (i64, Vec<f32>)>,
+    min_confidence: f32,
+    max_topics: usize,
 ) -> Vec<TopicAssignment> {
-    todo!()
+    let mut assignments: Vec<TopicAssignment> = topic_embeddings
+        .iter()
+        .filter_map(|(path, (topic_id, emb))| {
+            let sim = cosine_similarity(note_embedding, emb);
+            if sim >= min_confidence {
+                Some(TopicAssignment {
+                    note_id,
+                    topic_id: *topic_id,
+                    topic_path: path.clone(),
+                    confidence: f64::from(sim),
+                    method: "embedding".to_string(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+    assignments.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+    assignments.truncate(max_topics);
+    assignments
 }
 
 /// Topic labeler. Generic over embedding provider.

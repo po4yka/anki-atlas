@@ -55,8 +55,12 @@ pub struct WeakNote {
 /// Classify a topic gap based on note count vs threshold.
 /// Returns `Missing` when note_count == 0, `Undercovered` otherwise.
 #[allow(dead_code)]
-pub fn classify_gap(_note_count: i64, _threshold: i64) -> GapType {
-    todo!()
+pub fn classify_gap(note_count: i64, _threshold: i64) -> GapType {
+    if note_count == 0 {
+        GapType::Missing
+    } else {
+        GapType::Undercovered
+    }
 }
 
 /// Get coverage metrics for a topic (optionally including subtree).
