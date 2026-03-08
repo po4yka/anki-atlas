@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+/// Errors returned by LLM provider operations.
 #[derive(Debug, Error)]
 pub enum LlmError {
     #[error("provider error: {message}")]
