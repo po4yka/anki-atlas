@@ -81,19 +81,11 @@ impl<G: CardGenerator> ObsidianSyncWorkflow<G> {
             None => vec![vault_path.to_path_buf()],
         };
 
-        let mut notes = Vec::new();
-        for dir in &dirs_to_scan {
-            let paths = match discover_notes(dir, &["*.md"], DEFAULT_IGNORE_DIRS) {
-                Ok(p) => p,
-                Err(_) => continue,
-            };
-            for path in paths {
-                if let Ok(note) = parse_note(&path, Some(vault_path)) {
-                    notes.push(note);
-                }
-            }
-        }
-        notes
+        dirs_to_scan
+            .iter()
+            .flat_map(|dir| discover_notes(dir, &["*.md"], DEFAULT_IGNORE_DIRS).unwrap_or_default())
+            .filter_map(|path| parse_note(&path, Some(vault_path)).ok())
+            .collect()
     }
 
     /// Full pipeline: scan -> process all notes -> aggregate results.
