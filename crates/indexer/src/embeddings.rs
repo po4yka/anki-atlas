@@ -57,9 +57,19 @@ impl EmbeddingProvider for MockEmbeddingProvider {
         self.dim
     }
 
-    async fn embed(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
-        // TODO: implement deterministic MD5-based vectors
-        todo!("MockEmbeddingProvider::embed not implemented")
+    async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        let mut results = Vec::with_capacity(texts.len());
+        for text in texts {
+            let hash_bytes = md5::compute(text.as_bytes()).0;
+            let mut vec = Vec::with_capacity(self.dim);
+            for i in 0..self.dim {
+                let byte = hash_bytes[i % 16];
+                let val = (f32::from(byte) / 127.5) - 1.0;
+                vec.push(val);
+            }
+            results.push(vec);
+        }
+        Ok(results)
     }
 }
 
@@ -74,12 +84,34 @@ pub struct OpenAiEmbeddingProvider {
 
 impl OpenAiEmbeddingProvider {
     pub fn new(
-        _model: impl Into<String>,
-        _dimension: usize,
-        _batch_size: usize,
+        model: impl Into<String>,
+        dimension: usize,
+        batch_size: usize,
     ) -> Result<Self, EmbeddingError> {
-        // TODO: implement
-        todo!("OpenAiEmbeddingProvider::new not implemented")
+        let api_key = std::env::var("OPENAI_API_KEY")
+            .map_err(|_| EmbeddingError::NotConfigured("OPENAI_API_KEY not set".into()))?;
+        Ok(Self {
+            _model: model.into(),
+            _dimension: dimension,
+            _batch_size: batch_size,
+            _client: reqwest::Client::new(),
+            _api_key: api_key,
+        })
+    }
+}
+
+#[async_trait]
+impl EmbeddingProvider for OpenAiEmbeddingProvider {
+    fn model_name(&self) -> &str {
+        &self._model
+    }
+
+    fn dimension(&self) -> usize {
+        self._dimension
+    }
+
+    async fn embed(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        todo!("OpenAiEmbeddingProvider::embed not implemented")
     }
 }
 
@@ -94,12 +126,34 @@ pub struct GoogleEmbeddingProvider {
 
 impl GoogleEmbeddingProvider {
     pub fn new(
-        _model: impl Into<String>,
-        _dimension: usize,
-        _batch_size: usize,
+        model: impl Into<String>,
+        dimension: usize,
+        batch_size: usize,
     ) -> Result<Self, EmbeddingError> {
-        // TODO: implement
-        todo!("GoogleEmbeddingProvider::new not implemented")
+        let api_key = std::env::var("GOOGLE_API_KEY")
+            .map_err(|_| EmbeddingError::NotConfigured("GOOGLE_API_KEY not set".into()))?;
+        Ok(Self {
+            _model: model.into(),
+            _dimension: dimension,
+            _batch_size: batch_size,
+            _client: reqwest::Client::new(),
+            _api_key: api_key,
+        })
+    }
+}
+
+#[async_trait]
+impl EmbeddingProvider for GoogleEmbeddingProvider {
+    fn model_name(&self) -> &str {
+        &self._model
+    }
+
+    fn dimension(&self) -> usize {
+        self._dimension
+    }
+
+    async fn embed(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        todo!("GoogleEmbeddingProvider::embed not implemented")
     }
 }
 
@@ -124,8 +178,23 @@ pub enum EmbeddingProviderConfig {
 
 /// Create provider from config.
 pub fn create_embedding_provider(
-    _config: &EmbeddingProviderConfig,
+    config: &EmbeddingProviderConfig,
 ) -> Result<Box<dyn EmbeddingProvider>, EmbeddingError> {
-    // TODO: implement
-    todo!("create_embedding_provider not implemented")
+    match config {
+        EmbeddingProviderConfig::Mock { dimension } => {
+            Ok(Box::new(MockEmbeddingProvider::new(*dimension)))
+        }
+        EmbeddingProviderConfig::OpenAi {
+            model,
+            dimension,
+            batch_size,
+        } => OpenAiEmbeddingProvider::new(model.clone(), *dimension, batch_size.unwrap_or(100))
+            .map(|p| Box::new(p) as Box<dyn EmbeddingProvider>),
+        EmbeddingProviderConfig::Google {
+            model,
+            dimension,
+            batch_size,
+        } => GoogleEmbeddingProvider::new(model.clone(), *dimension, batch_size.unwrap_or(100))
+            .map(|p| Box::new(p) as Box<dyn EmbeddingProvider>),
+    }
 }
