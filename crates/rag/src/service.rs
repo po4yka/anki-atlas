@@ -1,7 +1,10 @@
-use crate::error::RagError;
-use crate::store::{SearchResult, VectorStore};
-use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::Arc;
+
+use serde::{Deserialize, Serialize};
+
+use crate::error::RagError;
+use crate::store::{MetadataFilter, SearchResult, VectorStore};
 
 /// A related concept from the knowledge base.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,40 +49,121 @@ impl<S: VectorStore> RagService<S> {
     /// Check whether a card is a potential duplicate.
     pub async fn find_duplicates(
         &self,
-        _query_embedding: &[f32],
-        _threshold: f32,
-        _k: usize,
+        query_embedding: &[f32],
+        threshold: f32,
+        k: usize,
     ) -> Result<DuplicateCheckResult, RagError> {
-        // TODO: implement
+        let results = self.store.search(query_embedding, k, None, 0.0).await?;
+
+        if results.is_empty() {
+            return Ok(DuplicateCheckResult {
+                is_duplicate: false,
+                confidence: 0.0,
+                similar_items: Vec::new(),
+                recommendation: "No significant duplicates found".to_string(),
+            });
+        }
+
+        let max_similarity = results.iter().map(|r| r.similarity()).fold(0.0_f32, f32::max);
+
+        let recommendation = if max_similarity >= 0.95 {
+            "Highly likely duplicate -- skip this card"
+        } else if max_similarity >= 0.85 {
+            "Probable duplicate -- review before creating"
+        } else if max_similarity >= 0.70 {
+            "Similar content exists -- consider differentiating"
+        } else {
+            "No significant duplicates found"
+        };
+
         Ok(DuplicateCheckResult {
-            is_duplicate: false,
-            confidence: 0.0,
-            similar_items: Vec::new(),
-            recommendation: String::new(),
+            is_duplicate: max_similarity >= threshold,
+            confidence: max_similarity,
+            similar_items: results,
+            recommendation: recommendation.to_string(),
         })
     }
 
     /// Retrieve related concepts for context enrichment.
     pub async fn get_context(
         &self,
-        _query_embedding: &[f32],
-        _k: usize,
-        _topic: Option<&str>,
-        _min_similarity: f32,
+        query_embedding: &[f32],
+        k: usize,
+        topic: Option<&str>,
+        min_similarity: f32,
     ) -> Result<Vec<RelatedConcept>, RagError> {
-        // TODO: implement
-        Ok(Vec::new())
+        let filter = topic.map(|t| MetadataFilter {
+            field: "topic".to_string(),
+            value: t.to_string(),
+        });
+
+        let results = self
+            .store
+            .search(query_embedding, k * 2, filter, min_similarity)
+            .await?;
+
+        let mut seen = HashSet::new();
+        let concepts = results
+            .into_iter()
+            .filter(|r| seen.insert(r.source_file.clone()))
+            .take(k)
+            .map(|r| {
+                let similarity = r.similarity();
+                RelatedConcept {
+                    title: r.metadata.get("title").cloned().unwrap_or_default(),
+                    content: r.content,
+                    topic: r.metadata.get("topic").cloned().unwrap_or_default(),
+                    similarity,
+                    source_file: r.source_file,
+                }
+            })
+            .collect();
+
+        Ok(concepts)
     }
 
     /// Retrieve few-shot examples for generation prompts.
     pub async fn get_few_shot_examples(
         &self,
-        _query_embedding: &[f32],
-        _k: usize,
-        _topic: Option<&str>,
+        query_embedding: &[f32],
+        k: usize,
+        topic: Option<&str>,
     ) -> Result<Vec<FewShotExample>, RagError> {
-        // TODO: implement
-        Ok(Vec::new())
+        let filter = topic.map(|t| MetadataFilter {
+            field: "topic".to_string(),
+            value: t.to_string(),
+        });
+
+        let results = self
+            .store
+            .search(query_embedding, k * 3, filter, 0.0)
+            .await?;
+
+        let examples = results
+            .into_iter()
+            .take(k)
+            .map(|r| {
+                let question = truncate(&r.content, 300);
+                let answer = truncate(&r.content, 500);
+                FewShotExample {
+                    question,
+                    answer,
+                    topic: r.metadata.get("topic").cloned().unwrap_or_default(),
+                    difficulty: r.metadata.get("difficulty").cloned().unwrap_or_default(),
+                    source_file: r.source_file,
+                }
+            })
+            .collect();
+
+        Ok(examples)
+    }
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        s[..max].to_string()
     }
 }
 
