@@ -25,7 +25,7 @@ pub struct DuplicateCluster {
 impl DuplicateCluster {
     /// Total notes: representative + duplicates.
     pub fn size(&self) -> usize {
-        todo!()
+        1 + self.duplicates.len()
     }
 }
 
@@ -69,15 +69,34 @@ pub(crate) struct UnionFind {
 
 impl UnionFind {
     pub(crate) fn new() -> Self {
-        todo!()
+        Self {
+            parent: std::collections::HashMap::new(),
+        }
     }
 
-    pub(crate) fn find(&mut self, _x: i64) -> i64 {
-        todo!()
+    pub(crate) fn find(&mut self, x: i64) -> i64 {
+        if !self.parent.contains_key(&x) {
+            self.parent.insert(x, x);
+            return x;
+        }
+        let p = self.parent[&x];
+        if p == x {
+            return x;
+        }
+        let root = self.find(p);
+        self.parent.insert(x, root);
+        root
     }
 
-    pub(crate) fn union(&mut self, _x: i64, _y: i64) {
-        todo!()
+    pub(crate) fn union(&mut self, x: i64, y: i64) {
+        let rx = self.find(x);
+        let ry = self.find(y);
+        if rx == ry {
+            return;
+        }
+        // Smaller ID becomes root for determinism.
+        let (new_root, child) = if rx < ry { (rx, ry) } else { (ry, rx) };
+        self.parent.insert(child, new_root);
     }
 }
 

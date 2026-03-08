@@ -23,17 +23,17 @@ pub struct Topic {
 impl Topic {
     /// Parent path (everything before last '/'), or None for root topics.
     pub fn parent_path(&self) -> Option<&str> {
-        todo!()
+        self.path.rfind('/').map(|i| &self.path[..i])
     }
 
     /// Depth = number of '/' in path.
     pub fn depth(&self) -> usize {
-        todo!()
+        self.path.matches('/').count()
     }
 
     /// Short name = last segment of path.
     pub fn name(&self) -> &str {
-        todo!()
+        self.path.rsplit('/').next().unwrap_or(&self.path)
     }
 }
 
@@ -49,23 +49,121 @@ pub struct Taxonomy {
 impl Taxonomy {
     /// Get topic by path.
     pub fn get(&self, path: &str) -> Option<&Topic> {
-        todo!()
+        self.topics.get(path)
     }
 
     /// All topics in depth-first order.
     pub fn all_topics(&self) -> Vec<&Topic> {
-        todo!()
+        let mut result = Vec::new();
+        fn collect<'a>(topic: &'a Topic, out: &mut Vec<&'a Topic>) {
+            out.push(topic);
+            for child in &topic.children {
+                collect(child, out);
+            }
+        }
+        for root in &self.roots {
+            collect(root, &mut result);
+        }
+        result
     }
 
     /// All topics under a given path (inclusive).
     pub fn subtree(&self, path: &str) -> Vec<&Topic> {
-        todo!()
+        let prefix = format!("{path}/");
+        self.topics
+            .values()
+            .filter(|t| t.path == path || t.path.starts_with(&prefix))
+            .collect()
     }
+}
+
+/// YAML deserialization helper for taxonomy file format.
+#[derive(Deserialize)]
+struct YamlTaxonomy {
+    #[serde(default)]
+    topics: Vec<YamlTopic>,
+}
+
+#[derive(Deserialize)]
+struct YamlTopic {
+    path: String,
+    #[serde(default)]
+    label: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    children: Vec<YamlTopic>,
 }
 
 /// Load taxonomy from a YAML file.
 pub fn load_taxonomy_from_yaml(path: &std::path::Path) -> Result<Taxonomy, AnalyticsError> {
-    todo!()
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Taxonomy::default());
+        }
+        Err(e) => return Err(AnalyticsError::Io(e)),
+    };
+
+    if content.trim().is_empty() {
+        return Ok(Taxonomy::default());
+    }
+
+    let parsed: YamlTaxonomy = match serde_yaml::from_str(&content) {
+        Ok(p) => p,
+        Err(_) => return Ok(Taxonomy::default()),
+    };
+
+    if parsed.topics.is_empty() {
+        return Ok(Taxonomy::default());
+    }
+
+    let mut taxonomy = Taxonomy::default();
+
+    fn register_topics(yaml_topics: &[YamlTopic], map: &mut HashMap<String, Topic>) {
+        for yt in yaml_topics {
+            let label = if yt.label.is_empty() {
+                yt.path.rsplit('/').next().unwrap_or(&yt.path).to_string()
+            } else {
+                yt.label.clone()
+            };
+            map.insert(
+                yt.path.clone(),
+                Topic {
+                    path: yt.path.clone(),
+                    label,
+                    description: yt.description.clone(),
+                    topic_id: None,
+                    children: vec![],
+                },
+            );
+            register_topics(&yt.children, map);
+        }
+    }
+
+    fn build_tree(yaml_topics: &[YamlTopic], map: &HashMap<String, Topic>) -> Vec<Topic> {
+        yaml_topics
+            .iter()
+            .map(|yt| {
+                let base = map.get(&yt.path).cloned().unwrap_or_else(|| Topic {
+                    path: yt.path.clone(),
+                    label: yt.label.clone(),
+                    description: yt.description.clone(),
+                    topic_id: None,
+                    children: vec![],
+                });
+                Topic {
+                    children: build_tree(&yt.children, map),
+                    ..base
+                }
+            })
+            .collect()
+    }
+
+    register_topics(&parsed.topics, &mut taxonomy.topics);
+    taxonomy.roots = build_tree(&parsed.topics, &taxonomy.topics);
+
+    Ok(taxonomy)
 }
 
 /// Sync taxonomy to database (upsert by path). Returns path -> topic_id map.

@@ -24,8 +24,21 @@ pub struct LabelingStats {
 }
 
 /// Cosine similarity between two equal-length f32 vectors.
-pub fn cosine_similarity(_a: &[f32], _b: &[f32]) -> f32 {
-    todo!()
+pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    let mut dot = 0.0_f32;
+    let mut norm_a = 0.0_f32;
+    let mut norm_b = 0.0_f32;
+    for (ai, bi) in a.iter().zip(b.iter()) {
+        dot += ai * bi;
+        norm_a += ai * ai;
+        norm_b += bi * bi;
+    }
+    let denom = norm_a.sqrt() * norm_b.sqrt();
+    if denom == 0.0 {
+        0.0
+    } else {
+        dot / denom
+    }
 }
 
 /// Topic labeler. Generic over embedding provider.
