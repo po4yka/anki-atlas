@@ -1,6 +1,15 @@
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+
+use crate::parser::{discover_notes, parse_note, DEFAULT_IGNORE_DIRS};
+
+/// Regex matching wikilinks: `[[target]]` or `[[target|alias]]`.
+static WIKILINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").unwrap());
 
 /// Statistics about an Obsidian vault.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,31 +22,161 @@ pub struct VaultStats {
     pub broken_links: Vec<(String, String)>,
 }
 
+/// Cached scan data for a vault.
+struct ScanData {
+    /// Map from note stem -> list of wikilink targets.
+    links: HashMap<String, Vec<String>>,
+    /// Map from note stem -> full path.
+    paths: HashMap<String, PathBuf>,
+    /// Set of note stems that have frontmatter.
+    has_frontmatter: HashSet<String>,
+    /// Set of distinct parent directories.
+    dirs: HashSet<PathBuf>,
+}
+
 /// Analyze vault structure: wikilinks, orphans, broken links.
-#[allow(dead_code)]
 pub struct VaultAnalyzer {
     vault_path: PathBuf,
+    scan: Option<ScanData>,
 }
 
 impl VaultAnalyzer {
-    pub fn new(_vault_path: &Path) -> Self {
-        todo!()
+    pub fn new(vault_path: &Path) -> Self {
+        Self {
+            vault_path: vault_path.to_path_buf(),
+            scan: None,
+        }
+    }
+
+    /// Lazy scan: discover and parse all notes on first access.
+    fn ensure_scanned(&mut self) {
+        if self.scan.is_some() {
+            return;
+        }
+
+        let mut links: HashMap<String, Vec<String>> = HashMap::new();
+        let mut paths: HashMap<String, PathBuf> = HashMap::new();
+        let mut has_frontmatter: HashSet<String> = HashSet::new();
+        let mut dirs: HashSet<PathBuf> = HashSet::new();
+
+        let note_paths = discover_notes(&self.vault_path, &["*.md"], DEFAULT_IGNORE_DIRS)
+            .unwrap_or_default();
+
+        for note_path in &note_paths {
+            let stem = note_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
+
+            paths.insert(stem.clone(), note_path.clone());
+
+            if let Some(parent) = note_path.parent() {
+                dirs.insert(parent.to_path_buf());
+            }
+
+            if let Ok(parsed) = parse_note(note_path, Some(&self.vault_path)) {
+                if !parsed.frontmatter.is_empty() {
+                    has_frontmatter.insert(stem.clone());
+                }
+                let wikilinks = extract_wikilinks(&parsed.content);
+                links.insert(stem, wikilinks);
+            }
+        }
+
+        self.scan = Some(ScanData {
+            links,
+            paths,
+            has_frontmatter,
+            dirs,
+        });
     }
 
     /// Get wikilink targets from a specific note.
-    pub fn get_wikilinks(&mut self, _path: &Path) -> Vec<String> {
-        todo!()
+    pub fn get_wikilinks(&mut self, path: &Path) -> Vec<String> {
+        self.ensure_scanned();
+        let scan = self.scan.as_ref().unwrap();
+
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+
+        scan.links.get(stem).cloned().unwrap_or_default()
     }
 
     /// Find notes with no incoming or outgoing links.
     pub fn find_orphaned(&mut self) -> Vec<PathBuf> {
-        todo!()
+        self.ensure_scanned();
+        let scan = self.scan.as_ref().unwrap();
+
+        // Build set of notes that have incoming links
+        let mut has_incoming: HashSet<&str> = HashSet::new();
+        for targets in scan.links.values() {
+            for target in targets {
+                has_incoming.insert(target.as_str());
+            }
+        }
+
+        let mut orphaned: Vec<PathBuf> = scan
+            .paths
+            .iter()
+            .filter(|(stem, _)| {
+                let outgoing = scan.links.get(stem.as_str()).is_none_or(Vec::is_empty);
+                let incoming = has_incoming.contains(stem.as_str());
+                outgoing && !incoming
+            })
+            .map(|(_, path)| path.clone())
+            .collect();
+
+        orphaned.sort();
+        orphaned
     }
 
     /// Compute comprehensive vault statistics.
     pub fn analyze(&mut self) -> VaultStats {
-        todo!()
+        self.ensure_scanned();
+        let scan = self.scan.as_ref().unwrap();
+
+        let total_notes = scan.paths.len();
+        let total_dirs = scan.dirs.len();
+        let notes_with_frontmatter = scan.has_frontmatter.len();
+
+        let mut wikilinks_count = 0;
+        let mut broken_links = Vec::new();
+
+        for (stem, targets) in &scan.links {
+            wikilinks_count += targets.len();
+            for target in targets {
+                if !scan.paths.contains_key(target) {
+                    broken_links.push((stem.clone(), target.clone()));
+                }
+            }
+        }
+
+        let orphaned = self.find_orphaned();
+        let orphaned_notes: Vec<String> = orphaned
+            .iter()
+            .filter_map(|p| p.file_stem().and_then(|s| s.to_str()).map(String::from))
+            .collect();
+
+        VaultStats {
+            total_notes,
+            total_dirs,
+            notes_with_frontmatter,
+            wikilinks_count,
+            orphaned_notes,
+            broken_links,
+        }
     }
+}
+
+/// Extract wikilink targets from content, trimming whitespace.
+fn extract_wikilinks(content: &str) -> Vec<String> {
+    WIKILINK_RE
+        .captures_iter(content)
+        .map(|c| c[1].trim().to_string())
+        .collect()
 }
 
 #[cfg(test)]
