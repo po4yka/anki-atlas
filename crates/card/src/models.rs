@@ -1,7 +1,11 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 /// Valid Anki note types.
 pub const VALID_NOTE_TYPES: &[&str] = &["APF::Simple", "APF::Cloze", "Basic", "Cloze"];
+
+/// Valid 2-letter language codes (must match common::Language variants).
+const VALID_LANGUAGES: &[&str] = &["en", "ru", "de", "fr", "es", "it", "pt", "zh", "ja", "ko"];
 
 /// Sync action type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,6 +79,16 @@ pub struct SyncAction {
     pub reason: Option<String>,
 }
 
+fn is_valid_lang(lang: &str) -> bool {
+    lang.len() == 2
+        && lang.chars().all(|c| c.is_ascii_alphabetic())
+        && VALID_LANGUAGES.contains(&lang)
+}
+
+fn is_valid_hash6(h: &str) -> bool {
+    h.len() == 6 && h.chars().all(|c| c.is_ascii_hexdigit())
+}
+
 impl CardManifest {
     /// Validate and construct. Returns Err with all validation failures.
     #[allow(clippy::too_many_arguments)]
@@ -93,37 +107,98 @@ impl CardManifest {
         difficulty: Option<f64>,
         cognitive_load: Option<CognitiveLoad>,
     ) -> Result<Self, CardValidationError> {
-        todo!("implement CardManifest validation")
+        let mut errors = Vec::new();
+
+        if slug.is_empty() {
+            errors.push("slug must not be empty".into());
+        }
+        if slug_base.is_empty() {
+            errors.push("slug_base must not be empty".into());
+        }
+        if !is_valid_lang(&lang) {
+            errors.push(format!("lang must be a valid 2-letter language code, got '{lang}'"));
+        }
+        if source_path.is_empty() {
+            errors.push("source_path must not be empty".into());
+        }
+        if source_anchor.is_empty() {
+            errors.push("source_anchor must not be empty".into());
+        }
+        if note_id.is_empty() {
+            errors.push("note_id must not be empty".into());
+        }
+        if note_title.is_empty() {
+            errors.push("note_title must not be empty".into());
+        }
+        if let Some(ref h) = hash6 {
+            if !is_valid_hash6(h) {
+                errors.push(format!("hash6 must be exactly 6 hex chars, got '{h}'"));
+            }
+        }
+        if let Some(d) = difficulty {
+            if !(0.0..=1.0).contains(&d) {
+                errors.push(format!("difficulty must be in [0.0, 1.0], got {d}"));
+            }
+        }
+
+        if !errors.is_empty() {
+            return Err(CardValidationError { messages: errors });
+        }
+
+        Ok(Self {
+            slug,
+            slug_base,
+            lang,
+            source_path,
+            source_anchor,
+            note_id,
+            note_title,
+            card_index,
+            guid,
+            hash6,
+            obsidian_uri,
+            difficulty,
+            cognitive_load,
+        })
     }
 
     /// Obsidian wikilink: [[folder/note#anchor]].
     pub fn anchor_url(&self) -> String {
-        todo!("implement anchor_url")
+        format!("[[{}#{}]]", self.source_path, self.source_anchor)
     }
 
     /// True if note_id and source_path are non-empty.
     pub fn is_linked_to_note(&self) -> bool {
-        todo!("implement is_linked_to_note")
+        !self.note_id.is_empty() && !self.source_path.is_empty()
     }
 
     /// Derive a copy with the given Anki GUID.
     pub fn with_guid(&self, guid: String) -> Self {
-        todo!("implement with_guid")
+        let mut copy = self.clone();
+        copy.guid = Some(guid);
+        copy
     }
 
     /// Derive a copy with the given content hash.
     pub fn with_hash(&self, hash6: String) -> Self {
-        todo!("implement with_hash")
+        let mut copy = self.clone();
+        copy.hash6 = Some(hash6);
+        copy
     }
 
     /// Derive a copy with the given Obsidian URI.
     pub fn with_obsidian_uri(&self, uri: String) -> Self {
-        todo!("implement with_obsidian_uri")
+        let mut copy = self.clone();
+        copy.obsidian_uri = Some(uri);
+        copy
     }
 
     /// Derive a copy with FSRS metadata.
     pub fn with_fsrs_metadata(&self, difficulty: f64, cognitive_load: CognitiveLoad) -> Self {
-        todo!("implement with_fsrs_metadata")
+        let mut copy = self.clone();
+        copy.difficulty = Some(difficulty);
+        copy.cognitive_load = Some(cognitive_load);
+        copy
     }
 }
 
@@ -139,32 +214,96 @@ impl Card {
         tags: Vec<String>,
         anki_guid: Option<String>,
     ) -> Result<Self, CardValidationError> {
-        todo!("implement Card validation")
+        let mut errors = Vec::new();
+
+        if slug.is_empty() {
+            errors.push("slug must not be empty".into());
+        } else if slug.len() < 3 {
+            errors.push(format!("slug must be at least 3 chars, got '{slug}'"));
+        }
+        if !is_valid_lang(&language) {
+            errors.push(format!(
+                "language must be a valid 2-letter language code, got '{language}'"
+            ));
+        }
+        if apf_html.trim().len() < 10 {
+            errors.push("apf_html must be at least 10 chars after trim".into());
+        }
+        if !VALID_NOTE_TYPES.contains(&note_type.as_str()) {
+            errors.push(format!("note_type must be one of {VALID_NOTE_TYPES:?}, got '{note_type}'"));
+        }
+        if manifest.slug != slug {
+            errors.push(format!(
+                "slug mismatch: card slug '{}' != manifest slug '{}'",
+                slug, manifest.slug
+            ));
+        }
+        if manifest.lang != language {
+            errors.push(format!(
+                "language mismatch: card language '{}' != manifest lang '{}'",
+                language, manifest.lang
+            ));
+        }
+        for (i, tag) in tags.iter().enumerate() {
+            if tag.is_empty() {
+                errors.push(format!("tag at index {i} must not be empty"));
+            }
+        }
+
+        if !errors.is_empty() {
+            return Err(CardValidationError { messages: errors });
+        }
+
+        Ok(Self {
+            slug,
+            language,
+            apf_html,
+            manifest,
+            note_type,
+            tags,
+            anki_guid,
+        })
     }
 
     /// True if anki_guid is None.
     pub fn is_new(&self) -> bool {
-        todo!("implement is_new")
+        self.anki_guid.is_none()
     }
 
     /// SHA-256[:6] of "{apf_html}|{note_type}|{sorted,tags}".
     pub fn content_hash(&self) -> String {
-        todo!("implement content_hash")
+        let mut sorted_tags = self.tags.clone();
+        sorted_tags.sort();
+        let input = format!("{}|{}|{}", self.apf_html, self.note_type, sorted_tags.join(","));
+        let hash = Sha256::digest(input.as_bytes());
+        hash[..3].iter().map(|b| format!("{b:02x}")).collect()
     }
 
     /// Derive copy with Anki GUID set on both Card and Manifest.
     pub fn with_guid(&self, guid: String) -> Result<Self, CardValidationError> {
-        todo!("implement Card::with_guid")
+        let mut copy = self.clone();
+        copy.anki_guid = Some(guid.clone());
+        copy.manifest = copy.manifest.with_guid(guid);
+        Ok(copy)
     }
 
     /// Derive copy with new HTML content and recalculated hash.
     pub fn update_content(&self, new_apf_html: String) -> Result<Self, CardValidationError> {
-        todo!("implement update_content")
+        if new_apf_html.trim().len() < 10 {
+            return Err(CardValidationError {
+                messages: vec!["apf_html must be at least 10 chars after trim".into()],
+            });
+        }
+        let mut copy = self.clone();
+        copy.apf_html = new_apf_html;
+        Ok(copy)
     }
 
     /// Derive copy with new tags.
     pub fn with_tags(&self, tags: Vec<String>) -> Self {
-        todo!("implement with_tags")
+        let mut copy = self.clone();
+        copy.tags = tags;
+        copy
     }
 }
 
@@ -176,21 +315,47 @@ impl SyncAction {
         anki_guid: Option<String>,
         reason: Option<String>,
     ) -> Result<Self, CardValidationError> {
-        todo!("implement SyncAction validation")
+        let mut errors = Vec::new();
+
+        let needs_guid =
+            matches!(action_type, SyncActionType::Update | SyncActionType::Delete);
+        if needs_guid && anki_guid.is_none() {
+            errors.push("anki_guid is required for UPDATE/DELETE actions".into());
+        }
+
+        if !errors.is_empty() {
+            return Err(CardValidationError { messages: errors });
+        }
+
+        Ok(Self {
+            action_type,
+            card,
+            anki_guid,
+            reason,
+        })
     }
 
     /// True for UPDATE or DELETE.
     pub fn is_destructive(&self) -> bool {
-        todo!("implement is_destructive")
+        matches!(self.action_type, SyncActionType::Update | SyncActionType::Delete)
     }
 
     /// True for DELETE.
     pub fn requires_confirmation(&self) -> bool {
-        todo!("implement requires_confirmation")
+        matches!(self.action_type, SyncActionType::Delete)
     }
 
     /// Human-readable description: "UPDATE: my-slug (reason)".
     pub fn describe(&self) -> String {
-        todo!("implement describe")
+        let action = match self.action_type {
+            SyncActionType::Create => "CREATE",
+            SyncActionType::Update => "UPDATE",
+            SyncActionType::Delete => "DELETE",
+            SyncActionType::Skip => "SKIP",
+        };
+        match &self.reason {
+            Some(reason) => format!("{action}: {} ({reason})", self.card.slug),
+            None => format!("{action}: {}", self.card.slug),
+        }
     }
 }
