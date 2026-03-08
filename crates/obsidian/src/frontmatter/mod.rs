@@ -43,7 +43,7 @@ pub fn write_frontmatter(
 
 /// Split content into optional raw YAML frontmatter and body.
 /// Returns `(None, full_content)` if no valid frontmatter block is found.
-fn split_frontmatter(content: &str) -> (Option<&str>, &str) {
+pub(crate) fn split_frontmatter(content: &str) -> (Option<&str>, &str) {
     let Some(rest) = content.strip_prefix("---\n") else {
         return (None, content);
     };
