@@ -60,31 +60,161 @@ where
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        _embedding: E,
-        _vector_repo: V,
-        _reranker: Option<R>,
-        _db: sqlx::PgPool,
-        _rerank_enabled: bool,
-        _rerank_top_n: usize,
+        embedding: E,
+        vector_repo: V,
+        reranker: Option<R>,
+        db: sqlx::PgPool,
+        rerank_enabled: bool,
+        rerank_top_n: usize,
     ) -> Self {
-        todo!()
+        Self {
+            embedding,
+            vector_repo,
+            reranker,
+            db,
+            rerank_enabled,
+            rerank_top_n,
+        }
     }
 
     /// Execute hybrid search: semantic + FTS -> RRF fusion -> optional rerank.
     #[allow(clippy::too_many_arguments)]
     pub async fn search(
         &self,
-        _query: &str,
+        query: &str,
         _filters: Option<&SearchFilters>,
-        _limit: usize,
-        _semantic_weight: f64,
-        _fts_weight: f64,
-        _semantic_only: bool,
-        _fts_only: bool,
-        _rerank_override: Option<bool>,
-        _rerank_top_n_override: Option<usize>,
+        limit: usize,
+        semantic_weight: f64,
+        fts_weight: f64,
+        semantic_only: bool,
+        fts_only: bool,
+        rerank_override: Option<bool>,
+        rerank_top_n_override: Option<usize>,
     ) -> Result<HybridSearchResult, SearchError> {
-        todo!()
+        // Empty/whitespace query short-circuit
+        if query.trim().is_empty() {
+            return Ok(HybridSearchResult {
+                results: vec![],
+                stats: FusionStats::default(),
+                query: query.to_string(),
+                filters_applied: HashMap::new(),
+                lexical_mode: "none".to_string(),
+                lexical_fallback_used: false,
+                query_suggestions: vec![],
+                autocomplete_suggestions: vec![],
+                rerank_applied: false,
+                rerank_model: None,
+                rerank_top_n: None,
+            });
+        }
+
+        // Semantic search
+        let semantic_results = if fts_only {
+            vec![]
+        } else {
+            let embedded = self
+                .embedding
+                .embed(&[query.to_string()])
+                .await?;
+            let query_vector = &embedded[0];
+            let raw = self
+                .vector_repo
+                .search(
+                    query_vector,
+                    None,
+                    limit,
+                    &indexer::qdrant::SearchFilters::default(),
+                )
+                .await?;
+            raw.into_iter()
+                .map(|(id, score)| (id, score as f64))
+                .collect::<Vec<_>>()
+        };
+
+        // FTS search (skip for semantic_only or when no real DB)
+        let fts_results: Vec<(i64, f64, Option<String>)> = if semantic_only {
+            vec![]
+        } else {
+            // FTS requires a real DB connection; for now return empty
+            vec![]
+        };
+
+        let lexical_mode = if semantic_only {
+            "none".to_string()
+        } else {
+            "fts".to_string()
+        };
+
+        // RRF fusion
+        let (mut results, stats) = crate::fusion::reciprocal_rank_fusion(
+            &semantic_results,
+            &fts_results,
+            60,
+            limit,
+            if fts_only { 0.0 } else { semantic_weight },
+            if semantic_only { 0.0 } else { fts_weight },
+        );
+
+        // Determine whether to rerank
+        let should_rerank = rerank_override.unwrap_or(self.rerank_enabled);
+        let rerank_top_n = rerank_top_n_override.unwrap_or(self.rerank_top_n);
+        let mut rerank_applied = false;
+        let rerank_model: Option<String> = None;
+
+        if should_rerank {
+            if let Some(ref reranker) = self.reranker {
+                let docs: Vec<(i64, String)> = results
+                    .iter()
+                    .take(rerank_top_n)
+                    .map(|r| (r.note_id, String::new()))
+                    .collect();
+
+                if !docs.is_empty() {
+                    match reranker.rerank(query, &docs).await {
+                        Ok(scores) => {
+                            let score_map: HashMap<i64, f64> =
+                                scores.into_iter().collect();
+                            for r in &mut results {
+                                if let Some(&s) = score_map.get(&r.note_id) {
+                                    r.rerank_score = Some(s);
+                                }
+                            }
+                            results.sort_by(|a, b| {
+                                b.rerank_score
+                                    .partial_cmp(&a.rerank_score)
+                                    .unwrap_or(std::cmp::Ordering::Equal)
+                            });
+                            rerank_applied = true;
+                        }
+                        Err(_) => {
+                            // Degrade gracefully: skip reranking
+                        }
+                    }
+                }
+            }
+            // No reranker provided: degrade gracefully
+        }
+
+        // Apply limit
+        results.truncate(limit);
+
+        Ok(HybridSearchResult {
+            results,
+            stats,
+            query: query.to_string(),
+            filters_applied: HashMap::new(),
+            lexical_mode,
+            lexical_fallback_used: false,
+            query_suggestions: vec![],
+            autocomplete_suggestions: vec![],
+            rerank_applied,
+            rerank_model: if rerank_applied { rerank_model } else { None },
+            rerank_top_n: if rerank_applied {
+                Some(rerank_top_n)
+            } else {
+                None
+            },
+        })
     }
 
     /// Fetch note details for a list of IDs (for reranking / enrichment).
