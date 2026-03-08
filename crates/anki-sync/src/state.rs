@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use rusqlite::Connection;
+use rusqlite::{Connection, Row};
 
 /// Tracked state for a single card.
 #[derive(Debug, Clone, PartialEq)]
@@ -11,6 +11,22 @@ pub struct CardState {
     pub note_type: String,
     pub source_path: String,
     pub synced_at: f64,
+}
+
+impl CardState {
+    /// Map a SQLite row to a `CardState`.
+    ///
+    /// Expects columns in order: slug, content_hash, anki_guid, note_type, source_path, synced_at.
+    fn from_row(row: &Row<'_>) -> rusqlite::Result<Self> {
+        Ok(Self {
+            slug: row.get(0)?,
+            content_hash: row.get(1)?,
+            anki_guid: row.get(2)?,
+            note_type: row.get(3)?,
+            source_path: row.get(4)?,
+            synced_at: row.get(5)?,
+        })
+    }
 }
 
 /// SQLite WAL database for tracking per-card sync state.
@@ -51,16 +67,7 @@ impl StateDB {
                 "SELECT slug, content_hash, anki_guid, note_type, source_path, synced_at
                  FROM card_state WHERE slug = ?1",
                 [slug],
-                |row| {
-                    Ok(CardState {
-                        slug: row.get(0)?,
-                        content_hash: row.get(1)?,
-                        anki_guid: row.get(2)?,
-                        note_type: row.get(3)?,
-                        source_path: row.get(4)?,
-                        synced_at: row.get(5)?,
-                    })
-                },
+                CardState::from_row,
             )
             .ok()
     }
@@ -75,19 +82,10 @@ impl StateDB {
             )
             .expect("failed to prepare get_all statement");
 
-        stmt.query_map([], |row| {
-            Ok(CardState {
-                slug: row.get(0)?,
-                content_hash: row.get(1)?,
-                anki_guid: row.get(2)?,
-                note_type: row.get(3)?,
-                source_path: row.get(4)?,
-                synced_at: row.get(5)?,
-            })
-        })
-        .expect("failed to query card_state")
-        .filter_map(|r| r.ok())
-        .collect()
+        stmt.query_map([], CardState::from_row)
+            .expect("failed to query card_state")
+            .filter_map(Result::ok)
+            .collect()
     }
 
     /// Insert or update a card state (upsert on slug).
@@ -131,19 +129,10 @@ impl StateDB {
             )
             .expect("failed to prepare get_by_source statement");
 
-        stmt.query_map([source_path], |row| {
-            Ok(CardState {
-                slug: row.get(0)?,
-                content_hash: row.get(1)?,
-                anki_guid: row.get(2)?,
-                note_type: row.get(3)?,
-                source_path: row.get(4)?,
-                synced_at: row.get(5)?,
-            })
-        })
-        .expect("failed to query card_state by source")
-        .filter_map(|r| r.ok())
-        .collect()
+        stmt.query_map([source_path], CardState::from_row)
+            .expect("failed to query card_state by source")
+            .filter_map(Result::ok)
+            .collect()
     }
 
     /// Close the database connection.
