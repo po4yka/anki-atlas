@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use serde::Serialize;
+use sqlx::FromRow;
 
 use crate::error::SearchError;
 use crate::fts::SearchFilters;
@@ -34,6 +35,19 @@ pub struct NoteDetail {
     pub mature: bool,
     pub lapses: i32,
     pub reps: i32,
+}
+
+/// Raw row from note details query.
+#[derive(Debug, FromRow)]
+struct NoteDetailRow {
+    note_id: i64,
+    model_id: i64,
+    normalized_text: String,
+    tags: Vec<String>,
+    deck_name: String,
+    mature: bool,
+    lapses: i32,
+    reps: i32,
 }
 
 /// Search service with trait-based DI.
@@ -216,9 +230,46 @@ where
     /// Fetch note details for a list of IDs (for reranking / enrichment).
     pub async fn get_notes_details(
         &self,
-        _note_ids: &[i64],
+        note_ids: &[i64],
     ) -> Result<HashMap<i64, NoteDetail>, SearchError> {
-        todo!()
+        if note_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let rows = sqlx::query_as::<_, NoteDetailRow>(
+            "SELECT n.id AS note_id, n.mid AS model_id, n.normalized_text, \
+             n.tags, \
+             COALESCE(d.name, '') AS deck_name, \
+             COALESCE(c.ivl >= 21, false) AS mature, \
+             COALESCE(c.lapses, 0) AS lapses, \
+             COALESCE(c.reps, 0) AS reps \
+             FROM notes n \
+             LEFT JOIN cards c ON c.nid = n.id \
+             LEFT JOIN decks d ON d.id = c.did \
+             WHERE n.id = ANY($1)",
+        )
+        .bind(note_ids)
+        .fetch_all(&self.db)
+        .await?;
+
+        let mut map = HashMap::new();
+        for row in rows {
+            let entry = map.entry(row.note_id).or_insert_with(|| NoteDetail {
+                note_id: row.note_id,
+                model_id: row.model_id,
+                normalized_text: row.normalized_text.clone(),
+                tags: row.tags.clone(),
+                deck_names: vec![],
+                mature: row.mature,
+                lapses: row.lapses,
+                reps: row.reps,
+            });
+            if !row.deck_name.is_empty() && !entry.deck_names.contains(&row.deck_name) {
+                entry.deck_names.push(row.deck_name.clone());
+            }
+        }
+
+        Ok(map)
     }
 }
 

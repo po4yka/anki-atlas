@@ -1,6 +1,15 @@
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 
 use crate::error::SearchError;
+
+/// Raw row from FTS/fuzzy/autocomplete queries.
+#[derive(Debug, FromRow)]
+struct FtsRow {
+    note_id: i64,
+    rank: f64,
+    headline: Option<String>,
+}
 
 /// Source of a lexical search result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,22 +62,67 @@ pub struct SearchFilters {
     pub min_reps: Option<i32>,
 }
 
+/// Build SQL WHERE clauses for search filters (appended with AND).
+fn build_filter_clauses(filters: Option<&SearchFilters>) -> String {
+    let filters = match filters {
+        Some(f) => f,
+        None => return String::new(),
+    };
+    let mut clauses = Vec::new();
+
+    if let Some(ref tags) = filters.tags {
+        let quoted: Vec<String> = tags.iter().map(|t| format!("'{}'", t)).collect();
+        clauses.push(format!("AND n.tags && ARRAY[{}]", quoted.join(",")));
+    }
+    if let Some(ref tags_ex) = filters.tags_exclude {
+        let quoted: Vec<String> = tags_ex.iter().map(|t| format!("'{}'", t)).collect();
+        clauses.push(format!("AND NOT (n.tags && ARRAY[{}])", quoted.join(",")));
+    }
+    if let Some(ref model_ids) = filters.model_ids {
+        let ids: Vec<String> = model_ids.iter().map(|id| id.to_string()).collect();
+        clauses.push(format!("AND n.mid IN ({})", ids.join(",")));
+    }
+    if let Some(ref deck_names) = filters.deck_names {
+        let quoted: Vec<String> = deck_names.iter().map(|d| format!("'{}'", d)).collect();
+        clauses.push(format!("AND d.name IN ({})", quoted.join(",")));
+    }
+    if let Some(ref deck_names_ex) = filters.deck_names_exclude {
+        let quoted: Vec<String> = deck_names_ex.iter().map(|d| format!("'{}'", d)).collect();
+        clauses.push(format!("AND d.name NOT IN ({})", quoted.join(",")));
+    }
+    if let Some(min_ivl) = filters.min_ivl {
+        clauses.push(format!("AND c.ivl >= {}", min_ivl));
+    }
+    if let Some(max_lapses) = filters.max_lapses {
+        clauses.push(format!("AND c.lapses <= {}", max_lapses));
+    }
+    if let Some(min_reps) = filters.min_reps {
+        clauses.push(format!("AND c.reps >= {}", min_reps));
+    }
+
+    clauses.join(" ")
+}
+
 /// Check if filters require joining cards/decks tables.
 ///
 /// Filters on `deck_names`, `deck_names_exclude`, `min_ivl`, `max_lapses`,
 /// and `min_reps` require a LEFT JOIN to `cards` and `decks`.
 /// Filters on `tags`, `tags_exclude`, and `model_ids` apply to `notes` directly.
 #[allow(dead_code)]
-pub(crate) fn needs_card_join(_filters: &SearchFilters) -> bool {
-    todo!("needs_card_join: determine if filters require cards/decks join")
+pub(crate) fn needs_card_join(filters: &SearchFilters) -> bool {
+    filters.deck_names.is_some()
+        || filters.deck_names_exclude.is_some()
+        || filters.min_ivl.is_some()
+        || filters.max_lapses.is_some()
+        || filters.min_reps.is_some()
 }
 
 /// Execute lexical search with FTS -> fuzzy -> autocomplete fallback chain.
 pub async fn search_lexical(
-    _pool: &sqlx::PgPool,
+    pool: &sqlx::PgPool,
     query: &str,
-    _filters: Option<&SearchFilters>,
-    _limit: i64,
+    filters: Option<&SearchFilters>,
+    limit: i64,
 ) -> Result<LexicalSearchResult, SearchError> {
     if query.trim().is_empty() {
         return Ok(LexicalSearchResult {
@@ -80,7 +134,123 @@ pub async fn search_lexical(
         });
     }
 
-    todo!("search_lexical: FTS -> fuzzy -> autocomplete fallback chain")
+    // Stage 1: Full-text search
+    let fts_query = format!(
+        "SELECT n.id AS note_id, ts_rank(n.fts_vector, plainto_tsquery('english', $1)) AS rank, \
+         ts_headline('english', n.normalized_text, plainto_tsquery('english', $1)) AS headline \
+         FROM notes n {} WHERE n.fts_vector @@ plainto_tsquery('english', $1) {} \
+         ORDER BY rank DESC LIMIT $2",
+        if needs_card_join(filters.unwrap_or(&SearchFilters::default())) {
+            "LEFT JOIN cards c ON c.nid = n.id LEFT JOIN decks d ON d.id = c.did"
+        } else {
+            ""
+        },
+        build_filter_clauses(filters),
+    );
+
+    let rows: Vec<FtsRow> = sqlx::query_as(&fts_query)
+        .bind(query)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+    if !rows.is_empty() {
+        return Ok(LexicalSearchResult {
+            results: rows
+                .into_iter()
+                .map(|r| FtsResult {
+                    note_id: r.note_id,
+                    rank: r.rank,
+                    headline: r.headline,
+                    source: FtsSource::Fts,
+                })
+                .collect(),
+            mode: LexicalMode::Fts,
+            used_fallback: false,
+            query_suggestions: vec![],
+            autocomplete_suggestions: vec![],
+        });
+    }
+
+    // Stage 2: Fuzzy search fallback
+    let fuzzy_query = format!(
+        "SELECT n.id AS note_id, similarity(n.normalized_text, $1) AS rank, \
+         NULL AS headline \
+         FROM notes n {} WHERE similarity(n.normalized_text, $1) > 0.1 {} \
+         ORDER BY rank DESC LIMIT $2",
+        if needs_card_join(filters.unwrap_or(&SearchFilters::default())) {
+            "LEFT JOIN cards c ON c.nid = n.id LEFT JOIN decks d ON d.id = c.did"
+        } else {
+            ""
+        },
+        build_filter_clauses(filters),
+    );
+
+    let rows: Vec<FtsRow> = sqlx::query_as(&fuzzy_query)
+        .bind(query)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+    if !rows.is_empty() {
+        return Ok(LexicalSearchResult {
+            results: rows
+                .into_iter()
+                .map(|r| FtsResult {
+                    note_id: r.note_id,
+                    rank: r.rank,
+                    headline: r.headline,
+                    source: FtsSource::Fuzzy,
+                })
+                .collect(),
+            mode: LexicalMode::Fuzzy,
+            used_fallback: true,
+            query_suggestions: vec![],
+            autocomplete_suggestions: vec![],
+        });
+    }
+
+    // Stage 3: Autocomplete fallback
+    let auto_query = format!(
+        "SELECT n.id AS note_id, 1.0 AS rank, NULL AS headline \
+         FROM notes n {} WHERE n.normalized_text ILIKE $1 {} \
+         ORDER BY n.id LIMIT $2",
+        if needs_card_join(filters.unwrap_or(&SearchFilters::default())) {
+            "LEFT JOIN cards c ON c.nid = n.id LEFT JOIN decks d ON d.id = c.did"
+        } else {
+            ""
+        },
+        build_filter_clauses(filters),
+    );
+
+    let prefix_pattern = format!("{}%", query);
+    let rows: Vec<FtsRow> = sqlx::query_as(&auto_query)
+        .bind(&prefix_pattern)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+    let mode = if rows.is_empty() {
+        LexicalMode::None
+    } else {
+        LexicalMode::Autocomplete
+    };
+
+    Ok(LexicalSearchResult {
+        results: rows
+            .into_iter()
+            .map(|r| FtsResult {
+                note_id: r.note_id,
+                rank: r.rank,
+                headline: r.headline,
+                source: FtsSource::Autocomplete,
+            })
+            .collect(),
+        mode,
+        used_fallback: true,
+        query_suggestions: vec![],
+        autocomplete_suggestions: vec![],
+    })
 }
 
 #[cfg(test)]
