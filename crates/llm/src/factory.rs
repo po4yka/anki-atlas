@@ -1,6 +1,8 @@
 use strum::{Display, EnumString};
 
 use crate::error::LlmError;
+use crate::ollama::{OllamaConfig, OllamaProvider};
+use crate::openrouter::{OpenRouterConfig, OpenRouterProvider};
 use crate::provider::LlmProvider;
 
 /// Supported LLM provider types.
@@ -14,10 +16,67 @@ pub enum ProviderType {
 /// Create a provider instance by type.
 /// For OpenRouter, reads OPENROUTER_API_KEY from env if not in config.
 pub fn create_provider(
-    _provider_type: ProviderType,
-    _config: serde_json::Value,
+    provider_type: ProviderType,
+    config: serde_json::Value,
 ) -> Result<Box<dyn LlmProvider>, LlmError> {
-    todo!()
+    match provider_type {
+        ProviderType::Ollama => {
+            let defaults = OllamaConfig::default();
+            let ollama_config = OllamaConfig {
+                base_url: config
+                    .get("base_url")
+                    .and_then(|v| v.as_str())
+                    .map_or(defaults.base_url, String::from),
+                timeout_secs: config
+                    .get("timeout_secs")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(defaults.timeout_secs),
+                api_key: config
+                    .get("api_key")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+            };
+            Ok(Box::new(OllamaProvider::new(ollama_config)))
+        }
+        ProviderType::OpenRouter => {
+            let api_key = config
+                .get("api_key")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+                .or_else(|| std::env::var("OPENROUTER_API_KEY").ok())
+                .unwrap_or_default();
+
+            let defaults = OpenRouterConfig::default();
+            let or_config = OpenRouterConfig {
+                api_key,
+                base_url: config
+                    .get("base_url")
+                    .and_then(|v| v.as_str())
+                    .map_or(defaults.base_url, String::from),
+                timeout_secs: config
+                    .get("timeout_secs")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(defaults.timeout_secs),
+                max_tokens: config
+                    .get("max_tokens")
+                    .and_then(|v| v.as_u64())
+                    .map_or(defaults.max_tokens, |v| v as u32),
+                max_retries: config
+                    .get("max_retries")
+                    .and_then(|v| v.as_u64())
+                    .map_or(defaults.max_retries, |v| v as u32),
+                site_url: config
+                    .get("site_url")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                site_name: config
+                    .get("site_name")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+            };
+            Ok(Box::new(OpenRouterProvider::new(or_config)?))
+        }
+    }
 }
 
 #[cfg(test)]
