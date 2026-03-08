@@ -25,8 +25,7 @@ pub fn write_frontmatter(
     data: &HashMap<String, serde_yaml::Value>,
     content: &str,
 ) -> Result<String, ObsidianError> {
-    let yaml_str =
-        serde_yaml::to_string(data).map_err(|e| ObsidianError::Yaml(e.to_string()))?;
+    let yaml_str = serde_yaml::to_string(data).map_err(|e| ObsidianError::Yaml(e.to_string()))?;
 
     let (_yaml, body) = split_frontmatter(content);
 
@@ -62,7 +61,11 @@ fn preprocess_yaml(yaml: &str) -> String {
         .map(|line| {
             if let Some(colon_pos) = line.find(": ") {
                 let (key, val) = line.split_at(colon_pos + 2);
-                if let Some(stripped) = val.trim().strip_prefix('`').and_then(|s| s.strip_suffix('`')) {
+                if let Some(stripped) = val
+                    .trim()
+                    .strip_prefix('`')
+                    .and_then(|s| s.strip_suffix('`'))
+                {
                     return format!("{key}{stripped}");
                 }
             }

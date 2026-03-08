@@ -14,11 +14,7 @@ use super::*;
 fn parse_note_title_from_frontmatter() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("note.md");
-    fs::write(
-        &path,
-        "---\ntitle: My Title\n---\nSome body text.\n",
-    )
-    .unwrap();
+    fs::write(&path, "---\ntitle: My Title\n---\nSome body text.\n").unwrap();
 
     let note = parse_note(&path, None).unwrap();
     assert_eq!(note.title, Some("My Title".to_string()));
@@ -48,11 +44,7 @@ fn parse_note_no_title() {
 fn parse_note_frontmatter_title_takes_precedence_over_h1() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("note.md");
-    fs::write(
-        &path,
-        "---\ntitle: FM Title\n---\n# Heading Title\nBody.\n",
-    )
-    .unwrap();
+    fs::write(&path, "---\ntitle: FM Title\n---\n# Heading Title\nBody.\n").unwrap();
 
     let note = parse_note(&path, None).unwrap();
     assert_eq!(note.title, Some("FM Title".to_string()));
@@ -207,11 +199,7 @@ fn parse_note_ok_inside_vault_root() {
 fn parse_note_extracts_frontmatter() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("note.md");
-    fs::write(
-        &path,
-        "---\ntags: review\ndifficulty: hard\n---\nBody.\n",
-    )
-    .unwrap();
+    fs::write(&path, "---\ntags: review\ndifficulty: hard\n---\nBody.\n").unwrap();
 
     let note = parse_note(&path, None).unwrap();
 

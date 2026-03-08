@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::parser::{discover_notes, parse_note, DEFAULT_IGNORE_DIRS};
+use crate::parser::{DEFAULT_IGNORE_DIRS, discover_notes, parse_note};
 
 /// Regex matching wikilinks: `[[target]]` or `[[target|alias]]`.
 static WIKILINK_RE: LazyLock<Regex> =
@@ -37,12 +37,8 @@ struct ScanData {
 impl ScanData {
     /// Notes with no outgoing AND no incoming links, sorted by path.
     fn orphaned_paths(&self) -> Vec<PathBuf> {
-        let has_incoming: HashSet<&str> = self
-            .links
-            .values()
-            .flatten()
-            .map(String::as_str)
-            .collect();
+        let has_incoming: HashSet<&str> =
+            self.links.values().flatten().map(String::as_str).collect();
 
         let mut orphaned: Vec<PathBuf> = self
             .paths
@@ -85,8 +81,8 @@ impl VaultAnalyzer {
         let mut has_frontmatter: HashSet<String> = HashSet::new();
         let mut dirs: HashSet<PathBuf> = HashSet::new();
 
-        let note_paths = discover_notes(&self.vault_path, &["*.md"], DEFAULT_IGNORE_DIRS)
-            .unwrap_or_default();
+        let note_paths =
+            discover_notes(&self.vault_path, &["*.md"], DEFAULT_IGNORE_DIRS).unwrap_or_default();
 
         for note_path in &note_paths {
             let stem = note_path
@@ -127,10 +123,7 @@ impl VaultAnalyzer {
     /// Get wikilink targets from a specific note.
     pub fn get_wikilinks(&mut self, path: &Path) -> Vec<String> {
         let scan = self.scan_data();
-        let stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 
         scan.links.get(stem).cloned().unwrap_or_default()
     }
@@ -221,10 +214,7 @@ mod tests {
 
     #[test]
     fn get_wikilinks_multiple() {
-        let vault = create_vault(&[(
-            "note.md",
-            "Links: [[alpha]], [[beta|b]], and [[gamma]].",
-        )]);
+        let vault = create_vault(&[("note.md", "Links: [[alpha]], [[beta|b]], and [[gamma]].")]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
         let links = analyzer.get_wikilinks(&vault.path().join("note.md"));
         assert_eq!(links, vec!["alpha", "beta", "gamma"]);
@@ -275,10 +265,7 @@ mod tests {
 
     #[test]
     fn find_orphaned_linked_notes_not_orphaned() {
-        let vault = create_vault(&[
-            ("a.md", "See [[b]]."),
-            ("b.md", "See [[a]]."),
-        ]);
+        let vault = create_vault(&[("a.md", "See [[b]]."), ("b.md", "See [[a]].")]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
         let orphaned = analyzer.find_orphaned();
         assert!(orphaned.is_empty());
@@ -303,10 +290,7 @@ mod tests {
     #[test]
     fn find_orphaned_incoming_only_not_orphaned() {
         // b has no outgoing links but is linked by a -> not orphaned
-        let vault = create_vault(&[
-            ("a.md", "See [[b]]."),
-            ("b.md", "I have no links."),
-        ]);
+        let vault = create_vault(&[("a.md", "See [[b]]."), ("b.md", "I have no links.")]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
         let orphaned = analyzer.find_orphaned();
         // a has outgoing (not orphaned), b has incoming (not orphaned)
@@ -366,13 +350,13 @@ mod tests {
 
     #[test]
     fn analyze_broken_links() {
-        let vault = create_vault(&[
-            ("a.md", "See [[b]] and [[missing]]."),
-            ("b.md", "Content."),
-        ]);
+        let vault = create_vault(&[("a.md", "See [[b]] and [[missing]]."), ("b.md", "Content.")]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
         let stats = analyzer.analyze();
-        assert_eq!(stats.broken_links, vec![("a".to_string(), "missing".to_string())]);
+        assert_eq!(
+            stats.broken_links,
+            vec![("a".to_string(), "missing".to_string())]
+        );
     }
 
     #[test]

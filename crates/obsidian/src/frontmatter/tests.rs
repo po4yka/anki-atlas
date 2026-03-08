@@ -61,11 +61,11 @@ fn parse_returns_empty_map_for_single_delimiter() {
 fn parse_strips_backticks_from_values() {
     let content = "---\ntitle: `Hello World`\ndate: `2024-01-01`\n---\nBody";
     let fm = parse_frontmatter(content).unwrap();
-    assert_eq!(fm.get("title").and_then(|v| v.as_str()), Some("Hello World"));
     assert_eq!(
-        fm.get("date").and_then(|v| v.as_str()),
-        Some("2024-01-01")
+        fm.get("title").and_then(|v| v.as_str()),
+        Some("Hello World")
     );
+    assert_eq!(fm.get("date").and_then(|v| v.as_str()), Some("2024-01-01"));
 }
 
 #[test]
@@ -90,10 +90,7 @@ fn parse_returns_error_on_malformed_yaml() {
 fn write_replaces_existing_frontmatter() {
     let content = "---\ntitle: Old\n---\nBody text here";
     let mut data = HashMap::new();
-    data.insert(
-        "title".to_string(),
-        serde_yaml::Value::String("New".into()),
-    );
+    data.insert("title".to_string(), serde_yaml::Value::String("New".into()));
     let result = write_frontmatter(&data, content).unwrap();
     assert!(result.contains("title"));
     assert!(result.contains("New"));

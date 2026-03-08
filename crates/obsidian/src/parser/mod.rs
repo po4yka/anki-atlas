@@ -20,8 +20,7 @@ pub const DEFAULT_IGNORE_DIRS: &[&str] = &[".obsidian", ".trash", ".git"];
 static H1_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^#\s+(.+)$").unwrap());
 
 /// Regex matching any heading (H1-H6) for section splitting.
-static HEADING_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^(#{1,6}\s+.+)$").unwrap());
+static HEADING_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^(#{1,6}\s+.+)$").unwrap());
 
 /// A parsed Obsidian markdown note.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::parser::{discover_notes, parse_note, ParsedNote, DEFAULT_IGNORE_DIRS};
+use crate::parser::{DEFAULT_IGNORE_DIRS, ParsedNote, discover_notes, parse_note};
 
 /// Progress callback: (phase, current, total).
 pub type ProgressCallback = Box<dyn Fn(&str, usize, usize) + Send + Sync>;
@@ -31,11 +31,7 @@ impl SyncResult {
             updated: self.updated + other.updated,
             skipped: self.skipped + other.skipped,
             failed: self.failed + other.failed,
-            errors: self
-                .errors
-                .into_iter()
-                .chain(other.errors)
-                .collect(),
+            errors: self.errors.into_iter().chain(other.errors).collect(),
         }
     }
 }
@@ -67,11 +63,7 @@ impl<G: CardGenerator> ObsidianSyncWorkflow<G> {
     }
 
     /// Discover and parse all notes in vault.
-    pub fn scan_vault(
-        &self,
-        vault_path: &Path,
-        source_dirs: Option<&[&str]>,
-    ) -> Vec<ParsedNote> {
+    pub fn scan_vault(&self, vault_path: &Path, source_dirs: Option<&[&str]>) -> Vec<ParsedNote> {
         let dirs_to_scan: Vec<PathBuf> = match source_dirs {
             Some(dirs) => dirs
                 .iter()
