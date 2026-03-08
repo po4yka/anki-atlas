@@ -1,97 +1,81 @@
-# Ralph Migration Directive: Consolidate into anki-atlas
+# Anki Atlas Rust Rewrite - TDD Loop
 
-## Mission
+You are rewriting anki-atlas from Python to Rust. This is a ralph loop iteration.
 
-Consolidate three Anki flashcard repositories into `anki-atlas` as the single unified repo:
+## Current Task
 
-1. **obsidian-to-anki** -- LLM pipeline for card generation (LangGraph, PydanticAI)
-2. **claude-code-obsidian-anki** -- Claude Code card crafting with campaigns
-3. **ai-agent-anki** -- Pure Claude Code config for card management (skills, commands, Ralph specs)
+Read the spec file indicated in `specs/CURRENT_SPEC.txt`. That file contains a single line
+with the spec filename (e.g., `01-common.md`). Open `specs/<that filename>` and implement it.
 
-## Source Repositories (absolute paths)
+## TDD Rules (Non-Negotiable)
 
-| Repo | Path | Import Base |
-|------|------|-------------|
-| obsidian-to-anki | `/Users/npochaev/GitHub/obsidian-to-anki/` | `obsidian_anki_sync` |
-| claude-code-obsidian-anki | `/Users/npochaev/GitHub/claude-code-obsidian-anki/` | `src` |
-| ai-agent-anki | `/Users/npochaev/GitHub/ai-agent-anki/` | N/A (config-only) |
+1. **RED**: Write tests FIRST. Tests must compile but FAIL because the implementation
+   does not exist yet. Commit: `test(<crate>): red - <component>`
+2. **GREEN**: Write the MINIMUM code to make all failing tests pass. No extras.
+   Commit: `feat(<crate>): green - <component>`
+3. **REFACTOR**: Clean up while keeping tests green. Run `cargo clippy`.
+   Commit: `refactor(<crate>): <what changed>`
+4. Repeat RED-GREEN-REFACTOR for each component listed in the spec.
 
-## Architecture Mapping
+## Rust Conventions
 
-Where migrated code lands in anki-atlas's monorepo:
+- All types `Send + Sync` (required for tokio/axum)
+- `thiserror` for library error types, `anyhow` only in binary crates
+- Trait-based DI: every external boundary (DB, HTTP, Qdrant, Redis) behind a trait
+- `#[cfg_attr(test, mockall::automock)]` on traits for test mocks
+- `#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]` as baseline
+- Newtype pattern for IDs: `pub struct NoteId(pub i64);`
+- `#[instrument]` on async functions for tracing spans
+- `Arc<T>` for shared state, never `Rc<T>`
+- Prefer `&str` over `String` in function parameters
+- Use `Result<T, E>` everywhere, never `unwrap()` in library code
+
+## Workspace Layout
 
 ```
-packages/
-  common/          # (exists) + new types, extended exceptions
-  anki/            # (exists) + connect.py (AnkiConnect client), sync/ extension
-  indexer/         # (exists) unchanged
-  search/          # (exists) unchanged
-  analytics/       # (exists) unchanged
-  jobs/            # (exists) unchanged
-  card/            # NEW: card domain, APF format, registry
-    models.py        <- claude-code domain/entities/card.py
-    apf/             <- obsidian-to-anki apf/ + claude-code apf/
-    registry.py      <- claude-code utils/card_registry.py
-  generator/       # NEW: LLM card generation pipeline
-    prompts/         <- obsidian-to-anki prompts/ + claude-code prompts/
-    agents/          <- obsidian-to-anki agents/ (PydanticAI)
-    learning/        <- obsidian-to-anki agents/agent_learning.py
-  obsidian/        # NEW: vault parsing
-    parser.py        <- obsidian-to-anki obsidian/parser.py
-    frontmatter.py   <- obsidian-to-anki obsidian/frontmatter.py
-    sync.py          <- obsidian-to-anki sync/note_scanner + processor
-  llm/             # NEW: provider abstraction
-    base.py          <- obsidian-to-anki providers/ (BaseLLMProvider)
-    factory.py       <- obsidian-to-anki providers/ (ProviderFactory)
-    ollama.py        <- obsidian-to-anki providers/ollama.py
-    openrouter.py    <- obsidian-to-anki providers/openrouter/
-  validation/      # NEW: card quality pipeline
-    pipeline.py      <- obsidian-to-anki validation/orchestrator.py
-    quality.py       <- ai-agent-anki 5-dimension rubric
-  rag/             # NEW: retrieval-augmented generation
-    indexer.py       <- obsidian-to-anki rag/indexer.py
-    retriever.py     <- obsidian-to-anki rag/retriever.py
-  taxonomy/        # NEW: tag system
-    tags.py          <- ai-agent-anki TAGS.md + claude-code tag_taxonomy.py
-    normalize.py     <- tag normalization and validation
-
-apps/
-  api/             # (exists) unchanged initially
-  cli/             # (exists) + new commands: generate, validate, obsidian-sync, tag-audit
-  mcp/             # (exists) + new tools: generate, validate, obsidian_sync
-  worker.py        # (exists) unchanged
+Cargo.toml              # workspace root
+crates/<name>/          # library crates
+  Cargo.toml
+  src/lib.rs            # crate root, re-exports
+  src/<module>.rs        # implementation modules
+bins/<name>/            # binary crates
+  Cargo.toml
+  src/main.rs
 ```
 
-## Working Rules
+## Reference Material
 
-1. **Study source thoroughly** before migrating -- understand what the code does, not just its shape
-2. **Adapt to anki-atlas conventions** -- don't copy verbatim:
-   - `from __future__ import annotations` in every file
-   - Double quotes, 100 char line limit, ruff formatting
-   - Immutability-first (frozen dataclasses, Final where appropriate)
-   - structlog for logging (no print())
-   - Complete type hints, mypy strict
-3. **Rewrite imports**: `obsidian_anki_sync.X` -> `packages.X`, `src.X` -> `packages.X`
-4. **Every migrated module needs at least one test**
-5. **No circular dependencies** between packages
-6. **`make check` must pass** after every spec (lint + typecheck + test)
-7. **One commit per spec**: `feat(<package>): migrate <component> from <source>`
-8. **Max 600 lines per file** -- split if necessary
+- Python source is in `packages/` and `apps/` directories
+- Read Python code to understand BEHAVIOR, then write idiomatic Rust
+- Do NOT transliterate Python line-by-line
+- The spec lists the exact public API to implement
 
-## Spec Execution Order
+## Quality Gates (Backpressure)
 
-Read specs from `specs/` in filename order (00-foundation first, then 01-domain, etc.).
+Before moving to the next component, ALL must pass:
+```bash
+cargo test -p <crate>
+cargo clippy -p <crate> -- -D warnings
+```
 
-For each spec:
-1. Read the spec file completely
-2. Study all source files referenced in the spec
-3. Plan the implementation (write to SCRATCHPAD.md)
-4. Implement: create/modify files in anki-atlas
-5. Add tests
-6. Run `make check` -- must pass
-7. Commit with conventional commit message
-8. Move to next spec
+If clippy or tests fail, fix them before proceeding.
 
 ## Completion
 
-When ALL specs are done and `make check` is green, emit `LOOP_COMPLETE`.
+When ALL acceptance criteria in the spec are met, output exactly:
+
+```
+CRATE_COMPLETE
+```
+
+This signals the ralph loop to stop for this crate.
+
+## Anti-Patterns (Do NOT)
+
+- Do not write all tests at once then all implementation at once
+- Do not skip the refactor phase
+- Do not add features not in the spec
+- Do not use `unwrap()` or `expect()` in library crates
+- Do not use `Rc`, `RefCell` -- use `Arc`, `Mutex`/`RwLock` instead
+- Do not create god-structs -- keep types focused
+- Do not skip commits between TDD phases

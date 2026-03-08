@@ -1,0 +1,150 @@
+event_loop:
+  prompt_file: "PROMPT.md"
+  completion_promise: "CRATE_COMPLETE"
+  max_iterations: 50
+  max_runtime_seconds: 7200
+  checkpoint_interval: 3
+  starting_event: "tdd.start"
+
+cli:
+  backend: "claude"
+
+core:
+  specs_dir: "./specs/"
+
+hats:
+  test_architect:
+    name: "Test Architect"
+    description: "Write failing tests for the next spec component (TDD red phase)"
+    triggers:
+      - "tdd.start"
+      - "refactor.done"
+    publishes:
+      - "tests.written"
+    instructions: |
+      ## RED PHASE - Write Failing Tests
+
+      You are the Test Architect. Your ONLY job is to write tests that fail.
+
+      ### Process
+      1. Read `specs/CURRENT_SPEC.txt` to find the current spec
+      2. Read the spec file to identify the NEXT untested component
+      3. Read the corresponding Python source for behavior reference
+      4. Write comprehensive Rust tests for that component
+
+      ### Test Requirements
+      - Tests MUST compile (`cargo test -p <crate>` should compile)
+      - Tests MUST FAIL (the implementation doesn't exist yet)
+      - Use `mockall` for external dependencies
+      - Use `#[tokio::test]` for async tests
+      - Use `tempfile::TempDir` instead of hardcoded paths
+      - Test both happy path and error cases
+      - Test edge cases (empty input, invalid data, boundary values)
+
+      ### Commit
+      ```
+      git add -A && git commit -m "test(<crate>): red - <component>"
+      ```
+
+      ### Output
+      After committing failing tests, publish event: `tests.written`
+
+  implementer:
+    name: "Implementer"
+    description: "Write minimum code to make failing tests pass (TDD green phase)"
+    triggers:
+      - "tests.written"
+    publishes:
+      - "tests.passing"
+    instructions: |
+      ## GREEN PHASE - Make Tests Pass
+
+      You are the Implementer. Write the MINIMUM code to make failing tests pass.
+
+      ### Rules
+      - Read the failing test output first: `cargo test -p <crate> 2>&1 | tail -50`
+      - Write just enough code to pass. No gold-plating.
+      - If a test expects a trait, create the trait with exactly the methods tested
+      - If a test expects a struct, create it with exactly the fields tested
+      - Use `todo!()` for methods not yet tested (they'll come in future RED phases)
+
+      ### Quality Check
+      ```bash
+      cargo test -p <crate>
+      ```
+      ALL tests must pass before proceeding.
+
+      ### Commit
+      ```
+      git add -A && git commit -m "feat(<crate>): green - <component>"
+      ```
+
+      ### Output
+      After all tests pass and committed, publish event: `tests.passing`
+
+  refactorer:
+    name: "Refactorer"
+    description: "Clean up code and run clippy while keeping tests green (TDD refactor phase)"
+    triggers:
+      - "tests.passing"
+    publishes:
+      - "refactor.done"
+      - "crate.verified"
+    instructions: |
+      ## REFACTOR PHASE - Clean Up
+
+      You are the Refactorer. Improve code quality while keeping tests green.
+
+      ### Checklist
+      1. Run `cargo clippy -p <crate> -- -D warnings` and fix all warnings
+      2. Remove code duplication
+      3. Improve naming (follow Rust conventions: snake_case functions, CamelCase types)
+      4. Extract helper functions if code is repeated
+      5. Add `#[instrument]` to public async functions
+      6. Ensure all public items have doc comments
+      7. Run `cargo test -p <crate>` to verify tests still pass
+
+      ### Decision Point
+      - If there are MORE components in the spec to implement:
+        Commit and publish `refactor.done` (loops back to Test Architect)
+      - If ALL spec components are implemented:
+        Commit and publish `crate.verified` (moves to Verifier)
+
+      ### Commit
+      ```
+      git add -A && git commit -m "refactor(<crate>): <what changed>"
+      ```
+
+  verifier:
+    name: "Verifier"
+    description: "Verify all acceptance criteria are met and output CRATE_COMPLETE"
+    triggers:
+      - "crate.verified"
+    publishes:
+      - "crate.done"
+    instructions: |
+      ## VERIFICATION PHASE - Final Check
+
+      You are the Verifier. Confirm the crate meets ALL acceptance criteria.
+
+      ### Verification Steps
+      1. Read the spec file and check EVERY acceptance criterion
+      2. Run full test suite: `cargo test -p <crate>`
+      3. Run clippy: `cargo clippy -p <crate> -- -D warnings`
+      4. Run format check: `cargo fmt -p <crate> -- --check`
+      5. Verify all public types are `Send + Sync`:
+         ```rust
+         fn assert_send_sync<T: Send + Sync>() {}
+         // In tests: assert_send_sync::<YourType>();
+         ```
+      6. Check that the crate compiles as part of the workspace:
+         `cargo check --workspace`
+
+      ### If ALL Checks Pass
+      Output exactly on its own line:
+      ```
+      CRATE_COMPLETE
+      ```
+
+      ### If Any Check Fails
+      Describe what failed and publish `tdd.start` to loop back and fix it.
