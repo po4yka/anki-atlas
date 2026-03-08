@@ -2,6 +2,7 @@ pub mod analyzer;
 pub mod error;
 pub mod frontmatter;
 pub mod parser;
+pub mod sync;
 
 pub use analyzer::{VaultAnalyzer, VaultStats};
 pub use error::ObsidianError;
