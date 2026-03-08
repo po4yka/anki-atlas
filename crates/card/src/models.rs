@@ -27,18 +27,11 @@ pub enum CognitiveLoad {
 }
 
 /// Validation error for card domain types.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("card validation failed: {messages:?}")]
 pub struct CardValidationError {
     pub messages: Vec<String>,
 }
-
-impl std::fmt::Display for CardValidationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "card validation failed: {:?}", self.messages)
-    }
-}
-
-impl std::error::Error for CardValidationError {}
 
 /// Value object linking a card to its source Obsidian note.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -89,6 +82,13 @@ fn is_valid_hash6(h: &str) -> bool {
     h.len() == 6 && h.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+/// Push an error if `value` is empty.
+fn require_non_empty(errors: &mut Vec<String>, field: &str, value: &str) {
+    if value.is_empty() {
+        errors.push(format!("{field} must not be empty"));
+    }
+}
+
 impl CardManifest {
     /// Validate and construct. Returns Err with all validation failures.
     #[allow(clippy::too_many_arguments)]
@@ -109,27 +109,15 @@ impl CardManifest {
     ) -> Result<Self, CardValidationError> {
         let mut errors = Vec::new();
 
-        if slug.is_empty() {
-            errors.push("slug must not be empty".into());
-        }
-        if slug_base.is_empty() {
-            errors.push("slug_base must not be empty".into());
-        }
+        require_non_empty(&mut errors, "slug", &slug);
+        require_non_empty(&mut errors, "slug_base", &slug_base);
         if !is_valid_lang(&lang) {
             errors.push(format!("lang must be a valid 2-letter language code, got '{lang}'"));
         }
-        if source_path.is_empty() {
-            errors.push("source_path must not be empty".into());
-        }
-        if source_anchor.is_empty() {
-            errors.push("source_anchor must not be empty".into());
-        }
-        if note_id.is_empty() {
-            errors.push("note_id must not be empty".into());
-        }
-        if note_title.is_empty() {
-            errors.push("note_title must not be empty".into());
-        }
+        require_non_empty(&mut errors, "source_path", &source_path);
+        require_non_empty(&mut errors, "source_anchor", &source_anchor);
+        require_non_empty(&mut errors, "note_id", &note_id);
+        require_non_empty(&mut errors, "note_title", &note_title);
         if let Some(ref h) = hash6 {
             if !is_valid_hash6(h) {
                 errors.push(format!("hash6 must be exactly 6 hex chars, got '{h}'"));
@@ -315,16 +303,11 @@ impl SyncAction {
         anki_guid: Option<String>,
         reason: Option<String>,
     ) -> Result<Self, CardValidationError> {
-        let mut errors = Vec::new();
-
-        let needs_guid =
-            matches!(action_type, SyncActionType::Update | SyncActionType::Delete);
+        let needs_guid = matches!(action_type, SyncActionType::Update | SyncActionType::Delete);
         if needs_guid && anki_guid.is_none() {
-            errors.push("anki_guid is required for UPDATE/DELETE actions".into());
-        }
-
-        if !errors.is_empty() {
-            return Err(CardValidationError { messages: errors });
+            return Err(CardValidationError {
+                messages: vec!["anki_guid is required for UPDATE/DELETE actions".into()],
+            });
         }
 
         Ok(Self {
