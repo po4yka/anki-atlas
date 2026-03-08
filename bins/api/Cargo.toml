@@ -1,0 +1,12 @@
+[package]
+name = "anki-atlas-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "anki-atlas-api"
+path = "src/main.rs"
+
+[dependencies]
