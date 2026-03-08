@@ -80,7 +80,10 @@ impl LlmProvider for OllamaProvider {
             req = req.header("Authorization", format!("Bearer {api_key}"));
         }
 
-        let resp = req.send().await.map_err(|e| LlmError::Connection(e.to_string()))?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| LlmError::Connection(e.to_string()))?;
 
         let status = resp.status().as_u16();
         if status != 200 {

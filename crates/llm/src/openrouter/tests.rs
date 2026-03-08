@@ -262,7 +262,10 @@ async fn generate_retries_on_429_then_succeeds() {
         .generate("openai/gpt-4", "Hi", &GenerateOptions::default())
         .await;
 
-    assert!(result.is_ok(), "should succeed after retry, got: {result:?}");
+    assert!(
+        result.is_ok(),
+        "should succeed after retry, got: {result:?}"
+    );
 }
 
 #[tokio::test]
@@ -470,7 +473,10 @@ async fn generate_sends_authorization_header() {
         .generate("openai/gpt-4", "Hi", &GenerateOptions::default())
         .await;
 
-    assert!(result.is_ok(), "expected Ok with auth header, got: {result:?}");
+    assert!(
+        result.is_ok(),
+        "expected Ok with auth header, got: {result:?}"
+    );
 }
 
 #[tokio::test]
@@ -500,7 +506,10 @@ async fn generate_sends_site_headers_when_configured() {
         .generate("openai/gpt-4", "Hi", &GenerateOptions::default())
         .await;
 
-    assert!(result.is_ok(), "expected Ok with site headers, got: {result:?}");
+    assert!(
+        result.is_ok(),
+        "expected Ok with site headers, got: {result:?}"
+    );
 }
 
 // -- Send + Sync --

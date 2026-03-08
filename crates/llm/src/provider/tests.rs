@@ -9,7 +9,10 @@ use super::*;
 fn generate_options_default_has_expected_values() {
     let opts = GenerateOptions::default();
     assert_eq!(opts.system, "");
-    assert!((opts.temperature - 0.7).abs() < f32::EPSILON, "default temperature should be 0.7");
+    assert!(
+        (opts.temperature - 0.7).abs() < f32::EPSILON,
+        "default temperature should be 0.7"
+    );
     assert!(!opts.json_mode);
     assert!(opts.json_schema.is_none());
 }
@@ -41,19 +44,18 @@ fn generate_options_debug_format() {
 #[tokio::test]
 async fn mock_provider_generate_returns_configured_response() {
     let mut mock = MockLlmProvider::new();
-    mock.expect_generate()
-        .returning(|_model, _prompt, _opts| {
-            Box::pin(async {
-                Ok(LlmResponse {
-                    text: "Hello from mock".to_string(),
-                    model: "test-model".to_string(),
-                    prompt_tokens: Some(10),
-                    completion_tokens: Some(20),
-                    finish_reason: Some("stop".to_string()),
-                    raw: HashMap::new(),
-                })
+    mock.expect_generate().returning(|_model, _prompt, _opts| {
+        Box::pin(async {
+            Ok(LlmResponse {
+                text: "Hello from mock".to_string(),
+                model: "test-model".to_string(),
+                prompt_tokens: Some(10),
+                completion_tokens: Some(20),
+                finish_reason: Some("stop".to_string()),
+                raw: HashMap::new(),
             })
-        });
+        })
+    });
 
     let opts = GenerateOptions::default();
     let result = mock.generate("test-model", "Hello", &opts).await;
@@ -67,12 +69,9 @@ async fn mock_provider_generate_returns_configured_response() {
 #[tokio::test]
 async fn mock_provider_generate_can_return_error() {
     let mut mock = MockLlmProvider::new();
-    mock.expect_generate()
-        .returning(|_model, _prompt, _opts| {
-            Box::pin(async {
-                Err(LlmError::Connection("test error".to_string()))
-            })
-        });
+    mock.expect_generate().returning(|_model, _prompt, _opts| {
+        Box::pin(async { Err(LlmError::Connection("test error".to_string())) })
+    });
 
     let opts = GenerateOptions::default();
     let result = mock.generate("model", "prompt", &opts).await;
@@ -90,11 +89,8 @@ async fn mock_provider_check_connection() {
 #[tokio::test]
 async fn mock_provider_list_models() {
     let mut mock = MockLlmProvider::new();
-    mock.expect_list_models().returning(|| {
-        Box::pin(async {
-            Ok(vec!["model-a".to_string(), "model-b".to_string()])
-        })
-    });
+    mock.expect_list_models()
+        .returning(|| Box::pin(async { Ok(vec!["model-a".to_string(), "model-b".to_string()]) }));
 
     let models = mock.list_models().await.unwrap();
     assert_eq!(models.len(), 2);
@@ -153,7 +149,9 @@ async fn generate_json_parses_valid_json_response() {
     };
 
     let opts = GenerateOptions::default();
-    let result = provider.generate_json("test-model", "give json", &opts).await;
+    let result = provider
+        .generate_json("test-model", "give json", &opts)
+        .await;
     assert!(result.is_ok());
     let map = result.unwrap();
     assert_eq!(map.get("key").unwrap(), "value");

@@ -313,7 +313,10 @@ async fn generate_sends_auth_header_when_api_key_set() {
     let result = provider
         .generate("llama3", "Hi", &GenerateOptions::default())
         .await;
-    assert!(result.is_ok(), "expected Ok with auth header, got: {result:?}");
+    assert!(
+        result.is_ok(),
+        "expected Ok with auth header, got: {result:?}"
+    );
 }
 
 // --- check_connection ---

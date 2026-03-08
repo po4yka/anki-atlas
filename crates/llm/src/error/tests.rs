@@ -26,10 +26,7 @@ fn invalid_json_error_display() {
         message: "expected object".to_string(),
         response_text: "not json".to_string(),
     };
-    assert_eq!(
-        err.to_string(),
-        "invalid JSON response: expected object"
-    );
+    assert_eq!(err.to_string(), "invalid JSON response: expected object");
 }
 
 #[test]
@@ -51,10 +48,7 @@ fn exhausted_error_display() {
         message: "timeout".to_string(),
         attempts: 3,
     };
-    assert_eq!(
-        err.to_string(),
-        "request failed after 3 retries: timeout"
-    );
+    assert_eq!(err.to_string(), "request failed after 3 retries: timeout");
 }
 
 #[test]

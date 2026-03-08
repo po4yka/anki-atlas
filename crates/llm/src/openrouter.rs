@@ -175,7 +175,10 @@ impl LlmProvider for OpenRouterProvider {
                 req = req.header("X-Title", site_name);
             }
 
-            let response = req.send().await.map_err(|e| LlmError::Connection(e.to_string()))?;
+            let response = req
+                .send()
+                .await
+                .map_err(|e| LlmError::Connection(e.to_string()))?;
             let status = response.status().as_u16();
 
             if status == 200 {
@@ -227,13 +230,10 @@ impl LlmProvider for OpenRouterProvider {
             .await
             .map_err(|e| LlmError::Connection(e.to_string()))?;
 
-        let body: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| LlmError::Provider {
-                message: format!("failed to parse models response: {e}"),
-                source: Some(Box::new(e)),
-            })?;
+        let body: serde_json::Value = response.json().await.map_err(|e| LlmError::Provider {
+            message: format!("failed to parse models response: {e}"),
+            source: Some(Box::new(e)),
+        })?;
 
         let models = body["data"]
             .as_array()
