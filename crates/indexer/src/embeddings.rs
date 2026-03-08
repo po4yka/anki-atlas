@@ -38,12 +38,12 @@ pub fn content_hash(model_name: &str, text: &str) -> String {
 /// Mock embedding provider for tests. Returns deterministic vectors from MD5 hash.
 #[derive(Debug, Clone)]
 pub struct MockEmbeddingProvider {
-    dim: usize,
+    dimension: usize,
 }
 
 impl MockEmbeddingProvider {
     pub fn new(dimension: usize) -> Self {
-        Self { dim: dimension }
+        Self { dimension }
     }
 }
 
@@ -54,15 +54,15 @@ impl EmbeddingProvider for MockEmbeddingProvider {
     }
 
     fn dimension(&self) -> usize {
-        self.dim
+        self.dimension
     }
 
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
         let mut results = Vec::with_capacity(texts.len());
         for text in texts {
             let hash_bytes = md5::compute(text.as_bytes()).0;
-            let mut vec = Vec::with_capacity(self.dim);
-            for i in 0..self.dim {
+            let mut vec = Vec::with_capacity(self.dimension);
+            for i in 0..self.dimension {
                 let byte = hash_bytes[i % 16];
                 let val = (f32::from(byte) / 127.5) - 1.0;
                 vec.push(val);
@@ -75,8 +75,8 @@ impl EmbeddingProvider for MockEmbeddingProvider {
 
 /// OpenAI embedding provider.
 pub struct OpenAiEmbeddingProvider {
-    _model: String,
-    _dimension: usize,
+    model: String,
+    dimension: usize,
     _batch_size: usize,
     _client: reqwest::Client,
     _api_key: String,
@@ -91,8 +91,8 @@ impl OpenAiEmbeddingProvider {
         let api_key = std::env::var("OPENAI_API_KEY")
             .map_err(|_| EmbeddingError::NotConfigured("OPENAI_API_KEY not set".into()))?;
         Ok(Self {
-            _model: model.into(),
-            _dimension: dimension,
+            model: model.into(),
+            dimension,
             _batch_size: batch_size,
             _client: reqwest::Client::new(),
             _api_key: api_key,
@@ -103,11 +103,11 @@ impl OpenAiEmbeddingProvider {
 #[async_trait]
 impl EmbeddingProvider for OpenAiEmbeddingProvider {
     fn model_name(&self) -> &str {
-        &self._model
+        &self.model
     }
 
     fn dimension(&self) -> usize {
-        self._dimension
+        self.dimension
     }
 
     async fn embed(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
@@ -117,8 +117,8 @@ impl EmbeddingProvider for OpenAiEmbeddingProvider {
 
 /// Google Gemini embedding provider.
 pub struct GoogleEmbeddingProvider {
-    _model: String,
-    _dimension: usize,
+    model: String,
+    dimension: usize,
     _batch_size: usize,
     _client: reqwest::Client,
     _api_key: String,
@@ -133,8 +133,8 @@ impl GoogleEmbeddingProvider {
         let api_key = std::env::var("GOOGLE_API_KEY")
             .map_err(|_| EmbeddingError::NotConfigured("GOOGLE_API_KEY not set".into()))?;
         Ok(Self {
-            _model: model.into(),
-            _dimension: dimension,
+            model: model.into(),
+            dimension,
             _batch_size: batch_size,
             _client: reqwest::Client::new(),
             _api_key: api_key,
@@ -145,11 +145,11 @@ impl GoogleEmbeddingProvider {
 #[async_trait]
 impl EmbeddingProvider for GoogleEmbeddingProvider {
     fn model_name(&self) -> &str {
-        &self._model
+        &self.model
     }
 
     fn dimension(&self) -> usize {
-        self._dimension
+        self.dimension
     }
 
     async fn embed(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
