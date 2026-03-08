@@ -1,8 +1,8 @@
+use crate::AnalyticsError;
 use crate::coverage::{TopicCoverage, TopicGap, WeakNote};
 use crate::duplicates::{DuplicateCluster, DuplicateStats};
 use crate::labeling::LabelingStats;
 use crate::taxonomy::Taxonomy;
-use crate::AnalyticsError;
 
 /// Facade aggregating taxonomy, coverage, labeling, and duplicate detection.
 pub struct AnalyticsService<E, V>
@@ -148,8 +148,10 @@ mod tests {
     fn analytics_service_is_generic() {
         // Verify the service compiles with mock types
         // (this is a compile-time check, the test body doesn't matter)
-        fn _check<E: indexer::embeddings::EmbeddingProvider, V: indexer::qdrant::VectorRepository>(
-        ) {
+        fn _check<
+            E: indexer::embeddings::EmbeddingProvider,
+            V: indexer::qdrant::VectorRepository,
+        >() {
             assert_send_sync::<AnalyticsService<E, V>>();
         }
     }

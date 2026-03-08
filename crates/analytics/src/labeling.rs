@@ -34,11 +34,7 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
         norm_b += bi * bi;
     }
     let denom = norm_a.sqrt() * norm_b.sqrt();
-    if denom == 0.0 {
-        0.0
-    } else {
-        dot / denom
-    }
+    if denom == 0.0 { 0.0 } else { dot / denom }
 }
 
 /// Rank topics by cosine similarity to a note embedding.
@@ -69,7 +65,11 @@ pub(crate) fn rank_topics_for_note(
             }
         })
         .collect();
-    assignments.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+    assignments.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     assignments.truncate(max_topics);
     assignments
 }

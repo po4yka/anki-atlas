@@ -175,9 +175,7 @@ pub async fn sync_taxonomy_to_db(
 }
 
 /// Load taxonomy from database, reconstructing tree structure.
-pub async fn load_taxonomy_from_db(
-    _pool: &sqlx::PgPool,
-) -> Result<Taxonomy, AnalyticsError> {
+pub async fn load_taxonomy_from_db(_pool: &sqlx::PgPool) -> Result<Taxonomy, AnalyticsError> {
     todo!()
 }
 
@@ -266,7 +264,9 @@ mod tests {
 
         taxonomy.topics.insert("a".to_string(), root.clone());
         taxonomy.topics.insert("a/b".to_string(), child.clone());
-        taxonomy.topics.insert("a/b/c".to_string(), grandchild.clone());
+        taxonomy
+            .topics
+            .insert("a/b/c".to_string(), grandchild.clone());
         taxonomy.topics.insert("x".to_string(), other_root.clone());
         taxonomy.topics.insert("ab".to_string(), ab_trap.clone());
 
