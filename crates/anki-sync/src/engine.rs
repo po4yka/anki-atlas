@@ -1,4 +1,6 @@
-use crate::progress::ProgressTracker;
+use std::time::Instant;
+
+use crate::progress::{ProgressTracker, SyncPhase};
 use crate::state::StateDB;
 
 /// Result of an engine-level sync operation.
@@ -16,27 +18,52 @@ pub struct SyncResult {
 ///
 /// Lifecycle: INITIALIZING -> SCANNING -> APPLYING -> COMPLETED/FAILED
 pub struct SyncEngine {
-    _state_db: StateDB,
-    _progress: ProgressTracker,
+    state_db: StateDB,
+    progress: ProgressTracker,
 }
 
 impl SyncEngine {
-    pub fn new(_state_db: StateDB, _progress: Option<ProgressTracker>) -> Self {
-        todo!()
+    pub fn new(state_db: StateDB, progress: Option<ProgressTracker>) -> Self {
+        let progress = progress.unwrap_or_else(|| ProgressTracker::new(None));
+        Self { state_db, progress }
     }
 
     /// Access the state database.
     pub fn state_db(&self) -> &StateDB {
-        todo!()
+        &self.state_db
     }
 
     /// Access the progress tracker.
     pub fn progress(&self) -> &ProgressTracker {
-        todo!()
+        &self.progress
     }
 
     /// Run the sync lifecycle.
-    pub fn sync(&mut self, _dry_run: bool) -> Result<SyncResult, Box<dyn std::error::Error>> {
-        todo!()
+    pub fn sync(&mut self, dry_run: bool) -> Result<SyncResult, Box<dyn std::error::Error>> {
+        let start = Instant::now();
+
+        // SCANNING phase
+        self.progress.set_phase(SyncPhase::Scanning);
+        let states = self.state_db.get_all();
+        self.progress.set_total(states.len() as i32);
+
+        // APPLYING phase (skip for dry run)
+        if !dry_run {
+            self.progress.set_phase(SyncPhase::Applying);
+        }
+
+        // COMPLETED
+        self.progress.set_phase(SyncPhase::Completed);
+
+        let duration_ms = start.elapsed().as_millis() as i64;
+
+        Ok(SyncResult {
+            cards_created: 0,
+            cards_updated: 0,
+            cards_deleted: 0,
+            cards_skipped: 0,
+            errors: 0,
+            duration_ms,
+        })
     }
 }
