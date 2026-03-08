@@ -36,6 +36,7 @@ impl Default for OpenRouterConfig {
     }
 }
 
+/// OpenRouter LLM provider with retry logic and exponential backoff.
 pub struct OpenRouterProvider {
     config: OpenRouterConfig,
     client: Client,
