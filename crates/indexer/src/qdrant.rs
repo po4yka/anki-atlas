@@ -122,17 +122,8 @@ impl QdrantRepository {
     /// Connect to Qdrant and create repository.
     pub async fn new(url: &str, collection_name: &str) -> Result<Self, VectorStoreError> {
         // Validate URL by parsing it
-        let parsed = reqwest::Url::parse(url)
+        reqwest::Url::parse(url)
             .map_err(|e| VectorStoreError::Connection(format!("invalid URL: {e}")))?;
-
-        // Validate port range
-        if let Some(port) = parsed.port() {
-            if port > 65535 {
-                return Err(VectorStoreError::Connection(format!(
-                    "invalid port: {port}"
-                )));
-            }
-        }
 
         // Try to connect to validate the URL is reachable
         let _client = qdrant_client::Qdrant::from_url(url)
