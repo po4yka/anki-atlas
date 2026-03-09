@@ -17,16 +17,16 @@ path = "src/main.rs"
 common = { path = "../../crates/common" }
 obsidian = { path = "../../crates/obsidian" }
 
-rmcp = { version = "1.1", features = ["transport-io"] }
+rmcp = { workspace = true }
 schemars = { workspace = true }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
-anyhow = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-serde_json = "1"
+tokio = { workspace = true }
+serde_json = { workspace = true }
 tempfile = { workspace = true }

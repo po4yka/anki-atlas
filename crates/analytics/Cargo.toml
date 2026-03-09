@@ -9,16 +9,16 @@ license.workspace = true
 common = { path = "../common" }
 database = { path = "../database" }
 indexer = { path = "../indexer" }
-async-trait = "0.1"
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-serde_yaml = "0.9"
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"] }
-thiserror = "2"
-tracing = "0.1"
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
-mockall = "0.13"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-tempfile = "3"
+mockall = { workspace = true }
+tokio = { workspace = true }
+tempfile = { workspace = true }

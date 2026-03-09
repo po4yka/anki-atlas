@@ -1,20 +1,20 @@
 use crate::models::{AnkiCard, AnkiDeck, AnkiNote};
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
-static CLOZE_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\{\{c\d+::([^}]+?)(?:::[^}]+)?\}\}").unwrap());
+static CLOZE_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{\{c\d+::([^}]+?)(?:::[^}]+)?\}\}").unwrap());
 
-static HTML_TAG_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"<[^>]+>").unwrap());
+static HTML_TAG_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap());
 
-static WHITESPACE_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
+static WHITESPACE_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
 
-static CODE_BLOCK_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?is)<pre[^>]*>(.*?)</pre>").unwrap());
+static CODE_BLOCK_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<pre[^>]*>(.*?)</pre>").unwrap());
 
-static CODE_INLINE_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?is)<code[^>]*>(.*?)</code>").unwrap());
+static CODE_INLINE_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<code[^>]*>(.*?)</code>").unwrap());
 
 /// Strip HTML tags from text.
 pub fn strip_html(text: &str, preserve_code: bool) -> String {

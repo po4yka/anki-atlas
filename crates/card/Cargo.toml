@@ -7,14 +7,14 @@ license.workspace = true
 
 [dependencies]
 common = { path = "../common" }
-serde = { version = "1", features = ["derive"] }
-sha2 = "0.10"
-regex = "1"
+serde = { workspace = true }
+sha2 = { workspace = true }
+regex = { workspace = true }
 unicode-normalization = "0.1"
-thiserror = "2"
-tracing = "0.1"
-chrono = { version = "0.4", features = ["serde"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+rusqlite = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = { workspace = true }

@@ -63,45 +63,73 @@ pub struct SearchFilters {
     pub min_reps: Option<i32>,
 }
 
-/// Build SQL WHERE clauses for search filters (appended with AND).
-fn build_filter_clauses(filters: Option<&SearchFilters>) -> String {
+/// Bind value for a parameterized filter clause.
+#[derive(Debug, Clone)]
+enum FilterBind {
+    StringArray(Vec<String>),
+    I64Array(Vec<i64>),
+    I32(i32),
+}
+
+/// Build SQL WHERE clauses for search filters using parameterized queries.
+///
+/// Returns the SQL fragment and a list of bind values. The parameter indices
+/// start at `param_offset` (e.g., 3 means the first placeholder is `$3`).
+fn build_filter_clauses(
+    filters: Option<&SearchFilters>,
+    param_offset: i32,
+) -> (String, Vec<FilterBind>) {
     let filters = match filters {
         Some(f) => f,
-        None => return String::new(),
+        None => return (String::new(), vec![]),
     };
     let mut clauses = Vec::new();
+    let mut binds: Vec<FilterBind> = Vec::new();
+    let mut idx = param_offset;
 
     if let Some(ref tags) = filters.tags {
-        let quoted: Vec<String> = tags.iter().map(|t| format!("'{}'", t)).collect();
-        clauses.push(format!("AND n.tags && ARRAY[{}]", quoted.join(",")));
+        clauses.push(format!("AND n.tags && ${idx}::text[]"));
+        binds.push(FilterBind::StringArray(tags.clone()));
+        idx += 1;
     }
     if let Some(ref tags_ex) = filters.tags_exclude {
-        let quoted: Vec<String> = tags_ex.iter().map(|t| format!("'{}'", t)).collect();
-        clauses.push(format!("AND NOT (n.tags && ARRAY[{}])", quoted.join(",")));
+        clauses.push(format!("AND NOT (n.tags && ${idx}::text[])"));
+        binds.push(FilterBind::StringArray(tags_ex.clone()));
+        idx += 1;
     }
     if let Some(ref model_ids) = filters.model_ids {
-        let ids: Vec<String> = model_ids.iter().map(|id| id.to_string()).collect();
-        clauses.push(format!("AND n.mid IN ({})", ids.join(",")));
+        clauses.push(format!("AND n.mid = ANY(${idx}::bigint[])"));
+        binds.push(FilterBind::I64Array(model_ids.clone()));
+        idx += 1;
     }
     if let Some(ref deck_names) = filters.deck_names {
-        let quoted: Vec<String> = deck_names.iter().map(|d| format!("'{}'", d)).collect();
-        clauses.push(format!("AND d.name IN ({})", quoted.join(",")));
+        clauses.push(format!("AND d.name = ANY(${idx}::text[])"));
+        binds.push(FilterBind::StringArray(deck_names.clone()));
+        idx += 1;
     }
     if let Some(ref deck_names_ex) = filters.deck_names_exclude {
-        let quoted: Vec<String> = deck_names_ex.iter().map(|d| format!("'{}'", d)).collect();
-        clauses.push(format!("AND d.name NOT IN ({})", quoted.join(",")));
+        clauses.push(format!("AND d.name != ALL(${idx}::text[])"));
+        binds.push(FilterBind::StringArray(deck_names_ex.clone()));
+        idx += 1;
     }
     if let Some(min_ivl) = filters.min_ivl {
-        clauses.push(format!("AND c.ivl >= {}", min_ivl));
+        clauses.push(format!("AND c.ivl >= ${idx}"));
+        binds.push(FilterBind::I32(min_ivl));
+        idx += 1;
     }
     if let Some(max_lapses) = filters.max_lapses {
-        clauses.push(format!("AND c.lapses <= {}", max_lapses));
+        clauses.push(format!("AND c.lapses <= ${idx}"));
+        binds.push(FilterBind::I32(max_lapses));
+        idx += 1;
     }
     if let Some(min_reps) = filters.min_reps {
-        clauses.push(format!("AND c.reps >= {}", min_reps));
+        clauses.push(format!("AND c.reps >= ${idx}"));
+        binds.push(FilterBind::I32(min_reps));
+        #[allow(unused_assignments)]
+        { idx += 1; }
     }
 
-    clauses.join(" ")
+    (clauses.join(" "), binds)
 }
 
 /// Check if filters require joining cards/decks tables.
@@ -147,6 +175,32 @@ fn rows_to_results(rows: Vec<FtsRow>, source: FtsSource) -> Vec<FtsResult> {
         .collect()
 }
 
+/// Bind filter values to a sqlx query. Each bind must match the order from `build_filter_clauses`.
+fn bind_filters<'q>(
+    mut q: sqlx::query::QueryAs<
+        'q,
+        sqlx::Postgres,
+        FtsRow,
+        sqlx::postgres::PgArguments,
+    >,
+    binds: &'q [FilterBind],
+) -> sqlx::query::QueryAs<'q, sqlx::Postgres, FtsRow, sqlx::postgres::PgArguments> {
+    for bind in binds {
+        match bind {
+            FilterBind::StringArray(arr) => {
+                q = q.bind(arr);
+            }
+            FilterBind::I64Array(arr) => {
+                q = q.bind(arr);
+            }
+            FilterBind::I32(val) => {
+                q = q.bind(val);
+            }
+        }
+    }
+    q
+}
+
 /// Execute lexical search with FTS -> fuzzy -> autocomplete fallback chain.
 #[instrument(skip(pool))]
 pub async fn search_lexical(
@@ -166,7 +220,8 @@ pub async fn search_lexical(
     }
 
     let join = join_clause(filters);
-    let filter_sql = build_filter_clauses(filters);
+    // $1 = query text, $2 = limit, filter params start at $3
+    let (filter_sql, filter_binds) = build_filter_clauses(filters, 3);
     let group_by = group_by_clause(filters);
 
     // Stage 1: Full-text search
@@ -177,9 +232,10 @@ pub async fn search_lexical(
          {group_by} ORDER BY rank DESC LIMIT $2",
     );
 
-    let rows: Vec<FtsRow> = sqlx::query_as(&fts_sql)
+    let base = sqlx::query_as::<_, FtsRow>(&fts_sql)
         .bind(query)
-        .bind(limit)
+        .bind(limit);
+    let rows: Vec<FtsRow> = bind_filters(base, &filter_binds)
         .fetch_all(pool)
         .await?;
 
@@ -201,9 +257,10 @@ pub async fn search_lexical(
          {group_by} ORDER BY rank DESC LIMIT $2",
     );
 
-    let rows: Vec<FtsRow> = sqlx::query_as(&fuzzy_sql)
+    let base = sqlx::query_as::<_, FtsRow>(&fuzzy_sql)
         .bind(query)
-        .bind(limit)
+        .bind(limit);
+    let rows: Vec<FtsRow> = bind_filters(base, &filter_binds)
         .fetch_all(pool)
         .await?;
 
@@ -225,9 +282,10 @@ pub async fn search_lexical(
     );
 
     let prefix_pattern = format!("{}%", query);
-    let rows: Vec<FtsRow> = sqlx::query_as(&auto_sql)
+    let base = sqlx::query_as::<_, FtsRow>(&auto_sql)
         .bind(&prefix_pattern)
-        .bind(limit)
+        .bind(limit);
+    let rows: Vec<FtsRow> = bind_filters(base, &filter_binds)
         .fetch_all(pool)
         .await?;
 
@@ -428,6 +486,68 @@ mod tests {
         assert_eq!(filters.min_ivl, Some(7));
         assert!(filters.deck_names.is_none());
         assert!(filters.model_ids.is_none());
+    }
+
+    // --- build_filter_clauses tests ---
+
+    #[test]
+    fn filter_clauses_none_returns_empty() {
+        let (sql, binds) = build_filter_clauses(None, 3);
+        assert!(sql.is_empty());
+        assert!(binds.is_empty());
+    }
+
+    #[test]
+    fn filter_clauses_empty_filters_returns_empty() {
+        let filters = SearchFilters::default();
+        let (sql, binds) = build_filter_clauses(Some(&filters), 3);
+        assert!(sql.is_empty());
+        assert!(binds.is_empty());
+    }
+
+    #[test]
+    fn filter_clauses_uses_parameterized_placeholders() {
+        let filters = SearchFilters {
+            tags: Some(vec!["rust".into()]),
+            deck_names: Some(vec!["Default".into()]),
+            min_ivl: Some(21),
+            ..Default::default()
+        };
+        let (sql, binds) = build_filter_clauses(Some(&filters), 3);
+        // Should use $3, $4, $5 placeholders, NOT interpolated strings
+        assert!(sql.contains("$3"));
+        assert!(sql.contains("$4"));
+        assert!(sql.contains("$5"));
+        assert!(!sql.contains("rust"));
+        assert!(!sql.contains("Default"));
+        assert!(!sql.contains("21"));
+        assert_eq!(binds.len(), 3);
+    }
+
+    #[test]
+    fn filter_clauses_respects_param_offset() {
+        let filters = SearchFilters {
+            tags: Some(vec!["test".into()]),
+            ..Default::default()
+        };
+        let (sql, _) = build_filter_clauses(Some(&filters), 5);
+        assert!(sql.contains("$5"));
+        assert!(!sql.contains("$3"));
+    }
+
+    #[test]
+    fn filter_clauses_sql_injection_safe() {
+        let filters = SearchFilters {
+            tags: Some(vec!["'; DROP TABLE notes; --".into()]),
+            deck_names: Some(vec!["'); DELETE FROM decks; --".into()]),
+            ..Default::default()
+        };
+        let (sql, _) = build_filter_clauses(Some(&filters), 3);
+        // SQL should never contain the injected strings
+        assert!(!sql.contains("DROP"));
+        assert!(!sql.contains("DELETE"));
+        assert!(!sql.contains("notes"));
+        assert!(!sql.contains("decks"));
     }
 
     // --- search_lexical behavior tests ---
