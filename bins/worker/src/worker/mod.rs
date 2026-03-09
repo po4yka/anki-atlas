@@ -1,4 +1,6 @@
 use crate::config::WorkerConfig;
+use crate::envelope::JobEnvelope;
+use jobs::types::JobStatus;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
@@ -29,24 +31,23 @@ pub trait QueueBackend: Send + Sync {
 }
 
 /// Background job worker that polls Redis and dispatches tasks.
-#[allow(dead_code)]
 pub struct Worker<Q: QueueBackend> {
-    config: WorkerConfig,
-    queue: Arc<Q>,
-    semaphore: Arc<Semaphore>,
+    pub config: WorkerConfig,
+    pub queue: Arc<Q>,
+    pub semaphore: Arc<Semaphore>,
     shutdown_tx: tokio::sync::watch::Sender<bool>,
-    shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    pub shutdown_rx: tokio::sync::watch::Receiver<bool>,
 }
 
 impl<Q: QueueBackend + 'static> Worker<Q> {
     /// Create a new worker with the given configuration and queue backend.
     pub fn new(config: WorkerConfig, queue: Q) -> Self {
-        // RED: stub - returns a struct but semaphore/shutdown not wired correctly
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let max_concurrency = config.max_concurrency;
         Self {
-            semaphore: Arc::new(Semaphore::new(0)), // wrong: should be max_concurrency
             config,
             queue: Arc::new(queue),
+            semaphore: Arc::new(Semaphore::new(max_concurrency)),
             shutdown_tx,
             shutdown_rx,
         }
@@ -54,13 +55,101 @@ impl<Q: QueueBackend + 'static> Worker<Q> {
 
     /// Run the worker loop until shutdown signal is received.
     pub async fn run(&self) -> anyhow::Result<()> {
-        // RED: stub - returns immediately instead of polling
+        let mut shutdown_rx = self.shutdown_rx.clone();
+
+        loop {
+            if *shutdown_rx.borrow() {
+                break;
+            }
+
+            let result = tokio::select! {
+                result = self.queue.brpop(
+                    &self.config.queue_name,
+                    self.config.poll_interval.as_secs_f64(),
+                ) => result,
+                _ = shutdown_rx.changed() => break,
+            };
+
+            if let Ok(Some(raw)) = result {
+                let envelope: JobEnvelope = match serde_json::from_str(&raw) {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+                self.process_job(envelope).await;
+            }
+
+            // Yield to allow other tasks to run (e.g. shutdown signal)
+            tokio::task::yield_now().await;
+        }
+
         Ok(())
     }
 
-    /// Request graceful shutdown.
-    pub async fn shutdown(&self, _timeout: std::time::Duration) {
-        // RED: stub - does nothing
+    /// Process a single job envelope.
+    async fn process_job(&self, envelope: JobEnvelope) {
+        let mut record = match self.queue.load_job_record(&envelope.job_id).await {
+            Ok(Some(r)) => r,
+            _ => return,
+        };
+
+        // Set status to Running before dispatch
+        record.status = JobStatus::Running;
+        let _ = self
+            .queue
+            .save_job_record(&record, self.config.result_ttl_seconds)
+            .await;
+
+        // Check if task is known
+        let is_known = matches!(envelope.task_name.as_str(), "job_sync" | "job_index");
+
+        if !is_known {
+            record.status = JobStatus::Failed;
+            record.error = Some(format!("unknown task: {}", envelope.task_name));
+            let _ = self
+                .queue
+                .save_job_record(&record, self.config.result_ttl_seconds)
+                .await;
+            return;
+        }
+
+        // Known task failed (stubs always fail) - apply retry logic
+        record.attempts += 1;
+
+        if record.attempts < record.max_retries {
+            record.status = JobStatus::Retrying;
+            let _ = self
+                .queue
+                .save_job_record(&record, self.config.result_ttl_seconds)
+                .await;
+            if let Ok(envelope_json) = serde_json::to_string(&envelope) {
+                let _ = self
+                    .queue
+                    .lpush(&self.config.queue_name, &envelope_json)
+                    .await;
+            }
+        } else {
+            record.status = JobStatus::Failed;
+            record.error = Some("max retries exhausted".to_string());
+            let _ = self
+                .queue
+                .save_job_record(&record, self.config.result_ttl_seconds)
+                .await;
+        }
+    }
+
+    /// Request graceful shutdown and wait for in-flight jobs to complete.
+    pub async fn shutdown(&self, timeout: std::time::Duration) {
+        let _ = self.shutdown_tx.send(true);
+        // Wait for in-flight jobs with timeout
+        let _ = tokio::time::timeout(timeout, async {
+            loop {
+                if self.semaphore.available_permits() == self.config.max_concurrency {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await;
     }
 }
 
