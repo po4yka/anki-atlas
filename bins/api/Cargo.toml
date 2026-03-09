@@ -5,8 +5,33 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[lib]
+name = "anki_atlas_api"
+path = "src/lib.rs"
+
 [[bin]]
 name = "anki-atlas-api"
 path = "src/main.rs"
 
 [dependencies]
+common = { path = "../../crates/common" }
+jobs = { path = "../../crates/jobs" }
+
+anyhow = "1"
+async-trait = "0.1"
+axum = { version = "0.8", features = ["json"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tower = { version = "0.5", features = ["timeout"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "request-id"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+axum-test = "16"
+mockall = "0.13"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
