@@ -3,9 +3,7 @@ use crate::types::{JobRecord, JOB_KEY_PREFIX};
 
 /// Build Redis key from job ID.
 pub fn job_key(job_id: &str) -> String {
-    // TODO(impl): implement
-    let _ = JOB_KEY_PREFIX;
-    String::new()
+    format!("{JOB_KEY_PREFIX}{job_id}")
 }
 
 /// Persist a job record in Redis with TTL.

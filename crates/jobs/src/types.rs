@@ -13,7 +13,7 @@ pub enum JobType {
 
 /// Job status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumString, Display)]
-#[strum(serialize_all = "lowercase")]
+#[strum(serialize_all = "snake_case")]
 pub enum JobStatus {
     Queued,
     Scheduled,
@@ -28,8 +28,7 @@ pub enum JobStatus {
 impl JobStatus {
     /// True if the job has reached a final state.
     pub fn is_terminal(&self) -> bool {
-        // TODO(impl): implement
-        false
+        matches!(self, Self::Succeeded | Self::Failed | Self::Cancelled)
     }
 }
 
