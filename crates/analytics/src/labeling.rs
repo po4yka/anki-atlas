@@ -88,32 +88,159 @@ impl<E: indexer::embeddings::EmbeddingProvider> TopicLabeler<E> {
     /// Embed all topic descriptions/labels. Returns path -> embedding vector.
     pub async fn embed_topics(
         &self,
-        _taxonomy: &super::taxonomy::Taxonomy,
+        taxonomy: &super::taxonomy::Taxonomy,
     ) -> Result<HashMap<String, Vec<f32>>, AnalyticsError> {
-        todo!()
+        let paths: Vec<String> = taxonomy.topics.keys().cloned().collect();
+        let texts: Vec<String> = paths
+            .iter()
+            .map(|p| {
+                let topic = &taxonomy.topics[p];
+                match &topic.description {
+                    Some(desc) => format!("{}: {desc}", topic.label),
+                    None => topic.label.clone(),
+                }
+            })
+            .collect();
+
+        let embeddings = self.embedding.embed(&texts).await?;
+
+        let result: HashMap<String, Vec<f32>> = paths
+            .into_iter()
+            .zip(embeddings)
+            .collect();
+
+        Ok(result)
     }
 
     /// Label all notes in database with matching topics.
     pub async fn label_notes(
         &self,
-        _taxonomy: &super::taxonomy::Taxonomy,
-        _min_confidence: f32,
-        _max_topics_per_note: usize,
-        _batch_size: usize,
+        taxonomy: &super::taxonomy::Taxonomy,
+        min_confidence: f32,
+        max_topics_per_note: usize,
+        batch_size: usize,
     ) -> Result<LabelingStats, AnalyticsError> {
-        todo!()
+        let topic_embeddings = self.embed_topics(taxonomy).await?;
+
+        // Build topic_id lookup: path -> (topic_id, embedding)
+        let topic_emb_with_ids: HashMap<String, (i64, Vec<f32>)> = topic_embeddings
+            .iter()
+            .filter_map(|(path, emb)| {
+                taxonomy.topics.get(path).and_then(|t| {
+                    t.topic_id.map(|id| (path.clone(), (id, emb.clone())))
+                })
+            })
+            .collect();
+
+        let mut stats = LabelingStats::default();
+        let mut matched_topics = std::collections::HashSet::new();
+        let mut offset: i64 = 0;
+
+        loop {
+            let notes: Vec<(i64, String)> = sqlx::query_as(
+                "SELECT note_id, normalized_text FROM notes \
+                 WHERE deleted_at IS NULL \
+                 ORDER BY note_id LIMIT $1 OFFSET $2",
+            )
+            .bind(batch_size as i64)
+            .bind(offset)
+            .fetch_all(&self.db)
+            .await?;
+
+            if notes.is_empty() {
+                break;
+            }
+
+            let texts: Vec<String> = notes.iter().map(|(_, text)| text.clone()).collect();
+            let note_embeddings = self.embedding.embed(&texts).await?;
+
+            for ((note_id, _), note_emb) in notes.iter().zip(note_embeddings.iter()) {
+                let assignments = rank_topics_for_note(
+                    *note_id,
+                    note_emb,
+                    &topic_emb_with_ids,
+                    min_confidence,
+                    max_topics_per_note,
+                );
+
+                for assignment in &assignments {
+                    sqlx::query(
+                        "INSERT INTO note_topics (note_id, topic_id, confidence, method) \
+                         VALUES ($1, $2, $3, $4) \
+                         ON CONFLICT (note_id, topic_id) DO UPDATE \
+                         SET confidence = $3, method = $4",
+                    )
+                    .bind(assignment.note_id)
+                    .bind(assignment.topic_id as i32)
+                    .bind(assignment.confidence as f32)
+                    .bind(&assignment.method)
+                    .execute(&self.db)
+                    .await?;
+
+                    matched_topics.insert(assignment.topic_path.clone());
+                }
+
+                stats.assignments_created += assignments.len();
+                stats.notes_processed += 1;
+            }
+
+            offset += notes.len() as i64;
+        }
+
+        stats.topics_matched = matched_topics.len();
+        Ok(stats)
     }
 
     /// Label a single note.
     pub async fn label_single_note(
         &self,
-        _note_id: i64,
-        _taxonomy: &super::taxonomy::Taxonomy,
-        _topic_embeddings: Option<&HashMap<String, Vec<f32>>>,
-        _min_confidence: f32,
-        _max_topics: usize,
+        note_id: i64,
+        taxonomy: &super::taxonomy::Taxonomy,
+        topic_embeddings: Option<&HashMap<String, Vec<f32>>>,
+        min_confidence: f32,
+        max_topics: usize,
     ) -> Result<Vec<TopicAssignment>, AnalyticsError> {
-        todo!()
+        // Get note text
+        let (text,): (String,) = sqlx::query_as(
+            "SELECT normalized_text FROM notes WHERE note_id = $1",
+        )
+        .bind(note_id)
+        .fetch_one(&self.db)
+        .await?;
+
+        // Embed the note
+        let note_embeddings = self.embedding.embed(&[text]).await?;
+        let note_emb = &note_embeddings[0];
+
+        // Get or compute topic embeddings
+        let owned_topic_embs;
+        let topic_embs = match topic_embeddings {
+            Some(te) => te,
+            None => {
+                owned_topic_embs = self.embed_topics(taxonomy).await?;
+                &owned_topic_embs
+            }
+        };
+
+        // Build topic_id lookup
+        let topic_emb_with_ids: HashMap<String, (i64, Vec<f32>)> = topic_embs
+            .iter()
+            .filter_map(|(path, emb)| {
+                taxonomy.topics.get(path).and_then(|t| {
+                    t.topic_id.map(|id| (path.clone(), (id, emb.clone())))
+                })
+            })
+            .collect();
+
+        let assignments = rank_topics_for_note(
+            note_id,
+            note_emb,
+            &topic_emb_with_ids,
+            min_confidence,
+            max_topics,
+        );
+
+        Ok(assignments)
     }
 }
 
