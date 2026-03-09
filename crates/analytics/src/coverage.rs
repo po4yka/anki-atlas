@@ -52,10 +52,10 @@ pub struct WeakNote {
     pub normalized_text: String,
 }
 
-/// Classify a topic gap based on note count vs threshold.
+/// Classify a topic gap based on note count.
 /// Returns `Missing` when note_count == 0, `Undercovered` otherwise.
-#[allow(dead_code)]
-pub fn classify_gap(note_count: i64, _threshold: i64) -> GapType {
+/// The caller (`get_topic_gaps`) pre-filters to topics below the threshold.
+pub fn classify_gap(note_count: i64) -> GapType {
     if note_count == 0 {
         GapType::Missing
     } else {
@@ -190,7 +190,7 @@ pub async fn get_topic_gaps(
             path,
             label,
             description,
-            gap_type: classify_gap(note_count, min_coverage),
+            gap_type: classify_gap(note_count),
             note_count,
             threshold: min_coverage,
             nearest_notes: vec![],
@@ -361,16 +361,16 @@ mod tests {
 
     #[test]
     fn classify_gap_zero_notes_is_missing() {
-        assert_eq!(classify_gap(0, 5), GapType::Missing);
+        assert_eq!(classify_gap(0), GapType::Missing);
     }
 
     #[test]
-    fn classify_gap_below_threshold_is_undercovered() {
-        assert_eq!(classify_gap(3, 5), GapType::Undercovered);
+    fn classify_gap_nonzero_notes_is_undercovered() {
+        assert_eq!(classify_gap(3), GapType::Undercovered);
     }
 
     #[test]
     fn classify_gap_one_note_is_undercovered() {
-        assert_eq!(classify_gap(1, 10), GapType::Undercovered);
+        assert_eq!(classify_gap(1), GapType::Undercovered);
     }
 }
