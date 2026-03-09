@@ -94,58 +94,48 @@ pub fn validate_markdown(content: &str) -> MarkdownValidationResult {
         };
     }
 
-    // Check code fence balance
+    // Single pass: check fence balance, long lines in code blocks, and collect
+    // content outside fences for inline formatting checks.
     let mut in_fence = false;
-    let mut in_code_block = false;
+    let mut fence_start_idx: usize = 0;
+    let mut outside_fence = String::new();
+    let mut segments: Vec<(bool, String)> = Vec::new();
+    let mut current_segment = String::new();
+
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("```") {
+            segments.push((in_fence, std::mem::take(&mut current_segment)));
             in_fence = !in_fence;
-            in_code_block = !in_code_block;
+            if in_fence {
+                fence_start_idx = segments.len();
+            }
+            continue;
         }
         // Check for long lines inside code blocks
-        if in_code_block && !trimmed.starts_with("```") && line.len() > 200 {
+        if in_fence && line.len() > 200 {
             warnings.push(format!(
                 "Line exceeds 200 characters in code block ({} chars)",
                 line.len()
             ));
         }
+        current_segment.push_str(line);
+        current_segment.push('\n');
     }
+    segments.push((in_fence, current_segment));
+
     if in_fence {
         errors.push("Unclosed code fence detected".into());
     }
 
-    // Collect content outside of balanced code fences for inline checks.
-    // If a fence is unclosed, treat everything after the opening fence as outside.
-    let mut outside_fence = String::new();
-    let mut in_block = false;
-    let mut fence_start_idx = 0;
-    let mut segments: Vec<(bool, String)> = Vec::new();
-    let mut current_segment = String::new();
-    for line in content.lines() {
-        if line.trim().starts_with("```") {
-            segments.push((in_block, std::mem::take(&mut current_segment)));
-            in_block = !in_block;
-            if in_block {
-                fence_start_idx = segments.len();
-            }
-            continue;
-        }
-        current_segment.push_str(line);
-        current_segment.push('\n');
-    }
-    segments.push((in_block, current_segment));
-
-    // If fence is still open (unbalanced), treat the fenced content as outside too
+    // Collect content outside balanced fences; if a fence is unclosed, treat
+    // everything after the opening fence as outside too.
     for (i, (was_in_block, seg)) in segments.iter().enumerate() {
-        if !was_in_block {
-            outside_fence.push_str(seg);
-        } else if in_fence && i >= fence_start_idx {
-            // Unclosed fence: include this content for inline checks
+        let is_unclosed_tail = in_fence && *was_in_block && i >= fence_start_idx;
+        if !was_in_block || is_unclosed_tail {
             outside_fence.push_str(seg);
         }
     }
-    let _ = fence_start_idx; // used above
 
     // Count inline backticks (single, not triple)
     let backtick_count = outside_fence.chars().filter(|&c| c == '`').count();
