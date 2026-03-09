@@ -60,7 +60,12 @@ mod tests {
 
     #[test]
     fn parse_sync_with_source() {
-        let cli = parse(&["anki-atlas", "sync", "--source", "/path/to/collection.anki2"]);
+        let cli = parse(&[
+            "anki-atlas",
+            "sync",
+            "--source",
+            "/path/to/collection.anki2",
+        ]);
         if let Commands::Sync(args) = cli.command {
             assert_eq!(args.source, "/path/to/collection.anki2");
             assert!(!args.no_migrate);

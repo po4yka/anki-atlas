@@ -101,40 +101,25 @@ fn index_command_runs() {
 
 #[test]
 fn search_command_with_query_runs() {
-    cmd()
-        .args(["search", "test query"])
-        .assert()
-        .success();
+    cmd().args(["search", "test query"]).assert().success();
 }
 
 #[test]
 fn duplicates_command_runs() {
-    cmd()
-        .arg("duplicates")
-        .assert()
-        .success();
+    cmd().arg("duplicates").assert().success();
 }
 
 #[test]
 fn topics_command_runs() {
-    cmd()
-        .arg("topics")
-        .assert()
-        .success();
+    cmd().arg("topics").assert().success();
 }
 
 #[test]
 fn coverage_command_with_topic_runs() {
-    cmd()
-        .args(["coverage", "test/topic"])
-        .assert()
-        .success();
+    cmd().args(["coverage", "test/topic"]).assert().success();
 }
 
 #[test]
 fn gaps_command_with_topic_runs() {
-    cmd()
-        .args(["gaps", "test/topic"])
-        .assert()
-        .success();
+    cmd().args(["gaps", "test/topic"]).assert().success();
 }

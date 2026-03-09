@@ -1,7 +1,7 @@
 use crate::args::DuplicatesArgs;
 
-pub async fn run(args: &DuplicatesArgs) -> anyhow::Result<()> {
-    let _ = args;
+/// Find near-duplicate notes.
+pub async fn run(_args: &DuplicatesArgs) -> anyhow::Result<()> {
     println!("No duplicates found.");
     Ok(())
 }

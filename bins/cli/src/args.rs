@@ -2,13 +2,18 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+/// Top-level CLI arguments.
 #[derive(Parser, Debug)]
-#[command(name = "anki-atlas", about = "Searchable hybrid index for Anki collections")]
+#[command(
+    name = "anki-atlas",
+    about = "Searchable hybrid index for Anki collections"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 }
 
+/// Available subcommands.
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Show version information.
@@ -51,6 +56,7 @@ pub enum Commands {
     TagAudit(TagAuditArgs),
 }
 
+/// Arguments for the `sync` command.
 #[derive(clap::Args, Debug)]
 pub struct SyncArgs {
     /// Path to collection.anki2 file.
@@ -70,6 +76,7 @@ pub struct SyncArgs {
     pub force_reindex: bool,
 }
 
+/// Arguments for the `index` command.
 #[derive(clap::Args, Debug)]
 pub struct IndexArgs {
     /// Force re-embedding all notes.
@@ -77,6 +84,7 @@ pub struct IndexArgs {
     pub force: bool,
 }
 
+/// Arguments for the `search` command.
 #[derive(clap::Args, Debug)]
 pub struct SearchArgs {
     /// Search query.
@@ -107,6 +115,7 @@ pub struct SearchArgs {
     pub verbose: bool,
 }
 
+/// Arguments for the `topics` command.
 #[derive(clap::Args, Debug)]
 pub struct TopicsArgs {
     /// Path to topics.yml file to load.
@@ -122,6 +131,7 @@ pub struct TopicsArgs {
     pub min_confidence: f64,
 }
 
+/// Arguments for the `coverage` command.
 #[derive(clap::Args, Debug)]
 pub struct CoverageArgs {
     /// Topic path (e.g., programming/python).
@@ -132,6 +142,7 @@ pub struct CoverageArgs {
     pub no_subtree: bool,
 }
 
+/// Arguments for the `gaps` command.
 #[derive(clap::Args, Debug)]
 pub struct GapsArgs {
     /// Topic path.
@@ -142,6 +153,7 @@ pub struct GapsArgs {
     pub min_coverage: usize,
 }
 
+/// Arguments for the `duplicates` command.
 #[derive(clap::Args, Debug)]
 pub struct DuplicatesArgs {
     /// Similarity threshold (0-1).
@@ -165,6 +177,7 @@ pub struct DuplicatesArgs {
     pub verbose: bool,
 }
 
+/// Arguments for the `generate` command.
 #[derive(clap::Args, Debug)]
 pub struct GenerateArgs {
     /// Path to an Obsidian markdown note.
@@ -175,6 +188,7 @@ pub struct GenerateArgs {
     pub dry_run: bool,
 }
 
+/// Arguments for the `validate` command.
 #[derive(clap::Args, Debug)]
 pub struct ValidateArgs {
     /// File with card front/back (--- separated).
@@ -185,6 +199,7 @@ pub struct ValidateArgs {
     pub quality: bool,
 }
 
+/// Arguments for the `obsidian-sync` command.
 #[derive(clap::Args, Debug)]
 pub struct ObsidianSyncArgs {
     /// Path to Obsidian vault.
@@ -199,6 +214,7 @@ pub struct ObsidianSyncArgs {
     pub dry_run: bool,
 }
 
+/// Arguments for the `tag-audit` command.
 #[derive(clap::Args, Debug)]
 pub struct TagAuditArgs {
     /// File with tags, one per line.

@@ -1,9 +1,9 @@
 use crate::args::TagAuditArgs;
+use crate::output::ensure_path_exists;
 
+/// Audit tags for convention violations.
 pub async fn run(args: &TagAuditArgs) -> anyhow::Result<()> {
-    if !args.file.exists() {
-        anyhow::bail!("file not found: {}", args.file.display());
-    }
+    ensure_path_exists(&args.file, "file")?;
 
     println!("Tag audit: {}", args.file.display());
     Ok(())
