@@ -1,5 +1,18 @@
 // MCP server setup, tool registration.
 
+/// All registered tool names, sorted alphabetically.
+const TOOL_NAMES: [&str; 9] = [
+    "ankiatlas_duplicates",
+    "ankiatlas_generate",
+    "ankiatlas_obsidian_sync",
+    "ankiatlas_search",
+    "ankiatlas_sync",
+    "ankiatlas_tag_audit",
+    "ankiatlas_topic_coverage",
+    "ankiatlas_topic_gaps",
+    "ankiatlas_validate",
+];
+
 /// The MCP server struct that registers all anki-atlas tools.
 #[derive(Default)]
 pub struct AnkiAtlasServer;
@@ -7,27 +20,27 @@ pub struct AnkiAtlasServer;
 impl AnkiAtlasServer {
     /// Create a new server instance with all tools registered.
     pub fn new() -> Self {
-        todo!()
+        Self
     }
 
     /// Return the number of registered tools.
     pub fn tool_count(&self) -> usize {
-        todo!()
+        TOOL_NAMES.len()
     }
 
     /// Return the list of registered tool names.
     pub fn tool_names(&self) -> Vec<&str> {
-        todo!()
+        TOOL_NAMES.to_vec()
     }
 
     /// Return the server name.
     pub fn name(&self) -> &str {
-        todo!()
+        "anki-atlas"
     }
 
     /// Return the server version.
     pub fn version(&self) -> &str {
-        todo!()
+        env!("CARGO_PKG_VERSION")
     }
 }
 
