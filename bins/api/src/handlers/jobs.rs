@@ -14,8 +14,8 @@ use crate::state::AppState;
 fn record_to_accepted(rec: &jobs::JobRecord) -> JobAcceptedResponse {
     JobAcceptedResponse {
         job_id: rec.job_id.clone(),
-        status: rec.status.to_string(),
-        job_type: rec.job_type.to_string(),
+        status: rec.status,
+        job_type: rec.job_type,
         created_at: rec.created_at.unwrap_or_else(chrono::Utc::now),
         scheduled_for: rec.scheduled_for,
         poll_url: format!("/jobs/{}", rec.job_id),
@@ -26,8 +26,8 @@ fn record_to_accepted(rec: &jobs::JobRecord) -> JobAcceptedResponse {
 fn record_to_status(rec: &jobs::JobRecord) -> JobStatusResponse {
     JobStatusResponse {
         job_id: rec.job_id.clone(),
-        job_type: rec.job_type.to_string(),
-        status: rec.status.to_string(),
+        job_type: rec.job_type,
+        status: rec.status,
         progress: rec.progress,
         message: rec.message.clone(),
         attempts: rec.attempts,

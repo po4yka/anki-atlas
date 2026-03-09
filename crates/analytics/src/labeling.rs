@@ -4,6 +4,21 @@ use serde::Serialize;
 
 use crate::AnalyticsError;
 
+/// Method used to assign a topic to a note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LabelingMethod {
+    Embedding,
+}
+
+impl LabelingMethod {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Embedding => "embedding",
+        }
+    }
+}
+
 /// A topic assignment for a note.
 #[derive(Debug, Clone, Serialize)]
 pub struct TopicAssignment {
@@ -11,8 +26,7 @@ pub struct TopicAssignment {
     pub topic_id: i64,
     pub topic_path: String,
     pub confidence: f64,
-    /// Labeling method (e.g. "embedding").
-    pub method: String,
+    pub method: LabelingMethod,
 }
 
 /// Statistics from a labeling operation.
@@ -58,7 +72,7 @@ pub(crate) fn rank_topics_for_note(
                     topic_id: *topic_id,
                     topic_path: path.clone(),
                     confidence: f64::from(sim),
-                    method: "embedding".to_string(),
+                    method: LabelingMethod::Embedding,
                 })
             } else {
                 None
@@ -173,7 +187,7 @@ impl<E: indexer::embeddings::EmbeddingProvider> TopicLabeler<E> {
                     .bind(assignment.note_id)
                     .bind(assignment.topic_id as i32)
                     .bind(assignment.confidence as f32)
-                    .bind(&assignment.method)
+                    .bind(assignment.method.as_str())
                     .execute(&self.db)
                     .await?;
 
@@ -367,7 +381,7 @@ mod tests {
         let topics = make_topic_embeddings(&[("t", 1, vec![1.0, 0.0])]);
         let result = rank_topics_for_note(42, &note_emb, &topics, 0.0, 10);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].method, "embedding");
+        assert_eq!(result[0].method, LabelingMethod::Embedding);
         assert_eq!(result[0].note_id, 42);
         assert_eq!(result[0].topic_id, 1);
     }

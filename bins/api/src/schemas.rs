@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use jobs::types::{JobStatus, JobType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -72,8 +73,8 @@ pub struct AsyncIndexRequest {
 #[derive(Debug, Serialize)]
 pub struct JobAcceptedResponse {
     pub job_id: String,
-    pub status: String,
-    pub job_type: String,
+    pub status: JobStatus,
+    pub job_type: JobType,
     pub created_at: DateTime<Utc>,
     pub scheduled_for: Option<DateTime<Utc>>,
     pub poll_url: String,
@@ -82,8 +83,8 @@ pub struct JobAcceptedResponse {
 #[derive(Debug, Serialize)]
 pub struct JobStatusResponse {
     pub job_id: String,
-    pub job_type: String,
-    pub status: String,
+    pub job_type: JobType,
+    pub status: JobStatus,
     pub progress: f64,
     pub message: Option<String>,
     pub attempts: u32,

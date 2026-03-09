@@ -123,7 +123,7 @@ where
                     .bind(a.note_id)
                     .bind(a.topic_id as i32)
                     .bind(a.confidence as f32)
-                    .bind(&a.method)
+                    .bind(a.method.as_str())
                     .execute(&self.db)
                     .await?;
                     matched_topics.insert(a.topic_path.clone());

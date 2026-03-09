@@ -5,6 +5,7 @@ use strum::{Display, EnumString};
 
 /// Job type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumString, Display)]
+#[serde(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase")]
 pub enum JobType {
     Sync,
@@ -13,6 +14,7 @@ pub enum JobType {
 
 /// Job status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumString, Display)]
+#[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum JobStatus {
     Queued,

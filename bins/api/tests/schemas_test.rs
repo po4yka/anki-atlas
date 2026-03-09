@@ -1,4 +1,5 @@
 use anki_atlas_api::schemas::*;
+use jobs::types::{JobStatus, JobType};
 use serde_json::{Value, json};
 
 // --- SyncRequest ---
@@ -141,8 +142,8 @@ fn async_index_request_defaults() {
 fn job_accepted_response_serializes() {
     let resp = JobAcceptedResponse {
         job_id: "job-123".into(),
-        status: "queued".into(),
-        job_type: "sync".into(),
+        status: JobStatus::Queued,
+        job_type: JobType::Sync,
         created_at: chrono::Utc::now(),
         scheduled_for: None,
         poll_url: "/jobs/job-123".into(),
@@ -158,8 +159,8 @@ fn job_accepted_response_serializes() {
 fn job_status_response_serializes_complete() {
     let resp = JobStatusResponse {
         job_id: "job-456".into(),
-        job_type: "index".into(),
-        status: "running".into(),
+        job_type: JobType::Index,
+        status: JobStatus::Running,
         progress: 0.5,
         message: Some("halfway there".into()),
         attempts: 1,
