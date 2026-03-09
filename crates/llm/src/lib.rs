@@ -6,7 +6,7 @@ pub mod provider;
 pub mod response;
 
 pub use error::LlmError;
-pub use factory::{ProviderType, create_provider};
+pub use factory::{ProviderConfig, ProviderType, create_provider, create_provider_from_config};
 pub use ollama::{OllamaConfig, OllamaProvider};
 pub use openrouter::{OpenRouterConfig, OpenRouterProvider};
 pub use provider::{GenerateOptions, LlmProvider};

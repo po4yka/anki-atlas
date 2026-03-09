@@ -13,7 +13,24 @@ pub enum ProviderType {
     OpenRouter,
 }
 
-/// Create a provider instance by type.
+/// Typed provider configuration.
+#[derive(Debug, Clone)]
+pub enum ProviderConfig {
+    Ollama(OllamaConfig),
+    OpenRouter(OpenRouterConfig),
+}
+
+/// Create a provider instance from a typed configuration.
+pub fn create_provider_from_config(
+    config: ProviderConfig,
+) -> Result<Box<dyn LlmProvider>, LlmError> {
+    match config {
+        ProviderConfig::Ollama(c) => Ok(Box::new(OllamaProvider::new(c)?)),
+        ProviderConfig::OpenRouter(c) => Ok(Box::new(OpenRouterProvider::new(c)?)),
+    }
+}
+
+/// Create a provider instance by type from untyped JSON config.
 /// For OpenRouter, reads OPENROUTER_API_KEY from env if not in config.
 pub fn create_provider(
     provider_type: ProviderType,
