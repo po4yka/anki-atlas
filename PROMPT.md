@@ -45,9 +45,8 @@ bins/<name>/            # binary crates
 
 ## Reference Material
 
-- Python source is in `packages/` and `apps/` directories
-- Read Python code to understand BEHAVIOR, then write idiomatic Rust
-- Do NOT transliterate Python line-by-line
+- The Rust codebase lives in `crates/` (libraries) and `bins/` (binaries)
+- Specs in `specs/` describe the public API for each crate
 - The spec lists the exact public API to implement
 
 ## Quality Gates (Backpressure)

@@ -1,29 +1,25 @@
-FROM python:3.13-slim
+FROM rust:1.85-slim AS builder
 
 WORKDIR /app
 
-# Install uv for fast package management
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files first for layer caching
-COPY pyproject.toml uv.lock ./
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY bins ./bins
 
-# Install dependencies (frozen from lockfile)
-RUN uv sync --frozen --no-install-project --no-dev
+RUN cargo build --release --bin anki-atlas-api
 
-# Copy application code
-COPY apps ./apps
-COPY packages ./packages
+FROM debian:bookworm-slim
 
-# Install project itself
-RUN uv sync --frozen --no-dev --extra embeddings-openai
+RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash appuser && \
-    chown -R appuser:appuser /app
+RUN useradd --create-home --shell /bin/bash appuser
+
+COPY --from=builder /app/target/release/anki-atlas-api /usr/local/bin/
+
 USER appuser
 
 EXPOSE 8000
 
-# Use uv run to execute within the venv
-CMD ["uv", "run", "uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["anki-atlas-api"]

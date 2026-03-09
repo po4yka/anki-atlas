@@ -1,5 +1,5 @@
 <!-- desloppify-begin -->
-<!-- desloppify-skill-version: 3 -->
+<!-- desloppify-skill-version: 4 -->
 ---
 name: desloppify
 description: >
@@ -45,6 +45,13 @@ desloppify plan triage --stage reflect --report "comparison against completed wo
 desloppify plan triage --stage organize --report "summary of priorities..."
 desloppify plan triage --complete --strategy "execution plan..."
 ```
+
+### Automated triage (subagent runners)
+
+For Codex: `desloppify plan triage --run-stages --runner codex`
+For Claude: `desloppify plan triage --run-stages --runner claude` — then follow orchestrator instructions per stage
+
+Options: `--only-stages observe,reflect` (subset), `--dry-run` (prompts only), `--stage-timeout-seconds N` (per-stage).
 
 Then shape the queue. **The plan shapes everything `next` gives you** — don't skip this step.
 
@@ -258,6 +265,17 @@ Run `desloppify review --prepare` first to generate review data, then use Claude
 
 1. Each agent must be context-isolated — do not pass conversation history or score targets.
 2. Agents must consume `.desloppify/review_packet_blind.json` (not full `query.json`) to avoid score anchoring.
+
+### Triage workflow
+
+Orchestrate triage with per-stage subagents:
+1. `desloppify plan triage --run-stages --runner claude` — prints orchestrator instructions
+2. For each stage (observe → reflect → organize → enrich):
+   - Get prompt: `desloppify plan triage --stage-prompt <stage>`
+   - Launch a subagent with that prompt
+   - Verify: `desloppify plan triage` (check dashboard)
+   - Confirm: `desloppify plan triage --confirm <stage> --attestation "..."`
+3. Complete: `desloppify plan triage --complete --strategy "..." --attestation "..."`
 
 <!-- desloppify-overlay: claude -->
 <!-- desloppify-end -->

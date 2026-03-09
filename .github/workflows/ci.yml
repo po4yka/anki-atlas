@@ -7,53 +7,50 @@ on:
     branches: [main]
 
 env:
-  UV_CACHE_DIR: /tmp/.uv-cache
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
 
 jobs:
-  lint:
-    name: Lint
+  check:
+    name: Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up Python
-        run: uv python install
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Install dependencies
-        run: uv sync --frozen
+      - name: cargo check
+        run: cargo check --workspace
 
-      - name: Run ruff check
-        run: uv run ruff check apps packages tests
-
-      - name: Run ruff format check
-        run: uv run ruff format --check apps packages tests
-
-  typecheck:
-    name: Type Check
+  clippy:
+    name: Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
+          components: clippy
 
-      - name: Set up Python
-        run: uv python install
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Install dependencies
-        run: uv sync --frozen
+      - name: cargo clippy
+        run: cargo clippy --workspace -- -D warnings
 
-      - name: Run mypy
-        run: uv run mypy apps packages
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
 
   test:
     name: Test
@@ -61,26 +58,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up Python
-        run: uv python install
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Install dependencies
-        run: uv sync --frozen
-
-      - name: Run tests
-        run: uv run pytest tests/ -v --cov --cov-report=xml
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        with:
-          files: coverage.xml
-          fail_ci_if_error: false
+      - name: cargo test
+        run: cargo test --workspace --exclude anki-sync --exclude database
 
   integration:
     name: Integration Test
@@ -123,45 +106,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up Python
-        run: uv python install
-
-      - name: Install dependencies
-        run: uv sync --frozen
+      - uses: Swatinem/rust-cache@v2
 
       - name: Run integration tests
         env:
           ANKIATLAS_POSTGRES_URL: postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas
           ANKIATLAS_QDRANT_URL: http://localhost:6333
           ANKIATLAS_REDIS_URL: redis://localhost:6379/0
-        run: |
-          set +e
-          uv run pytest tests/ -v -m integration
-          status=$?
-          if [ $status -eq 5 ]; then
-            echo "No integration tests yet"
-            exit 0
-          fi
-          exit $status
-
-  # Ensure lockfile is up to date
-  lockfile:
-    name: Check Lockfile
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Set up Python
-        run: uv python install
-
-      - name: Check lockfile is up to date
-        run: uv lock --check
+        run: cargo test --workspace -p anki-sync -p database

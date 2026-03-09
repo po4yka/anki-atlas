@@ -1,23 +1,24 @@
 # Anki Atlas
 
-Searchable hybrid index for Anki collections with agent-friendly tools.
+Unified Anki flashcard platform: hybrid search index + card generation + obsidian sync + MCP tools. Written in Rust.
 
 ## Features
 
 - **Hybrid Search**: Combines semantic (vector) and keyword (FTS) search with RRF fusion
 - **CrossEncoder Reranking**: Optional second-stage reranking of top hybrid candidates
-- **Typo-tolerant Lexical Search**: `pg_trgm` fuzzy matching with autocomplete fallback and suggestions
 - **Topic Coverage**: Analyze what topics your cards cover and identify gaps
 - **Duplicate Detection**: Find near-duplicate cards using embedding similarity
+- **Card Generation**: LLM-powered flashcard generation with APF format
+- **Obsidian Sync**: Parse and sync notes from Obsidian vaults
 - **Agent Tools**: MCP server for integration with AI agents (Claude Code, Claude Desktop)
+- **Background Jobs**: Redis-backed async job queue for long-running operations
 
 ## Quick Start
 
 ### Prerequisites
 
-- Python 3.13+
-- Docker and Docker Compose
-- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- Rust 1.85+ (edition 2024)
+- Docker and Docker Compose (for PostgreSQL, Qdrant, Redis)
 
 ### Setup
 
@@ -27,41 +28,27 @@ git clone https://github.com/po4yka/anki-atlas.git
 cd anki-atlas
 
 # Start dependencies (PostgreSQL + Qdrant + Redis)
-make up
+docker compose -f infra/docker-compose.yml up -d
 
-# Install Python dependencies
-make install
+# Build the project
+cargo build --release
 
-# Run database migrations
-anki-atlas migrate
-
-# Sync your Anki collection
-anki-atlas sync --source /path/to/collection.anki2
+# Run the CLI
+cargo run --bin anki-atlas -- --help
 
 # Run the API server
-make dev
+cargo run --bin anki-atlas-api
 
-# In another terminal, run background worker
-make worker
-```
+# Run the MCP server
+cargo run --bin anki-atlas-mcp
 
-The API will be available at http://localhost:8000
-
-### Verify Installation
-
-```bash
-curl http://localhost:8000/health
+# Run the background worker
+cargo run --bin anki-atlas-worker
 ```
 
 ## Configuration
 
-Copy `config/env.example` to `.env` and adjust as needed:
-
-```bash
-cp config/env.example .env
-```
-
-Key settings:
+Set environment variables or use a config file:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -71,129 +58,48 @@ Key settings:
 | `ANKIATLAS_EMBEDDING_PROVIDER` | `openai`, `google`, or `local` | `openai` |
 | `ANKIATLAS_EMBEDDING_MODEL` | Embedding model name | `text-embedding-3-small` |
 | `ANKIATLAS_RERANK_ENABLED` | Enable CrossEncoder reranking | `false` |
-| `ANKIATLAS_RERANK_MODEL` | CrossEncoder model name | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
-| `ANKIATLAS_RERANK_TOP_N` | Candidates reranked per query | `50` |
-| `ANKIATLAS_ANKI_COLLECTION_PATH` | Path to collection.anki2 | - |
-| `OPENAI_API_KEY` | OpenAI API key (if using openai provider) | - |
-| `GOOGLE_API_KEY` | Google API key (if using google provider) | - |
-
-Provider extras: `uv sync --extra embeddings-openai`, `uv sync --extra embeddings-google`, `uv sync --extra embeddings-local`.
-
-Reranking requires `sentence-transformers` (install with `uv sync --extra embeddings-local`).
-
-## CLI Usage
-
-```bash
-# Sync your Anki collection (with indexing)
-anki-atlas sync --source /path/to/collection.anki2
-
-# Sync without indexing
-anki-atlas sync --source /path/to/collection.anki2 --no-index
-
-# Index notes to vector database
-anki-atlas index
-
-# Search cards
-anki-atlas search "compose recomposition" --deck Android --top 20
-
-# Load and view topic taxonomy
-anki-atlas topics --file topics.yml
-
-# Label notes with topics
-anki-atlas topics --file topics.yml --label
-
-# Check topic coverage
-anki-atlas coverage programming/python
-
-# Find gaps in coverage
-anki-atlas gaps programming --min-coverage 5
-
-# Detect duplicates
-anki-atlas duplicates --threshold 0.92
-
-# Show version
-anki-atlas version
-```
-
-## MCP Agent Tools
-
-Anki Atlas provides an MCP (Model Context Protocol) server for AI agent integration:
-
-```bash
-# Run the MCP server
-anki-atlas-mcp
-```
-
-Available tools:
-- `ankiatlas_search` - Hybrid semantic + keyword search
-- `ankiatlas_topic_coverage` - Topic coverage metrics
-- `ankiatlas_topic_gaps` - Find knowledge gaps
-- `ankiatlas_duplicates` - Near-duplicate detection
-- `ankiatlas_sync` - Sync Anki collection
-
-## Async Jobs API
-
-Long-running operations can be queued and tracked asynchronously:
-
-```bash
-# Enqueue a sync job
-curl -X POST http://localhost:8000/jobs/sync \
-  -H "Content-Type: application/json" \
-  -d '{"source":"/path/to/collection.anki2","run_migrations":true,"index":true}'
-
-# Enqueue index-only job
-curl -X POST http://localhost:8000/jobs/index \
-  -H "Content-Type: application/json" \
-  -d '{"force_reindex":false}'
-
-# Poll job status/progress
-curl http://localhost:8000/jobs/<job_id>
-
-# Cancel job
-curl -X POST http://localhost:8000/jobs/<job_id>/cancel
-```
-
-See [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) for detailed documentation and example prompts.
 
 ## Development
 
 ```bash
-# Run linter
-make lint
+# Run all tests (excludes Docker-dependent crates)
+cargo test --workspace --exclude anki-sync --exclude database
 
-# Format code
-make format
+# Lint
+cargo clippy --workspace -- -D warnings
 
-# Run type checker
-make typecheck
+# Format
+cargo fmt --all -- --check
 
-# Run tests
-make test
-
-# Run all checks
-make check
+# Build release
+cargo build --release
 ```
 
 ## Project Structure
 
 ```
-apps/
-  api/           # FastAPI application
-  cli/           # Typer CLI application
-  mcp/           # MCP server for AI agents
-packages/
-  anki/          # Anki collection reader and sync
-  indexer/       # Embedding and vector indexing
-  analytics/     # Topic coverage, gaps, duplicates
-  search/        # Hybrid search with RRF fusion
-  common/        # Shared config and database
-tests/           # Test suite
-docs/            # Documentation
+crates/          # Library crates (shared, reusable)
+  common/        # Types, config, errors, tracing
+  taxonomy/      # Tag normalization and validation
+  database/      # PostgreSQL pool and migrations
+  anki-reader/   # Anki SQLite reader and AnkiConnect client
+  anki-sync/     # Sync engine with state tracking
+  indexer/       # Embedding providers and Qdrant vector store
+  search/        # Hybrid search with RRF fusion and reranking
+  analytics/     # Topic coverage, gaps, duplicate detection
+  card/          # Card domain models and registry
+  validation/    # Validation pipeline
+  llm/           # LLM provider abstraction (OpenRouter, Ollama)
+  obsidian/      # Vault parser and sync workflow
+  rag/           # Document chunker and RAG service
+  generator/     # LLM-powered card generation agents
+  jobs/          # Background job queue (Redis)
+bins/            # Binary entry points
+  cli/           # Command-line interface (clap)
+  api/           # REST API (axum)
+  mcp/           # MCP server (rmcp)
+  worker/        # Background job worker (tokio)
 ```
-
-## Architecture
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed design documentation.
 
 ## License
 

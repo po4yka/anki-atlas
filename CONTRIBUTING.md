@@ -1,7 +1,6 @@
 # Contributing to Anki Atlas
 
-Thank you for your interest in contributing to Anki Atlas. This document
-provides guidelines for contributing to the project.
+Thank you for your interest in contributing to Anki Atlas.
 
 ## Development Workflow
 
@@ -15,14 +14,15 @@ cd anki-atlas
 ### 2. Set Up Development Environment
 
 ```bash
-# Install uv if not already installed
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# Install Rust (if not already installed)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Create virtual environment and install dependencies
-uv sync
+# Start infrastructure dependencies
+docker compose -f infra/docker-compose.yml up -d
 
-# Install pre-commit hooks
-uv run pre-commit install
+# Verify build
+cargo build
+cargo test --workspace --exclude anki-sync --exclude database
 ```
 
 ### 3. Create a Branch
@@ -49,16 +49,16 @@ git checkout -b feat/my-feature
 
 ```bash
 # Run linting
-uv run ruff check apps packages tests
+cargo clippy --workspace -- -D warnings
 
-# Run type checking
-uv run mypy packages apps
+# Check formatting
+cargo fmt --all -- --check
 
-# Run tests
-uv run pytest tests/ -v
+# Run tests (excludes Docker-dependent crates)
+cargo test --workspace --exclude anki-sync --exclude database
 
-# Run single test file for faster iteration
-uv run pytest tests/test_specific.py -v
+# Run single crate tests for faster iteration
+cargo test -p <crate-name>
 ```
 
 ### 6. Commit Your Changes
@@ -66,29 +66,17 @@ uv run pytest tests/test_specific.py -v
 Follow Conventional Commits format:
 
 ```
-<type>: <description>
-
-[optional body]
-
-[optional footer]
+<type>(<scope>): <description>
 ```
 
-Types:
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation only
-- `refactor`: Code refactoring (no feature change)
-- `test`: Adding or updating tests
-- `chore`: Build process or auxiliary tool changes
+Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
 
 Examples:
 ```bash
-git commit -m "feat: add similarity threshold to duplicate detection"
-git commit -m "fix: handle empty collections in sync"
-git commit -m "docs: add troubleshooting guide"
+git commit -m "feat(search): add similarity threshold parameter"
+git commit -m "fix(sync): handle empty collections gracefully"
+git commit -m "test(indexer): add embedding provider mock tests"
 ```
-
-Keep subject line under 72 characters. Use imperative mood ("add feature" not "added feature").
 
 ### 7. Push and Create Pull Request
 
@@ -96,92 +84,26 @@ Keep subject line under 72 characters. Use imperative mood ("add feature" not "a
 git push origin feat/my-feature
 ```
 
-Then create a PR on GitHub with:
-- Clear title describing the change
-- Description explaining what and why
-- Reference to any related issues
+## Code Conventions
 
-## Code Style
-
-### Python
-
-- Follow PEP 8 with ruff as the linter/formatter
-- Use type hints for all function signatures
-- Prefer explicit types over inferred when it aids readability
-- Maximum line length: 100 characters
-
-### Naming Conventions
-
-- Functions/methods: `snake_case`
-- Classes: `PascalCase`
-- Constants: `UPPER_SNAKE_CASE`
-- Private attributes: `_leading_underscore`
-
-### Documentation
-
-- Docstrings for all public functions, classes, and modules
-- Use Google-style docstrings
-- Keep docstrings concise but complete
-
-```python
-def search(query: str, limit: int = 10) -> SearchResult:
-    """Search for notes matching the query.
-
-    Args:
-        query: Search query text.
-        limit: Maximum number of results.
-
-    Returns:
-        SearchResult with matching notes and statistics.
-
-    Raises:
-        DatabaseConnectionError: If database is unavailable.
-    """
-```
-
-### Error Handling
-
-- Use custom exceptions from `packages/common/exceptions.py`
-- Always include context in log messages
-- Never silently swallow exceptions without logging
+- Rust 1.85+ (edition 2024)
+- All types must be `Send + Sync`
+- `thiserror` for library error types, `anyhow` only in binary crates
+- Trait-based DI at every external boundary (DB, HTTP, Qdrant, Redis)
+- `#[cfg_attr(test, mockall::automock)]` on traits for test mocks
+- `#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]` as baseline
+- Newtype pattern for domain IDs: `pub struct NoteId(pub i64);`
+- `#[instrument]` on public async functions for tracing
+- `Arc<T>` for shared state, never `Rc<T>`
+- No `unwrap()` or `expect()` in library crates
 
 ## Testing
 
-### Test Requirements
-
-- All new features must have tests
-- Bug fixes should include regression tests
-- Maintain test coverage above 80%
-
-### Test Organization
-
-- Unit tests: `tests/test_<module>.py`
-- Integration tests: `tests/test_integration.py`
-- Use pytest fixtures for shared setup
-
-### Running Tests
-
-```bash
-# All tests
-uv run pytest tests/ -v
-
-# With coverage
-uv run pytest tests/ -v --cov=packages --cov=apps
-
-# Specific file
-uv run pytest tests/test_search.py -v
-
-# Specific test
-uv run pytest tests/test_search.py::test_hybrid_search -v
-```
-
-## Pull Request Process
-
-1. Ensure all tests pass
-2. Update documentation if needed
-3. Get at least one review approval
-4. Squash commits if requested
-5. Maintainer will merge after approval
+- Unit tests in `#[cfg(test)] mod tests` within each source file
+- Integration tests in `crates/<name>/tests/` and `bins/<name>/tests/`
+- `#[tokio::test]` for async tests
+- `mockall` for auto-generated mock implementations
+- `tempfile::TempDir` for filesystem tests
 
 ## Reporting Issues
 
@@ -189,9 +111,5 @@ When reporting bugs, include:
 - Steps to reproduce
 - Expected behavior
 - Actual behavior
-- Environment details (OS, Python version)
+- Environment details (OS, Rust version)
 - Relevant logs or error messages
-
-## Questions?
-
-Open an issue with the `question` label or start a discussion.
