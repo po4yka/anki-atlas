@@ -2,6 +2,8 @@
 
 use std::path::Path;
 
+use tracing::instrument;
+
 use crate::formatters::{
     format_generate_result, format_obsidian_sync_result, format_tag_audit_result, TagAuditEntry,
 };
@@ -91,6 +93,7 @@ pub fn validate_vault_path(path: &str) -> Result<(), String> {
 }
 
 /// Parse markdown text and return a generation preview.
+#[instrument(skip(input), fields(text_len = input.text.len()))]
 pub async fn handle_generate(input: GenerateInput) -> String {
     let text = &input.text;
 
@@ -125,6 +128,7 @@ pub async fn handle_generate(input: GenerateInput) -> String {
 }
 
 /// Validate .anki2 path and sync collection.
+#[instrument(skip(input), fields(path = %input.collection_path))]
 pub async fn handle_sync(input: SyncInput) -> String {
     if let Err(msg) = validate_anki2_path(&input.collection_path) {
         return msg;
@@ -134,6 +138,7 @@ pub async fn handle_sync(input: SyncInput) -> String {
 }
 
 /// Scan an Obsidian vault and return a summary.
+#[instrument(skip(input), fields(vault = %input.vault_path))]
 pub async fn handle_obsidian_sync(input: ObsidianSyncInput) -> String {
     if let Err(msg) = validate_vault_path(&input.vault_path) {
         return msg;
@@ -173,6 +178,7 @@ pub async fn handle_obsidian_sync(input: ObsidianSyncInput) -> String {
 }
 
 /// Audit tags for convention violations.
+#[instrument(skip(input), fields(tag_count = input.tags.len()))]
 pub async fn handle_tag_audit(input: TagAuditInput) -> String {
     let results: Vec<TagAuditEntry> = input
         .tags
