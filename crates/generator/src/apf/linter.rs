@@ -1,7 +1,18 @@
 use std::collections::HashSet;
+use std::sync::LazyLock;
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+
+/// Regex for card header: `<!-- Card N | slug: X | CardType: Y | Tags: Z -->`
+static CARD_HEADER_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^<!-- Card \d+ \| slug: ([^ |]+) \| CardType: ([^ |]+) \| Tags: (.*?) -->$")
+        .expect("valid card header regex")
+});
+
+/// Regex for cloze deletion markers: `{{cN::`
+static CLOZE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{\{c(\d+)::").expect("valid cloze regex"));
 
 pub const MAX_LINE_WIDTH: usize = 88;
 pub const MIN_TAGS: usize = 3;
@@ -32,13 +43,9 @@ struct CardBlock {
     content: String,
 }
 
-/// Card header regex pattern: `<!-- Card N | slug: X | CardType: Y | Tags: Z -->`
+/// Parse a card header line into (slug, card_type, tags).
 fn parse_card_header(line: &str) -> Option<(String, String, Vec<String>)> {
-    let re = Regex::new(
-        r"^<!-- Card \d+ \| slug: ([^ |]+) \| CardType: ([^ |]+) \| Tags: (.*?) -->$",
-    )
-    .ok()?;
-    let caps = re.captures(line)?;
+    let caps = CARD_HEADER_RE.captures(line)?;
     let slug = caps[1].to_string();
     let card_type = caps[2].to_string();
     let tags_str = caps[3].trim();
@@ -139,8 +146,6 @@ pub fn validate_apf(apf_html: &str, slug: Option<&str>) -> LintResult {
         }
     }
 
-    let cloze_re = Regex::new(r"\{\{c(\d+)::").expect("valid regex");
-
     // Validate each card block
     for block in &card_blocks {
         // Check for comma-separated tags in header
@@ -235,7 +240,7 @@ pub fn validate_apf(apf_html: &str, slug: Option<&str>) -> LintResult {
 
         // Cloze validation for Missing type
         if block.card_type == "Missing" {
-            let cloze_numbers: Vec<u32> = cloze_re
+            let cloze_numbers: Vec<u32> = CLOZE_RE
                 .captures_iter(&block.content)
                 .filter_map(|c| c[1].parse().ok())
                 .collect();
