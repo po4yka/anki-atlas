@@ -59,9 +59,13 @@ pub fn create_provider(
             let api_key = config
                 .get("api_key")
                 .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
                 .map(String::from)
-                .or_else(|| std::env::var("OPENROUTER_API_KEY").ok())
-                .unwrap_or_default();
+                .or_else(|| std::env::var("OPENROUTER_API_KEY").ok().filter(|s| !s.is_empty()))
+                .ok_or_else(|| LlmError::Provider {
+                    message: "OPENROUTER_API_KEY not set and no api_key in config".to_string(),
+                    source: None,
+                })?;
 
             let defaults = OpenRouterConfig::default();
             let or_config = OpenRouterConfig {
