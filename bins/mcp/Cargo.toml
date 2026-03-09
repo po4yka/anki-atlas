@@ -5,8 +5,27 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[lib]
+name = "anki_atlas_mcp"
+path = "src/lib.rs"
+
 [[bin]]
 name = "anki-atlas-mcp"
 path = "src/main.rs"
 
 [dependencies]
+common = { path = "../../crates/common" }
+obsidian = { path = "../../crates/obsidian" }
+
+rmcp = { version = "1.1", features = ["transport-io"] }
+schemars = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+anyhow = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+serde_json = "1"
