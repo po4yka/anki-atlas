@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
+use tracing::instrument;
 
 use llm::{GenerateOptions, LlmProvider};
 
@@ -43,6 +44,7 @@ impl LlmGeneratorAgent {
 
 #[async_trait]
 impl GeneratorAgent for LlmGeneratorAgent {
+    #[instrument(skip_all)]
     async fn generate(
         &self,
         deps: &GenerationDeps,

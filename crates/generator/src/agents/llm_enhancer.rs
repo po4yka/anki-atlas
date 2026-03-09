@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tracing::instrument;
 
 use llm::{GenerateOptions, LlmProvider};
 
@@ -27,6 +28,7 @@ impl LlmEnhancerAgent {
 
 #[async_trait]
 impl EnhancerAgent for LlmEnhancerAgent {
+    #[instrument(skip_all)]
     async fn enhance(
         &self,
         card: &GeneratedCard,
@@ -72,6 +74,7 @@ impl EnhancerAgent for LlmEnhancerAgent {
         })
     }
 
+    #[instrument(skip_all)]
     async fn suggest_split(
         &self,
         content: &str,

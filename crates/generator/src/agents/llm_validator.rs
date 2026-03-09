@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tracing::instrument;
 
 use llm::{GenerateOptions, LlmProvider};
 
@@ -27,6 +28,7 @@ impl LlmPreValidatorAgent {
 
 #[async_trait]
 impl ValidatorAgent for LlmPreValidatorAgent {
+    #[instrument(skip_all)]
     async fn validate(
         &self,
         content: &str,
@@ -76,6 +78,7 @@ impl LlmPostValidatorAgent {
 
 #[async_trait]
 impl ValidatorAgent for LlmPostValidatorAgent {
+    #[instrument(skip_all)]
     async fn validate(
         &self,
         content: &str,

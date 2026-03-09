@@ -299,10 +299,6 @@ async fn mock_validator_agent_returns_error() {
 // Send + Sync assertions for trait objects
 // ---------------------------------------------------------------------------
 
-fn _assert_generator_send_sync(_: impl GeneratorAgent) {}
-fn _assert_enhancer_send_sync(_: impl EnhancerAgent) {}
-fn _assert_validator_send_sync(_: impl ValidatorAgent) {}
-
 #[test]
 fn trait_objects_are_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
@@ -315,7 +311,7 @@ fn trait_objects_are_send_sync() {
 }
 
 // ---------------------------------------------------------------------------
-// LLM-backed agent struct tests (RED - these modules don't exist yet)
+// LLM-backed agent struct tests
 // ---------------------------------------------------------------------------
 
 use super::llm_enhancer::LlmEnhancerAgent;
