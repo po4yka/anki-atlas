@@ -10,47 +10,28 @@ use crate::args::{Cli, Commands};
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    match cli.command {
-        Commands::Version => {
-            todo!("version command not implemented")
-        }
-        Commands::Sync(_args) => {
-            todo!("sync command not implemented")
-        }
-        Commands::Migrate => {
-            todo!("migrate command not implemented")
-        }
-        Commands::Index(_args) => {
-            todo!("index command not implemented")
-        }
-        Commands::Search(_args) => {
-            todo!("search command not implemented")
-        }
-        Commands::Topics(_args) => {
-            todo!("topics command not implemented")
-        }
-        Commands::Coverage(_args) => {
-            todo!("coverage command not implemented")
-        }
-        Commands::Gaps(_args) => {
-            todo!("gaps command not implemented")
-        }
-        Commands::Duplicates(_args) => {
-            todo!("duplicates command not implemented")
-        }
-        Commands::Generate(_args) => {
-            todo!("generate command not implemented")
-        }
-        Commands::Validate(_args) => {
-            todo!("validate command not implemented")
-        }
-        Commands::ObsidianSync(_args) => {
-            todo!("obsidian-sync command not implemented")
-        }
-        Commands::TagAudit(_args) => {
-            todo!("tag-audit command not implemented")
-        }
+    let result = match cli.command {
+        Commands::Version => commands::version::run(),
+        Commands::Sync(ref args) => commands::sync::run(args).await,
+        Commands::Migrate => commands::migrate::run().await,
+        Commands::Index(ref args) => commands::index::run(args).await,
+        Commands::Search(ref args) => commands::search::run(args).await,
+        Commands::Topics(ref args) => commands::topics::run(args).await,
+        Commands::Coverage(ref args) => commands::coverage::run(args).await,
+        Commands::Gaps(ref args) => commands::gaps::run(args).await,
+        Commands::Duplicates(ref args) => commands::duplicates::run(args).await,
+        Commands::Generate(ref args) => commands::generate::run(args).await,
+        Commands::Validate(ref args) => commands::validate::run(args).await,
+        Commands::ObsidianSync(ref args) => commands::obsidian_sync::run(args).await,
+        Commands::TagAudit(ref args) => commands::tag_audit::run(args).await,
+    };
+
+    if let Err(e) = result {
+        eprintln!("error: {e:#}");
+        std::process::exit(1);
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
