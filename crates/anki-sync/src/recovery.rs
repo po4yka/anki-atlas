@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::now_secs;
-use crate::state::{CardState, StateDB};
+use crate::state::{CardState, StateDB, StateDbError};
 
 /// A recorded action that can be rolled back.
 #[derive(Debug, Clone)]
@@ -98,13 +98,13 @@ impl<'a> CardRecovery<'a> {
 
     /// Find card states older than `max_age_days`.
     /// Only considers states with `synced_at > 0`.
-    pub fn find_stale(&self, max_age_days: u32) -> Vec<CardState> {
+    pub fn find_stale(&self, max_age_days: u32) -> Result<Vec<CardState>, StateDbError> {
         let cutoff = now_secs() - (max_age_days as f64 * 86400.0);
 
-        self.state_db
-            .get_all()
+        let states = self.state_db.get_all()?;
+        Ok(states
             .into_iter()
             .filter(|s| s.synced_at > 0.0 && s.synced_at < cutoff)
-            .collect()
+            .collect())
     }
 }

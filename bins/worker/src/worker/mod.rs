@@ -94,10 +94,13 @@ impl<Q: QueueBackend + 'static> Worker<Q> {
 
         // Set status to Running before dispatch
         record.status = JobStatus::Running;
-        let _ = self
+        if let Err(e) = self
             .queue
             .save_job_record(&record, self.config.result_ttl_seconds)
-            .await;
+            .await
+        {
+            tracing::warn!(job_id = %envelope.job_id, error = %e, "failed to save running status");
+        }
 
         // Check if task is known
         let is_known = matches!(envelope.task_name.as_str(), "job_sync" | "job_index");
@@ -105,10 +108,13 @@ impl<Q: QueueBackend + 'static> Worker<Q> {
         if !is_known {
             record.status = JobStatus::Failed;
             record.error = Some(format!("unknown task: {}", envelope.task_name));
-            let _ = self
+            if let Err(e) = self
                 .queue
                 .save_job_record(&record, self.config.result_ttl_seconds)
-                .await;
+                .await
+            {
+                tracing::warn!(job_id = %envelope.job_id, error = %e, "failed to save failed status");
+            }
             return;
         }
 
@@ -117,23 +123,32 @@ impl<Q: QueueBackend + 'static> Worker<Q> {
 
         if record.attempts < record.max_retries {
             record.status = JobStatus::Retrying;
-            let _ = self
+            if let Err(e) = self
                 .queue
                 .save_job_record(&record, self.config.result_ttl_seconds)
-                .await;
+                .await
+            {
+                tracing::warn!(job_id = %envelope.job_id, error = %e, "failed to save retrying status");
+            }
             if let Ok(envelope_json) = serde_json::to_string(&envelope) {
-                let _ = self
+                if let Err(e) = self
                     .queue
                     .lpush(&self.config.queue_name, &envelope_json)
-                    .await;
+                    .await
+                {
+                    tracing::warn!(job_id = %envelope.job_id, error = %e, "failed to re-enqueue job");
+                }
             }
         } else {
             record.status = JobStatus::Failed;
             record.error = Some("max retries exhausted".to_string());
-            let _ = self
+            if let Err(e) = self
                 .queue
                 .save_job_record(&record, self.config.result_ttl_seconds)
-                .await;
+                .await
+            {
+                tracing::warn!(job_id = %envelope.job_id, error = %e, "failed to save exhausted status");
+            }
         }
     }
 

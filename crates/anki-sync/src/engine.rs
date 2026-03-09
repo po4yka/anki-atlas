@@ -44,7 +44,7 @@ impl SyncEngine {
 
         // SCANNING phase
         self.progress.set_phase(SyncPhase::Scanning);
-        let states = self.state_db.get_all();
+        let states = self.state_db.get_all()?;
         self.progress.set_total(states.len() as i32);
 
         // APPLYING phase (skip for dry run)

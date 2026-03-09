@@ -3,6 +3,16 @@ use std::sync::Mutex;
 
 use rusqlite::{Connection, Row};
 
+/// Errors from StateDB operations.
+#[derive(Debug, thiserror::Error)]
+pub enum StateDbError {
+    #[error("sqlite error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
+
+    #[error("mutex poisoned")]
+    MutexPoisoned,
+}
+
 /// Tracked state for a single card.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CardState {
@@ -40,7 +50,7 @@ pub struct StateDB {
 impl StateDB {
     /// Open or create the state database at `db_path`.
     /// Enables WAL mode and foreign keys. Creates the `card_state` table if needed.
-    pub fn open(db_path: impl AsRef<Path>) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn open(db_path: impl AsRef<Path>) -> Result<Self, StateDbError> {
         let path = db_path.as_ref().to_path_buf();
         let conn = Connection::open(&path)?;
 
@@ -65,36 +75,39 @@ impl StateDB {
     }
 
     /// Get card state by slug, or `None` if not found.
-    pub fn get(&self, slug: &str) -> Option<CardState> {
-        let conn = self.conn.lock().expect("state_db mutex poisoned");
-        conn.query_row(
+    pub fn get(&self, slug: &str) -> Result<Option<CardState>, StateDbError> {
+        let conn = self.conn.lock().map_err(|_| StateDbError::MutexPoisoned)?;
+        match conn.query_row(
             "SELECT slug, content_hash, anki_guid, note_type, source_path, synced_at
                  FROM card_state WHERE slug = ?1",
             [slug],
             CardState::from_row,
-        )
-        .ok()
+        ) {
+            Ok(state) => Ok(Some(state)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(StateDbError::Sqlite(e)),
+        }
     }
 
     /// Get all card states, sorted by slug.
-    pub fn get_all(&self) -> Vec<CardState> {
-        let conn = self.conn.lock().expect("state_db mutex poisoned");
-        let mut stmt = conn
-            .prepare(
-                "SELECT slug, content_hash, anki_guid, note_type, source_path, synced_at
+    pub fn get_all(&self) -> Result<Vec<CardState>, StateDbError> {
+        let conn = self.conn.lock().map_err(|_| StateDbError::MutexPoisoned)?;
+        let mut stmt = conn.prepare(
+            "SELECT slug, content_hash, anki_guid, note_type, source_path, synced_at
                  FROM card_state ORDER BY slug",
-            )
-            .expect("failed to prepare get_all statement");
+        )?;
 
-        stmt.query_map([], CardState::from_row)
-            .expect("failed to query card_state")
-            .filter_map(Result::ok)
-            .collect()
+        let rows = stmt.query_map([], CardState::from_row)?;
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        Ok(results)
     }
 
     /// Insert or update a card state (upsert on slug).
-    pub fn upsert(&self, state: &CardState) {
-        let conn = self.conn.lock().expect("state_db mutex poisoned");
+    pub fn upsert(&self, state: &CardState) -> Result<(), StateDbError> {
+        let conn = self.conn.lock().map_err(|_| StateDbError::MutexPoisoned)?;
         conn.execute(
             "INSERT INTO card_state (slug, content_hash, anki_guid, note_type, source_path, synced_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -112,31 +125,31 @@ impl StateDB {
                 state.source_path,
                 state.synced_at,
             ],
-        )
-        .expect("failed to upsert card_state");
+        )?;
+        Ok(())
     }
 
     /// Delete card state by slug.
-    pub fn delete(&self, slug: &str) {
-        let conn = self.conn.lock().expect("state_db mutex poisoned");
-        conn.execute("DELETE FROM card_state WHERE slug = ?1", [slug])
-            .expect("failed to delete card_state");
+    pub fn delete(&self, slug: &str) -> Result<(), StateDbError> {
+        let conn = self.conn.lock().map_err(|_| StateDbError::MutexPoisoned)?;
+        conn.execute("DELETE FROM card_state WHERE slug = ?1", [slug])?;
+        Ok(())
     }
 
     /// Get all card states for a given source path, sorted by slug.
-    pub fn get_by_source(&self, source_path: &str) -> Vec<CardState> {
-        let conn = self.conn.lock().expect("state_db mutex poisoned");
-        let mut stmt = conn
-            .prepare(
-                "SELECT slug, content_hash, anki_guid, note_type, source_path, synced_at
+    pub fn get_by_source(&self, source_path: &str) -> Result<Vec<CardState>, StateDbError> {
+        let conn = self.conn.lock().map_err(|_| StateDbError::MutexPoisoned)?;
+        let mut stmt = conn.prepare(
+            "SELECT slug, content_hash, anki_guid, note_type, source_path, synced_at
                  FROM card_state WHERE source_path = ?1 ORDER BY slug",
-            )
-            .expect("failed to prepare get_by_source statement");
+        )?;
 
-        stmt.query_map([source_path], CardState::from_row)
-            .expect("failed to query card_state by source")
-            .filter_map(Result::ok)
-            .collect()
+        let rows = stmt.query_map([source_path], CardState::from_row)?;
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        Ok(results)
     }
 
     /// Close the database connection.

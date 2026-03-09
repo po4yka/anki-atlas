@@ -18,7 +18,7 @@ pub use core::{SyncService, SyncStats, sync_anki_collection};
 pub use engine::{SyncEngine, SyncResult};
 pub use progress::{ProgressTracker, SyncPhase, SyncProgress, VALID_STATS};
 pub use recovery::{CardRecovery, CardTransaction, RollbackAction};
-pub use state::{CardState, StateDB};
+pub use state::{CardState, StateDB, StateDbError};
 
 #[cfg(test)]
 mod send_sync_tests {
