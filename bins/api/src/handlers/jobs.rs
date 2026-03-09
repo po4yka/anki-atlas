@@ -4,6 +4,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::json;
 use std::collections::HashMap;
+use tracing::instrument;
 
 use crate::error::AppError;
 use crate::schemas::{
@@ -11,6 +12,7 @@ use crate::schemas::{
 };
 use crate::state::AppState;
 
+/// Convert a `JobRecord` to a `JobAcceptedResponse` for 202 replies.
 fn record_to_accepted(rec: &jobs::JobRecord) -> JobAcceptedResponse {
     JobAcceptedResponse {
         job_id: rec.job_id.clone(),
@@ -22,6 +24,7 @@ fn record_to_accepted(rec: &jobs::JobRecord) -> JobAcceptedResponse {
     }
 }
 
+/// Convert a `JobRecord` to a `JobStatusResponse` for status queries.
 fn record_to_status(rec: &jobs::JobRecord) -> JobStatusResponse {
     JobStatusResponse {
         job_id: rec.job_id.clone(),
@@ -41,6 +44,31 @@ fn record_to_status(rec: &jobs::JobRecord) -> JobStatusResponse {
     }
 }
 
+/// Map `JobError` to `AppError`, translating backend-unavailable to a 503 domain error.
+fn map_job_error(e: jobs::JobError) -> AppError {
+    match e {
+        jobs::JobError::BackendUnavailable(msg) => AppError(
+            common::error::AnkiAtlasError::JobBackendUnavailable {
+                message: msg,
+                context: HashMap::new(),
+            }
+            .into(),
+        ),
+        other => AppError(anyhow::anyhow!(other)),
+    }
+}
+
+/// Build a 404 JSON response for a missing job.
+fn job_not_found(job_id: &str) -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({ "error": "NotFound", "message": format!("job {} not found", job_id) })),
+    )
+        .into_response()
+}
+
+/// Enqueue an async sync job. Returns 202 with job details.
+#[instrument(skip(state, req))]
 pub async fn enqueue_sync_job(
     State(state): State<AppState>,
     Json(req): Json<AsyncSyncRequest>,
@@ -64,20 +92,13 @@ pub async fn enqueue_sync_job(
         .job_manager
         .enqueue_sync_job(payload, req.run_at)
         .await
-        .map_err(|e| match e {
-            jobs::JobError::BackendUnavailable(msg) => AppError(
-                common::error::AnkiAtlasError::JobBackendUnavailable {
-                    message: msg,
-                    context: HashMap::new(),
-                }
-                .into(),
-            ),
-            other => AppError(anyhow::anyhow!(other)),
-        })?;
+        .map_err(map_job_error)?;
 
     Ok((StatusCode::ACCEPTED, Json(record_to_accepted(&rec))).into_response())
 }
 
+/// Enqueue an async index job. Returns 202 with job details.
+#[instrument(skip(state, req))]
 pub async fn enqueue_index_job(
     State(state): State<AppState>,
     Json(req): Json<AsyncIndexRequest>,
@@ -92,20 +113,13 @@ pub async fn enqueue_index_job(
         .job_manager
         .enqueue_index_job(payload, req.run_at)
         .await
-        .map_err(|e| match e {
-            jobs::JobError::BackendUnavailable(msg) => AppError(
-                common::error::AnkiAtlasError::JobBackendUnavailable {
-                    message: msg,
-                    context: HashMap::new(),
-                }
-                .into(),
-            ),
-            other => AppError(anyhow::anyhow!(other)),
-        })?;
+        .map_err(map_job_error)?;
 
     Ok((StatusCode::ACCEPTED, Json(record_to_accepted(&rec))).into_response())
 }
 
+/// Get the status of a job by ID. Returns 404 if not found.
+#[instrument(skip(state))]
 pub async fn get_job_status(
     State(state): State<AppState>,
     Path(job_id): Path<String>,
@@ -118,10 +132,12 @@ pub async fn get_job_status(
 
     match rec {
         Some(r) => Ok((StatusCode::OK, Json(record_to_status(&r))).into_response()),
-        None => Ok((StatusCode::NOT_FOUND, Json(json!({ "error": "NotFound", "message": format!("job {} not found", job_id) }))).into_response()),
+        None => Ok(job_not_found(&job_id)),
     }
 }
 
+/// Request cancellation of a job by ID. Returns 404 if not found.
+#[instrument(skip(state))]
 pub async fn cancel_job(
     State(state): State<AppState>,
     Path(job_id): Path<String>,
@@ -134,6 +150,6 @@ pub async fn cancel_job(
 
     match rec {
         Some(r) => Ok((StatusCode::OK, Json(record_to_status(&r))).into_response()),
-        None => Ok((StatusCode::NOT_FOUND, Json(json!({ "error": "NotFound", "message": format!("job {} not found", job_id) }))).into_response()),
+        None => Ok(job_not_found(&job_id)),
     }
 }

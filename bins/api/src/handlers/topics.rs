@@ -3,13 +3,18 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::{json, Value};
+use tracing::instrument;
 
+/// List all top-level topics.
+#[instrument]
 pub async fn list_topics() -> Json<Value> {
     Json(json!({ "topics": [] }))
 }
 
-/// Handles /topics/{*rest} and dispatches based on suffix.
-/// Routes: /topics/<path>/coverage, /topics/<path>/gaps
+/// Handles `/topics/{*rest}` and dispatches based on suffix.
+///
+/// Routes: `/topics/<path>/coverage`, `/topics/<path>/gaps`
+#[instrument(skip_all)]
 pub async fn topic_wildcard(Path(rest): Path<String>) -> Response {
     if let Some(topic_path) = rest.strip_suffix("/coverage") {
         topic_coverage(topic_path).await.into_response()
