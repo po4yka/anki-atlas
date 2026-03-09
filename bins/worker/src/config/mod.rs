@@ -27,8 +27,16 @@ pub struct WorkerConfig {
 
 impl WorkerConfig {
     /// Build from common::config::Settings.
-    pub fn from_settings(_settings: &common::config::Settings) -> Self {
-        todo!()
+    pub fn from_settings(settings: &common::config::Settings) -> Self {
+        Self {
+            redis_url: settings.redis_url.clone(),
+            queue_name: settings.job_queue_name.clone(),
+            max_concurrency: 4,
+            max_retries: settings.job_max_retries,
+            poll_interval: Duration::from_secs(1),
+            allow_abort_on_shutdown: true,
+            result_ttl_seconds: u64::from(settings.job_result_ttl_seconds),
+        }
     }
 }
 

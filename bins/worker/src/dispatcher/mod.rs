@@ -11,10 +11,20 @@ use std::collections::HashMap;
 ///
 /// Unknown task names return an error.
 pub async fn dispatch(
-    _ctx: &TaskContext,
-    _envelope: &JobEnvelope,
+    ctx: &TaskContext,
+    envelope: &JobEnvelope,
 ) -> Result<HashMap<String, serde_json::Value>, JobError> {
-    todo!()
+    match envelope.task_name.as_str() {
+        "job_sync" => {
+            jobs::tasks::job_sync(ctx, &envelope.job_id, &envelope.payload).await
+        }
+        "job_index" => {
+            jobs::tasks::job_index(ctx, &envelope.job_id, &envelope.payload).await
+        }
+        other => Err(JobError::TaskExecution(format!(
+            "unknown task: {other}"
+        ))),
+    }
 }
 
 #[cfg(test)]
