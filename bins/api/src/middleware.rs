@@ -1,10 +1,11 @@
 use axum::body::Body;
-use axum::http::Request;
+use axum::http::{HeaderValue, Request, StatusCode};
 use axum::response::Response;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tower::{Layer, Service};
+use uuid::Uuid;
 
 // --- Correlation ID ---
 
@@ -39,9 +40,24 @@ where
     }
 
     fn call(&mut self, req: Request<Body>) -> Self::Future {
-        // TODO(impl): extract or generate correlation ID, pass through, add to response
+        let request_id = req
+            .headers()
+            .get("x-request-id")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+
         let future = self.inner.call(req);
-        Box::pin(async move { future.await })
+        Box::pin(async move {
+            let mut resp = future.await?;
+            resp.headers_mut().insert(
+                "x-request-id",
+                HeaderValue::from_str(&request_id).unwrap_or_else(|_| {
+                    HeaderValue::from_str(&Uuid::new_v4().to_string()).unwrap()
+                }),
+            );
+            Ok(resp)
+        })
     }
 }
 
@@ -73,7 +89,6 @@ impl<S> Layer<S> for ApiKeyLayer {
 #[derive(Clone)]
 pub struct ApiKeyService<S> {
     inner: S,
-    #[allow(dead_code)]
     api_key: Option<String>,
 }
 
@@ -91,7 +106,22 @@ where
     }
 
     fn call(&mut self, req: Request<Body>) -> Self::Future {
-        // TODO(impl): check api key, return 401 if wrong/missing when configured
+        if let Some(expected) = &self.api_key {
+            let provided = req
+                .headers()
+                .get("x-api-key")
+                .and_then(|v| v.to_str().ok());
+
+            if provided != Some(expected.as_str()) {
+                return Box::pin(async {
+                    Ok(Response::builder()
+                        .status(StatusCode::UNAUTHORIZED)
+                        .body(Body::from("unauthorized"))
+                        .unwrap())
+                });
+            }
+        }
+
         let future = self.inner.call(req);
         Box::pin(async move { future.await })
     }
