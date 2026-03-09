@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use ammonia::Builder;
-use pulldown_cmark::{html, Options, Parser};
+use pulldown_cmark::{Options, Parser, html};
 
 /// Convert Markdown content to HTML.
 /// Uses pulldown-cmark for conversion and optionally sanitizes with ammonia.
@@ -31,9 +31,43 @@ pub fn sanitize_html(html: &str) -> String {
     }
 
     let tags: HashSet<&str> = [
-        "p", "strong", "em", "b", "i", "u", "s", "code", "pre", "br", "hr", "div", "span",
-        "ul", "ol", "li", "a", "img", "table", "thead", "tbody", "tfoot", "tr", "th", "td",
-        "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "sub", "sup", "dl", "dt", "dd",
+        "p",
+        "strong",
+        "em",
+        "b",
+        "i",
+        "u",
+        "s",
+        "code",
+        "pre",
+        "br",
+        "hr",
+        "div",
+        "span",
+        "ul",
+        "ol",
+        "li",
+        "a",
+        "img",
+        "table",
+        "thead",
+        "tbody",
+        "tfoot",
+        "tr",
+        "th",
+        "td",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "blockquote",
+        "sub",
+        "sup",
+        "dl",
+        "dt",
+        "dd",
     ]
     .into_iter()
     .collect();

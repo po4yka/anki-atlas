@@ -33,7 +33,12 @@ fn full_spec() -> CardSpec {
         slug_base: Some("full-card".into()),
         lang: "ru".into(),
         card_type: "Missing".into(),
-        tags: vec!["rust".into(), "ownership".into(), "memory".into(), "borrow".into()],
+        tags: vec![
+            "rust".into(),
+            "ownership".into(),
+            "memory".into(),
+            "borrow".into(),
+        ],
         guid: "def456".into(),
         source_path: Some("notes/rust.md".into()),
         source_anchor: Some("ownership-section".into()),
@@ -137,10 +142,7 @@ fn render_contains_key_point_sentinel() {
 fn render_contains_manifest_sentinel() {
     let spec = minimal_spec();
     let html = render(&spec);
-    assert!(
-        html.contains("<!-- manifest:"),
-        "Missing manifest sentinel"
-    );
+    assert!(html.contains("<!-- manifest:"), "Missing manifest sentinel");
 }
 
 // ---------------------------------------------------------------------------
@@ -469,10 +471,16 @@ fn render_batch_each_card_has_own_sentinels() {
     let end_count = batch.matches("<!-- END_CARDS -->").count();
     let end_of_cards_count = batch.matches("END_OF_CARDS").count();
 
-    assert_eq!(prompt_count, 2, "Each card should have its own PROMPT_VERSION");
+    assert_eq!(
+        prompt_count, 2,
+        "Each card should have its own PROMPT_VERSION"
+    );
     assert_eq!(begin_count, 2, "Each card should have its own BEGIN_CARDS");
     assert_eq!(end_count, 2, "Each card should have its own END_CARDS");
-    assert_eq!(end_of_cards_count, 2, "Each card should have its own END_OF_CARDS");
+    assert_eq!(
+        end_of_cards_count, 2,
+        "Each card should have its own END_OF_CARDS"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -755,7 +763,10 @@ fn validate_apf_exactly_min_tags_is_valid() {
     let html = valid_apf_html_simple(); // minimal_spec has 3 tags
     let result = validate_apf(&html, None);
     assert!(
-        !result.errors.iter().any(|e| e.to_lowercase().contains("tag") && e.contains("3-6")),
+        !result
+            .errors
+            .iter()
+            .any(|e| e.to_lowercase().contains("tag") && e.contains("3-6")),
         "3 tags should be valid, got errors: {:?}",
         result.errors
     );
@@ -775,7 +786,10 @@ fn validate_apf_exactly_max_tags_is_valid() {
     let html = render(&spec);
     let result = validate_apf(&html, None);
     assert!(
-        !result.errors.iter().any(|e| e.to_lowercase().contains("tag") && e.contains("3-6")),
+        !result
+            .errors
+            .iter()
+            .any(|e| e.to_lowercase().contains("tag") && e.contains("3-6")),
         "6 tags should be valid, got errors: {:?}",
         result.errors
     );
@@ -788,7 +802,12 @@ fn validate_apf_exactly_max_tags_is_valid() {
 #[test]
 fn validate_apf_uppercase_tag_is_warning() {
     let mut spec = full_spec();
-    spec.tags = vec!["Rust".into(), "Ownership".into(), "memory".into(), "basics".into()];
+    spec.tags = vec![
+        "Rust".into(),
+        "Ownership".into(),
+        "memory".into(),
+        "basics".into(),
+    ];
     let html = render(&spec);
     let result = validate_apf(&html, None);
     assert!(
@@ -824,13 +843,20 @@ fn validate_apf_invalid_manifest_json_is_error() {
     let html = valid_apf_html();
     // Replace manifest with invalid JSON
     let html_bad_manifest = html.replace(
-        &html.lines().find(|l| l.contains("<!-- manifest:")).unwrap().to_string(),
+        &html
+            .lines()
+            .find(|l| l.contains("<!-- manifest:"))
+            .unwrap()
+            .to_string(),
         "<!-- manifest:{not valid json} -->",
     );
     let result = validate_apf(&html_bad_manifest, None);
     assert!(!result.is_valid());
     assert!(
-        result.errors.iter().any(|e| e.contains("manifest") || e.contains("JSON")),
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("manifest") || e.contains("JSON")),
         "Should report invalid manifest JSON, got: {:?}",
         result.errors
     );
@@ -840,13 +866,13 @@ fn validate_apf_invalid_manifest_json_is_error() {
 fn validate_apf_manifest_slug_mismatch_is_error() {
     let html = valid_apf_html();
     // Change slug in manifest but not in header
-    let html_mismatch = html.replace(
-        "\"slug\":\"full-card-02\"",
-        "\"slug\":\"wrong-slug-99\"",
-    );
+    let html_mismatch = html.replace("\"slug\":\"full-card-02\"", "\"slug\":\"wrong-slug-99\"");
     let result = validate_apf(&html_mismatch, None);
     assert!(
-        result.errors.iter().any(|e| e.contains("slug") && e.contains("mismatch")),
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("slug") && e.contains("mismatch")),
         "Should report manifest slug mismatch, got: {:?}",
         result.errors
     );
@@ -909,14 +935,14 @@ fn validate_apf_missing_type_no_cloze_is_warning() {
 fn validate_apf_missing_type_non_dense_cloze_is_error() {
     // Insert cloze deletions with gap in numbering: {{c1::}} and {{c3::}} (missing c2)
     let mut spec = full_spec();
-    spec.key_point_notes = vec![
-        "{{c1::First cloze}}".into(),
-        "{{c3::Third cloze}}".into(),
-    ];
+    spec.key_point_notes = vec!["{{c1::First cloze}}".into(), "{{c3::Third cloze}}".into()];
     let html = render(&spec);
     let result = validate_apf(&html, None);
     assert!(
-        result.errors.iter().any(|e| e.contains("cloze") || e.contains("Cloze")),
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("cloze") || e.contains("Cloze")),
         "Non-dense cloze should be error, got: {:?}",
         result.errors
     );
@@ -926,14 +952,14 @@ fn validate_apf_missing_type_non_dense_cloze_is_error() {
 fn validate_apf_missing_type_dense_cloze_no_error() {
     // Insert proper dense cloze: {{c1::}} and {{c2::}}
     let mut spec = full_spec();
-    spec.key_point_notes = vec![
-        "{{c1::First cloze}}".into(),
-        "{{c2::Second cloze}}".into(),
-    ];
+    spec.key_point_notes = vec!["{{c1::First cloze}}".into(), "{{c2::Second cloze}}".into()];
     let html = render(&spec);
     let result = validate_apf(&html, None);
     assert!(
-        !result.errors.iter().any(|e| e.to_lowercase().contains("cloze")),
+        !result
+            .errors
+            .iter()
+            .any(|e| e.to_lowercase().contains("cloze")),
         "Dense cloze should not produce error, got: {:?}",
         result.errors
     );
@@ -953,7 +979,10 @@ fn validate_apf_duplicate_slugs_is_error() {
     let html = render_batch(&[spec1, spec2]);
     let result = validate_apf(&html, None);
     assert!(
-        result.errors.iter().any(|e| e.to_lowercase().contains("duplicate")),
+        result
+            .errors
+            .iter()
+            .any(|e| e.to_lowercase().contains("duplicate")),
         "Duplicate slugs should be error, got: {:?}",
         result.errors
     );
@@ -969,7 +998,10 @@ fn validate_apf_unique_slugs_no_error() {
     let html = render_batch(&[spec1, spec2]);
     let result = validate_apf(&html, None);
     assert!(
-        !result.errors.iter().any(|e| e.to_lowercase().contains("duplicate")),
+        !result
+            .errors
+            .iter()
+            .any(|e| e.to_lowercase().contains("duplicate")),
         "Unique slugs should not produce duplicate error, got: {:?}",
         result.errors
     );
@@ -984,7 +1016,10 @@ fn validate_apf_slug_mismatch_produces_warning() {
     let html = valid_apf_html(); // slug is "full-card-02"
     let result = validate_apf(&html, Some("expected-slug-01"));
     assert!(
-        result.warnings.iter().any(|w| w.to_lowercase().contains("slug") && w.contains("mismatch")),
+        result
+            .warnings
+            .iter()
+            .any(|w| w.to_lowercase().contains("slug") && w.contains("mismatch")),
         "Slug mismatch with parameter should produce warning, got: {:?}",
         result.warnings
     );
@@ -995,7 +1030,10 @@ fn validate_apf_slug_matches_no_warning() {
     let html = valid_apf_html(); // slug is "full-card-02"
     let result = validate_apf(&html, Some("full-card-02"));
     assert!(
-        !result.warnings.iter().any(|w| w.to_lowercase().contains("slug") && w.contains("mismatch")),
+        !result
+            .warnings
+            .iter()
+            .any(|w| w.to_lowercase().contains("slug") && w.contains("mismatch")),
         "Matching slug should not produce mismatch warning, got: {:?}",
         result.warnings
     );
@@ -1007,11 +1045,15 @@ fn validate_apf_slug_matches_no_warning() {
 
 #[test]
 fn validate_apf_no_card_blocks_is_error() {
-    let html = "<!-- PROMPT_VERSION: apf-v2.1 -->\n<!-- BEGIN_CARDS -->\n<!-- END_CARDS -->\nEND_OF_CARDS";
+    let html =
+        "<!-- PROMPT_VERSION: apf-v2.1 -->\n<!-- BEGIN_CARDS -->\n<!-- END_CARDS -->\nEND_OF_CARDS";
     let result = validate_apf(html, None);
     assert!(!result.is_valid());
     assert!(
-        result.errors.iter().any(|e| e.contains("card") || e.contains("Card")),
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("card") || e.contains("Card")),
         "No card blocks should be error, got: {:?}",
         result.errors
     );
@@ -1038,7 +1080,10 @@ fn validate_apf_long_line_produces_warning() {
     let html = render(&spec);
     let result = validate_apf(&html, None);
     assert!(
-        result.warnings.iter().any(|w| w.contains("88") || w.contains("character") || w.contains("width")),
+        result
+            .warnings
+            .iter()
+            .any(|w| w.contains("88") || w.contains("character") || w.contains("width")),
         "Line > 88 chars should produce warning, got: {:?}",
         result.warnings
     );
@@ -1058,7 +1103,10 @@ fn validate_apf_manifest_tags_mismatch_is_warning() {
     );
     let result = validate_apf(&html_modified, None);
     assert!(
-        result.warnings.iter().any(|w| w.contains("tag") && w.contains("match")),
+        result
+            .warnings
+            .iter()
+            .any(|w| w.contains("tag") && w.contains("match")),
         "Manifest tags mismatch should produce warning, got: {:?}",
         result.warnings
     );
@@ -1468,7 +1516,10 @@ fn highlight_code_escapes_html_entities() {
     let code = "x > 0 && y < 10";
     let result = highlight_code(code, Some("rust"));
     assert!(
-        !result.contains("x > 0 && y < 10") || result.contains("&gt;") || result.contains("&lt;") || result.contains("&amp;"),
+        !result.contains("x > 0 && y < 10")
+            || result.contains("&gt;")
+            || result.contains("&lt;")
+            || result.contains("&amp;"),
         "HTML entities in code should be escaped, got: {result}"
     );
 }
@@ -1515,7 +1566,10 @@ use super::validator::*;
 fn validate_card_html_valid_html() {
     let html = "<p>Hello <strong>world</strong></p>";
     let errors = validate_card_html(html);
-    assert!(errors.is_empty(), "Valid HTML should produce no errors, got: {errors:?}");
+    assert!(
+        errors.is_empty(),
+        "Valid HTML should produce no errors, got: {errors:?}"
+    );
 }
 
 #[test]
@@ -1523,7 +1577,9 @@ fn validate_card_html_detects_backtick_fences() {
     let html = "```python\nprint('hi')\n```";
     let errors = validate_card_html(html);
     assert!(
-        errors.iter().any(|e| e.contains("Backtick") || e.contains("backtick") || e.contains("code fence")),
+        errors
+            .iter()
+            .any(|e| e.contains("Backtick") || e.contains("backtick") || e.contains("code fence")),
         "Should detect backtick code fences, got: {errors:?}"
     );
 }
@@ -1533,7 +1589,9 @@ fn validate_card_html_detects_markdown_bold() {
     let html = "This is **bold** text";
     let errors = validate_card_html(html);
     assert!(
-        errors.iter().any(|e| e.contains("bold") || e.contains("**")),
+        errors
+            .iter()
+            .any(|e| e.contains("bold") || e.contains("**")),
         "Should detect markdown bold markers, got: {errors:?}"
     );
 }
@@ -1543,7 +1601,9 @@ fn validate_card_html_detects_markdown_italic() {
     let html = "This is *italic* text";
     let errors = validate_card_html(html);
     assert!(
-        errors.iter().any(|e| e.contains("italic") || e.contains("*")),
+        errors
+            .iter()
+            .any(|e| e.contains("italic") || e.contains("*")),
         "Should detect markdown italic markers, got: {errors:?}"
     );
 }
@@ -1564,7 +1624,9 @@ fn validate_card_html_pre_without_code() {
     let html = "<pre>some code without code tag</pre>";
     let errors = validate_card_html(html);
     assert!(
-        errors.iter().any(|e| e.contains("<pre>") && e.contains("<code>")),
+        errors
+            .iter()
+            .any(|e| e.contains("<pre>") && e.contains("<code>")),
         "Should detect <pre> without nested <code>, got: {errors:?}"
     );
 }
@@ -1584,7 +1646,9 @@ fn validate_card_html_inline_code_outside_pre() {
     let html = "<p>Use <code>foo()</code> here</p>";
     let errors = validate_card_html(html);
     assert!(
-        errors.iter().any(|e| e.contains("Inline") || e.contains("inline") || e.contains("<code>")),
+        errors
+            .iter()
+            .any(|e| e.contains("Inline") || e.contains("inline") || e.contains("<code>")),
         "Inline <code> outside <pre> should be flagged, got: {errors:?}"
     );
 }
@@ -1592,7 +1656,10 @@ fn validate_card_html_inline_code_outside_pre() {
 #[test]
 fn validate_card_html_empty_input() {
     let errors = validate_card_html("");
-    assert!(errors.is_empty(), "Empty input should produce no errors, got: {errors:?}");
+    assert!(
+        errors.is_empty(),
+        "Empty input should produce no errors, got: {errors:?}"
+    );
 }
 
 #[test]
@@ -1614,14 +1681,21 @@ fn validate_card_html_multiple_errors() {
 fn validate_markdown_valid_content() {
     let content = "This is **bold** and `code` text.";
     let result = validate_markdown(content);
-    assert!(result.is_valid, "Valid markdown should be valid, errors: {:?}", result.errors);
+    assert!(
+        result.is_valid,
+        "Valid markdown should be valid, errors: {:?}",
+        result.errors
+    );
 }
 
 #[test]
 fn validate_markdown_empty_input() {
     let result = validate_markdown("");
     assert!(result.is_valid, "Empty input should be valid");
-    assert!(result.errors.is_empty(), "Empty input should have no errors");
+    assert!(
+        result.errors.is_empty(),
+        "Empty input should have no errors"
+    );
 }
 
 #[test]
@@ -1636,7 +1710,10 @@ fn validate_markdown_unclosed_code_fence() {
     let result = validate_markdown(content);
     assert!(!result.is_valid, "Unclosed code fence should be invalid");
     assert!(
-        result.errors.iter().any(|e| e.contains("code fence") || e.contains("Unclosed")),
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("code fence") || e.contains("Unclosed")),
         "Should mention unclosed code fence, errors: {:?}",
         result.errors
     );
@@ -1647,7 +1724,10 @@ fn validate_markdown_balanced_code_fences() {
     let content = "```python\nprint('hi')\n```\n";
     let result = validate_markdown(content);
     assert!(
-        !result.errors.iter().any(|e| e.contains("code fence") || e.contains("Unclosed")),
+        !result
+            .errors
+            .iter()
+            .any(|e| e.contains("code fence") || e.contains("Unclosed")),
         "Balanced fences should not produce fence errors, errors: {:?}",
         result.errors
     );
@@ -1663,7 +1743,10 @@ fn validate_markdown_unbalanced_backticks() {
     let result = validate_markdown(content);
     assert!(!result.is_valid, "Unbalanced backticks should be invalid");
     assert!(
-        result.errors.iter().any(|e| e.contains("backtick") || e.contains("Unbalanced")),
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("backtick") || e.contains("Unbalanced")),
         "Should mention unbalanced backticks, errors: {:?}",
         result.errors
     );
@@ -1675,7 +1758,10 @@ fn validate_markdown_unbalanced_bold_markers() {
     let result = validate_markdown(content);
     assert!(!result.is_valid, "Unbalanced bold should be invalid");
     assert!(
-        result.errors.iter().any(|e| e.contains("bold") || e.contains("**")),
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("bold") || e.contains("**")),
         "Should mention unbalanced bold, errors: {:?}",
         result.errors
     );
@@ -1701,7 +1787,10 @@ fn validate_markdown_html_tags_warning() {
     let content = "Use <strong>bold</strong> in markdown";
     let result = validate_markdown(content);
     assert!(
-        result.warnings.iter().any(|e| e.contains("HTML") || e.contains("html")),
+        result
+            .warnings
+            .iter()
+            .any(|e| e.contains("HTML") || e.contains("html")),
         "HTML tags in markdown should produce a warning, warnings: {:?}",
         result.warnings
     );
@@ -1713,7 +1802,10 @@ fn validate_markdown_long_line_in_code_block_warning() {
     let content = format!("```\n{}\n```", long_line);
     let result = validate_markdown(&content);
     assert!(
-        result.warnings.iter().any(|e| e.contains("200") || e.contains("characters")),
+        result
+            .warnings
+            .iter()
+            .any(|e| e.contains("200") || e.contains("characters")),
         "Long lines in code blocks should produce a warning, warnings: {:?}",
         result.warnings
     );
@@ -1725,7 +1817,10 @@ fn validate_markdown_long_line_outside_code_not_warned() {
     let long_line = "x".repeat(201);
     let result = validate_markdown(&long_line);
     assert!(
-        !result.warnings.iter().any(|e| e.contains("200") || e.contains("characters")),
+        !result
+            .warnings
+            .iter()
+            .any(|e| e.contains("200") || e.contains("characters")),
         "Long lines outside code blocks should not be warned, warnings: {:?}",
         result.warnings
     );
@@ -1769,7 +1864,10 @@ fn validate_apf_markdown_empty_input() {
     let result = validate_apf_markdown("");
     assert!(!result.is_valid, "Empty APF should be invalid");
     assert!(
-        result.errors.iter().any(|e| e.contains("Empty") || e.contains("empty")),
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("Empty") || e.contains("empty")),
         "Should mention empty content, errors: {:?}",
         result.errors
     );
@@ -1814,7 +1912,10 @@ fn validate_apf_markdown_missing_card_header() {
     let result = validate_apf_markdown(&apf);
     assert!(!result.is_valid, "Missing card header should be invalid");
     assert!(
-        result.errors.iter().any(|e| e.contains("card header") || e.contains("Card")),
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("card header") || e.contains("Card")),
         "Should mention missing card header, errors: {:?}",
         result.errors
     );
@@ -1841,7 +1942,10 @@ fn validate_apf_markdown_missing_title() {
 fn validate_apf_markdown_missing_key_point_sections() {
     let spec = minimal_spec();
     let apf = render(&spec)
-        .replace("<!-- Key point (code block / image) -->", "<!-- Something -->")
+        .replace(
+            "<!-- Key point (code block / image) -->",
+            "<!-- Something -->",
+        )
         .replace("<!-- Key point notes -->", "<!-- Something else -->");
     let result = validate_apf_markdown(&apf);
     assert!(
@@ -1881,7 +1985,10 @@ fn validate_apf_markdown_with_unclosed_fence_in_section() {
     let result = validate_apf_markdown(&apf);
     // The section content has unclosed fences -- should produce errors
     assert!(
-        result.errors.iter().any(|e| e.contains("fence") || e.contains("Unclosed"))
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("fence") || e.contains("Unclosed"))
             || !result.is_valid,
         "Unclosed fence in section should be detected, result: {:?}",
         result

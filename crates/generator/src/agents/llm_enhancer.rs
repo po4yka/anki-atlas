@@ -60,13 +60,13 @@ impl EnhancerAgent for LlmEnhancerAgent {
         let enhanced_front = json["enhanced_front"].as_str().unwrap_or_default();
 
         // Return original card if no improvements suggested
-        if enhanced_front.is_empty()
-            || improvements.is_none_or(|arr| arr.is_empty())
-        {
+        if enhanced_front.is_empty() || improvements.is_none_or(|arr| arr.is_empty()) {
             return Ok(card.clone());
         }
 
-        let confidence = json["confidence"].as_f64().unwrap_or(card.confidence as f64) as f32;
+        let confidence = json["confidence"]
+            .as_f64()
+            .unwrap_or(card.confidence as f64) as f32;
         Ok(GeneratedCard {
             confidence,
             apf_html: enhanced_front.to_string(),

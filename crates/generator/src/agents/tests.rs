@@ -161,8 +161,7 @@ async fn mock_enhancer_agent_enhances_card() {
 #[tokio::test]
 async fn mock_enhancer_agent_returns_original_when_no_improvements() {
     let mut mock = MockEnhancerAgent::new();
-    mock.expect_enhance()
-        .returning(|card, _| Ok(card.clone()));
+    mock.expect_enhance().returning(|card, _| Ok(card.clone()));
 
     let deps = test_deps();
     let card = test_card();

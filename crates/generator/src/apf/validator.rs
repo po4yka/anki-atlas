@@ -4,12 +4,10 @@ use regex::Regex;
 use std::sync::LazyLock;
 
 /// Regex to match `<pre>...</pre>` blocks (non-greedy).
-static PRE_BLOCK_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?s)<pre>.*?</pre>").unwrap());
+static PRE_BLOCK_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<pre>.*?</pre>").unwrap());
 
 /// Regex to match `<pre><code` (valid structure).
-static PRE_CODE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"<pre>\s*<code[\s>]").unwrap());
+static PRE_CODE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<pre>\s*<code[\s>]").unwrap());
 
 /// Regex to match standalone `<pre>` tags (for detecting pre-without-code).
 static PRE_TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<pre>").unwrap());
@@ -22,8 +20,7 @@ static HTML_TAG_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<[a-zA-Z][a-zA-Z0-9]*[^>]*>").unwrap());
 
 /// Regex to match APF card header comments.
-static CARD_HEADER_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"<!-- Card \d+").unwrap());
+static CARD_HEADER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<!-- Card \d+").unwrap());
 
 /// Result of Markdown validation.
 #[derive(Debug, Clone)]

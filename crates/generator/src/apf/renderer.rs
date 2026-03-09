@@ -77,10 +77,7 @@ pub fn render(spec: &CardSpec) -> String {
     // Key point code block
     out.push_str("<!-- Key point (code block / image) -->\n");
     if let Some(ref code) = spec.key_point_code {
-        let lang = spec
-            .key_point_code_lang
-            .as_deref()
-            .unwrap_or("plaintext");
+        let lang = spec.key_point_code_lang.as_deref().unwrap_or("plaintext");
         out.push_str(&format!(
             "<pre><code class=\"language-{}\">{}</code></pre>\n",
             lang,

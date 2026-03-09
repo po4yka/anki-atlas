@@ -149,12 +149,7 @@ pub fn validate_apf(apf_html: &str, slug: Option<&str>) -> LintResult {
     // Validate each card block
     for block in &card_blocks {
         // Check for comma-separated tags in header
-        if block
-            .header_tags
-            .len()
-            == 1
-            && block.header_tags[0].contains(',')
-        {
+        if block.header_tags.len() == 1 && block.header_tags[0].contains(',') {
             errors.push(format!(
                 "Card {}: tags must be space-separated, not comma-separated",
                 block.slug
@@ -172,10 +167,7 @@ pub fn validate_apf(apf_html: &str, slug: Option<&str>) -> LintResult {
 
         // Tag format: warn on uppercase
         if block.header_tags.iter().any(|t| t != &t.to_lowercase()) {
-            warnings.push(format!(
-                "Card {}: tags should be lowercase",
-                block.slug
-            ));
+            warnings.push(format!("Card {}: tags should be lowercase", block.slug));
         }
 
         // Required field headers
@@ -200,15 +192,11 @@ pub fn validate_apf(apf_html: &str, slug: Option<&str>) -> LintResult {
             Some(json_str) => {
                 match serde_json::from_str::<serde_json::Value>(json_str) {
                     Err(_) => {
-                        errors.push(format!(
-                            "Card {}: invalid manifest JSON",
-                            block.slug
-                        ));
+                        errors.push(format!("Card {}: invalid manifest JSON", block.slug));
                     }
                     Ok(manifest) => {
                         // Slug mismatch between header and manifest
-                        if let Some(manifest_slug) = manifest.get("slug").and_then(|v| v.as_str())
-                        {
+                        if let Some(manifest_slug) = manifest.get("slug").and_then(|v| v.as_str()) {
                             if manifest_slug != block.slug {
                                 errors.push(format!(
                                     "Card {}: manifest slug mismatch (header: {}, manifest: {})",
@@ -220,10 +208,8 @@ pub fn validate_apf(apf_html: &str, slug: Option<&str>) -> LintResult {
                         // Tags mismatch between header and manifest
                         if let Some(manifest_tags) = manifest.get("tags").and_then(|v| v.as_array())
                         {
-                            let m_tags: Vec<&str> = manifest_tags
-                                .iter()
-                                .filter_map(|v| v.as_str())
-                                .collect();
+                            let m_tags: Vec<&str> =
+                                manifest_tags.iter().filter_map(|v| v.as_str()).collect();
                             let h_tags: Vec<&str> =
                                 block.header_tags.iter().map(|s| s.as_str()).collect();
                             if m_tags != h_tags {
