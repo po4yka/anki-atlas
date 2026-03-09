@@ -1,3 +1,4 @@
+pub mod converter;
 pub mod linter;
 pub mod renderer;
 

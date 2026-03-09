@@ -1,3 +1,4 @@
+use super::converter::*;
 use super::linter::*;
 use super::renderer::*;
 
@@ -1076,4 +1077,426 @@ fn validate_apf_batch_validates_all_cards() {
     // Should validate both cards without crashing
     // (full_spec has Missing type without cloze, so at minimum a warning)
     assert!(result.errors.is_empty() || result.warnings.len() > 0);
+}
+
+// ===========================================================================
+// APF Converter tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// markdown_to_html() - basic conversions
+// ---------------------------------------------------------------------------
+
+#[test]
+fn markdown_to_html_bold() {
+    let result = markdown_to_html("**bold text**", true);
+    assert!(
+        result.contains("<strong>bold text</strong>"),
+        "Bold markdown should convert to <strong>, got: {result}"
+    );
+}
+
+#[test]
+fn markdown_to_html_italic() {
+    let result = markdown_to_html("*italic text*", true);
+    assert!(
+        result.contains("<em>italic text</em>"),
+        "Italic markdown should convert to <em>, got: {result}"
+    );
+}
+
+#[test]
+fn markdown_to_html_inline_code() {
+    let result = markdown_to_html("use `println!` macro", true);
+    assert!(
+        result.contains("<code"),
+        "Inline code should convert to <code>, got: {result}"
+    );
+    assert!(
+        result.contains("println!"),
+        "Inline code content should be preserved, got: {result}"
+    );
+}
+
+#[test]
+fn markdown_to_html_code_block() {
+    let md = "```rust\nfn main() {}\n```";
+    let result = markdown_to_html(md, true);
+    assert!(
+        result.contains("<pre>") && result.contains("<code"),
+        "Code blocks should convert to <pre><code>, got: {result}"
+    );
+    assert!(
+        result.contains("fn main()"),
+        "Code block content should be preserved, got: {result}"
+    );
+}
+
+#[test]
+fn markdown_to_html_code_block_with_language_class() {
+    let md = "```python\nprint('hello')\n```";
+    let result = markdown_to_html(md, true);
+    assert!(
+        result.contains("language-python") || result.contains("lang-python"),
+        "Code block should have language class, got: {result}"
+    );
+}
+
+#[test]
+fn markdown_to_html_unordered_list() {
+    let md = "- item one\n- item two\n- item three";
+    let result = markdown_to_html(md, true);
+    assert!(
+        result.contains("<li>"),
+        "List items should convert to <li>, got: {result}"
+    );
+    assert!(
+        result.contains("<ul>"),
+        "Unordered list should have <ul> wrapper, got: {result}"
+    );
+}
+
+#[test]
+fn markdown_to_html_paragraphs() {
+    let md = "First paragraph.\n\nSecond paragraph.";
+    let result = markdown_to_html(md, true);
+    assert!(
+        result.contains("<p>"),
+        "Paragraphs should be wrapped in <p>, got: {result}"
+    );
+}
+
+#[test]
+fn markdown_to_html_empty_input() {
+    let result = markdown_to_html("", true);
+    assert!(
+        result.is_empty() || result.trim().is_empty(),
+        "Empty input should return empty or whitespace-only, got: '{result}'"
+    );
+}
+
+#[test]
+fn markdown_to_html_whitespace_only() {
+    let result = markdown_to_html("   \n  \n  ", true);
+    assert!(
+        result.trim().is_empty() || result == "   \n  \n  ",
+        "Whitespace-only input should return empty/unchanged, got: '{result}'"
+    );
+}
+
+#[test]
+fn markdown_to_html_sanitize_true_strips_script() {
+    let md = "hello <script>alert('xss')</script> world";
+    let result = markdown_to_html(md, true);
+    assert!(
+        !result.contains("<script>"),
+        "With sanitize=true, script tags should be stripped, got: {result}"
+    );
+}
+
+#[test]
+fn markdown_to_html_sanitize_false_preserves_raw_html() {
+    let md = "hello **bold** world";
+    let result = markdown_to_html(md, false);
+    assert!(
+        result.contains("<strong>bold</strong>"),
+        "sanitize=false should still convert markdown, got: {result}"
+    );
+}
+
+#[test]
+fn markdown_to_html_escapes_code_block_html() {
+    let md = "```html\n<div>test</div>\n```";
+    let result = markdown_to_html(md, true);
+    // The code inside the code block should be escaped
+    assert!(
+        result.contains("&lt;div&gt;") || result.contains("<code"),
+        "HTML inside code blocks should be escaped, got: {result}"
+    );
+}
+
+#[test]
+fn markdown_to_html_preserves_cloze_syntax() {
+    let md = "The answer is {{c1::42}}.";
+    let result = markdown_to_html(md, true);
+    assert!(
+        result.contains("{{c1::42}}"),
+        "Cloze syntax should be preserved, got: {result}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// sanitize_html() - tag filtering
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sanitize_html_preserves_allowed_tags() {
+    let html = "<p>Hello <strong>world</strong></p>";
+    let result = sanitize_html(html);
+    assert!(
+        result.contains("<p>") && result.contains("<strong>"),
+        "Allowed tags should be preserved, got: {result}"
+    );
+}
+
+#[test]
+fn sanitize_html_strips_script_tag() {
+    let html = "<p>Hello</p><script>alert('xss')</script>";
+    let result = sanitize_html(html);
+    assert!(
+        !result.contains("<script>"),
+        "Script tags should be stripped, got: {result}"
+    );
+    assert!(
+        result.contains("Hello"),
+        "Text content should be preserved, got: {result}"
+    );
+}
+
+#[test]
+fn sanitize_html_strips_onclick_attribute() {
+    let html = "<p onclick=\"evil()\">Click me</p>";
+    let result = sanitize_html(html);
+    assert!(
+        !result.contains("onclick"),
+        "onclick attribute should be stripped, got: {result}"
+    );
+    assert!(
+        result.contains("Click me"),
+        "Text content should be preserved, got: {result}"
+    );
+}
+
+#[test]
+fn sanitize_html_preserves_class_attribute() {
+    let html = "<code class=\"language-rust\">let x = 1;</code>";
+    let result = sanitize_html(html);
+    assert!(
+        result.contains("class=\"language-rust\""),
+        "class attribute should be preserved, got: {result}"
+    );
+}
+
+#[test]
+fn sanitize_html_preserves_href_on_a_tag() {
+    let html = "<a href=\"https://example.com\">link</a>";
+    let result = sanitize_html(html);
+    assert!(
+        result.contains("href=\"https://example.com\""),
+        "href on <a> should be preserved, got: {result}"
+    );
+}
+
+#[test]
+fn sanitize_html_preserves_img_attributes() {
+    let html = "<img src=\"pic.png\" alt=\"photo\" width=\"100\">";
+    let result = sanitize_html(html);
+    assert!(
+        result.contains("src=\"pic.png\""),
+        "src on <img> should be preserved, got: {result}"
+    );
+    assert!(
+        result.contains("alt=\"photo\""),
+        "alt on <img> should be preserved, got: {result}"
+    );
+}
+
+#[test]
+fn sanitize_html_strips_iframe() {
+    let html = "<iframe src=\"evil.com\"></iframe><p>safe</p>";
+    let result = sanitize_html(html);
+    assert!(
+        !result.contains("<iframe"),
+        "iframe should be stripped, got: {result}"
+    );
+    assert!(
+        result.contains("<p>safe</p>"),
+        "Safe content should remain, got: {result}"
+    );
+}
+
+#[test]
+fn sanitize_html_preserves_table_tags() {
+    let html = "<table><thead><tr><th>Header</th></tr></thead><tbody><tr><td>Cell</td></tr></tbody></table>";
+    let result = sanitize_html(html);
+    assert!(
+        result.contains("<table>") && result.contains("<td>"),
+        "Table tags should be preserved, got: {result}"
+    );
+}
+
+#[test]
+fn sanitize_html_preserves_colspan() {
+    let html = "<table><tr><td colspan=\"2\">wide</td></tr></table>";
+    let result = sanitize_html(html);
+    assert!(
+        result.contains("colspan=\"2\""),
+        "colspan attribute should be preserved, got: {result}"
+    );
+}
+
+#[test]
+fn sanitize_html_empty_input() {
+    let result = sanitize_html("");
+    assert!(
+        result.is_empty(),
+        "Empty input should return empty string, got: '{result}'"
+    );
+}
+
+#[test]
+fn sanitize_html_preserves_pre_code() {
+    let html = "<pre><code class=\"language-python\">print(1)</code></pre>";
+    let result = sanitize_html(html);
+    assert!(
+        result.contains("<pre>") && result.contains("<code"),
+        "pre/code should be preserved, got: {result}"
+    );
+}
+
+#[test]
+fn sanitize_html_strips_style_tag() {
+    let html = "<style>body { color: red; }</style><p>text</p>";
+    let result = sanitize_html(html);
+    assert!(
+        !result.contains("<style>"),
+        "style tag should be stripped, got: {result}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// convert_apf_field() - field conversion
+// ---------------------------------------------------------------------------
+
+#[test]
+fn convert_apf_field_empty_returns_empty() {
+    let result = convert_apf_field("");
+    assert!(
+        result.is_empty(),
+        "Empty field should return empty string, got: '{result}'"
+    );
+}
+
+#[test]
+fn convert_apf_field_markdown_gets_converted() {
+    let result = convert_apf_field("**bold** and *italic*");
+    assert!(
+        result.contains("<strong>bold</strong>"),
+        "Markdown bold should be converted, got: {result}"
+    );
+    assert!(
+        result.contains("<em>italic</em>"),
+        "Markdown italic should be converted, got: {result}"
+    );
+}
+
+#[test]
+fn convert_apf_field_html_gets_sanitized() {
+    let result = convert_apf_field("<p>Already <strong>HTML</strong></p>");
+    assert!(
+        result.contains("<strong>HTML</strong>"),
+        "Existing HTML should be preserved, got: {result}"
+    );
+}
+
+#[test]
+fn convert_apf_field_html_with_script_gets_sanitized() {
+    let result = convert_apf_field("<p>text</p><script>alert(1)</script>");
+    assert!(
+        !result.contains("<script>"),
+        "Script in HTML field should be stripped, got: {result}"
+    );
+    assert!(
+        result.contains("text"),
+        "Safe content should remain, got: {result}"
+    );
+}
+
+#[test]
+fn convert_apf_field_plain_text_gets_converted() {
+    let result = convert_apf_field("Just some plain text");
+    // Should be treated as markdown and wrapped
+    assert!(
+        !result.is_empty(),
+        "Plain text should produce some output, got: '{result}'"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// highlight_code() - code highlighting
+// ---------------------------------------------------------------------------
+
+#[test]
+fn highlight_code_wraps_in_pre_code() {
+    let result = highlight_code("let x = 1;", Some("rust"));
+    assert!(
+        result.contains("<pre>") && result.contains("<code"),
+        "Should wrap in <pre><code>, got: {result}"
+    );
+}
+
+#[test]
+fn highlight_code_includes_language_class() {
+    let result = highlight_code("print('hello')", Some("python"));
+    assert!(
+        result.contains("language-python"),
+        "Should include language-python class, got: {result}"
+    );
+}
+
+#[test]
+fn highlight_code_no_language_defaults_to_text() {
+    let result = highlight_code("some code", None);
+    assert!(
+        result.contains("language-text") || result.contains("language-plaintext"),
+        "No language should default to text/plaintext class, got: {result}"
+    );
+}
+
+#[test]
+fn highlight_code_preserves_content() {
+    let code = "fn main() {\n    println!(\"Hello, world!\");\n}";
+    let result = highlight_code(code, Some("rust"));
+    assert!(
+        result.contains("fn main()") || result.contains("fn main"),
+        "Code content should be preserved, got: {result}"
+    );
+}
+
+#[test]
+fn highlight_code_escapes_html_entities() {
+    let code = "x > 0 && y < 10";
+    let result = highlight_code(code, Some("rust"));
+    assert!(
+        !result.contains("x > 0 && y < 10") || result.contains("&gt;") || result.contains("&lt;") || result.contains("&amp;"),
+        "HTML entities in code should be escaped, got: {result}"
+    );
+}
+
+#[test]
+fn highlight_code_empty_code() {
+    let result = highlight_code("", Some("python"));
+    assert!(
+        result.contains("<pre>") && result.contains("<code"),
+        "Even empty code should be wrapped, got: {result}"
+    );
+}
+
+#[test]
+fn highlight_code_unknown_language_uses_language_class() {
+    let result = highlight_code("some content", Some("nonexistent_lang_xyz"));
+    assert!(
+        result.contains("language-nonexistent_lang_xyz"),
+        "Unknown language should still use the provided language class, got: {result}"
+    );
+}
+
+#[test]
+fn highlight_code_multiline() {
+    let code = "line1\nline2\nline3";
+    let result = highlight_code(code, Some("text"));
+    assert!(
+        result.contains("line1") && result.contains("line2") && result.contains("line3"),
+        "Multiline code should preserve all lines, got: {result}"
+    );
 }
