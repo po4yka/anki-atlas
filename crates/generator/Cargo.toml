@@ -17,6 +17,7 @@ tracing = { workspace = true }
 regex = { workspace = true }
 html-escape = "0.2"
 ammonia = { workspace = true }
+pulldown-cmark = { workspace = true }
 
 [dev-dependencies]
 mockall = { workspace = true }
