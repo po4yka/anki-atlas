@@ -5,7 +5,7 @@ use sqlx::FromRow;
 use tracing::instrument;
 
 use crate::error::SearchError;
-use crate::fts::SearchFilters;
+use crate::fts::{LexicalMode, SearchFilters};
 use crate::fusion::{FusionStats, SearchResult};
 use crate::reranker::Reranker;
 
@@ -58,7 +58,7 @@ pub struct HybridSearchResult {
     pub stats: FusionStats,
     pub query: String,
     pub filters_applied: HashMap<String, serde_json::Value>,
-    pub lexical_mode: String,
+    pub lexical_mode: LexicalMode,
     pub lexical_fallback_used: bool,
     pub query_suggestions: Vec<String>,
     pub autocomplete_suggestions: Vec<String>,
@@ -155,7 +155,7 @@ where
                 stats: FusionStats::default(),
                 query: query.to_string(),
                 filters_applied: HashMap::new(),
-                lexical_mode: "none".to_string(),
+                lexical_mode: LexicalMode::None,
                 lexical_fallback_used: false,
                 query_suggestions: vec![],
                 autocomplete_suggestions: vec![],
@@ -185,18 +185,29 @@ where
                 .collect::<Vec<_>>()
         };
 
-        // FTS search (skip for semantic_only or when no real DB)
-        let fts_results: Vec<(i64, f64, Option<String>)> = if semantic_only {
-            vec![]
+        // FTS search
+        let (fts_results, lexical_mode, lexical_fallback_used, query_suggestions, autocomplete_suggestions) = if semantic_only {
+            (vec![], LexicalMode::None, false, vec![], vec![])
         } else {
-            // FTS requires a real DB connection; for now return empty
-            vec![]
-        };
-
-        let lexical_mode = if semantic_only {
-            "none".to_string()
-        } else {
-            "fts".to_string()
+            let lexical = crate::fts::search_lexical(
+                &self.db,
+                query,
+                params.filters.as_ref(),
+                limit as i64,
+            )
+            .await?;
+            let fts_results = lexical
+                .results
+                .into_iter()
+                .map(|r| (r.note_id, r.rank, r.headline))
+                .collect();
+            (
+                fts_results,
+                lexical.mode,
+                lexical.used_fallback,
+                lexical.query_suggestions,
+                lexical.autocomplete_suggestions,
+            )
         };
 
         // RRF fusion
@@ -213,7 +224,7 @@ where
         let should_rerank = rerank_override.unwrap_or(self.rerank_enabled);
         let rerank_top_n = rerank_top_n_override.unwrap_or(self.rerank_top_n);
         let mut rerank_applied = false;
-        let rerank_model: Option<String> = None;
+        let mut rerank_model: Option<String> = None;
 
         if should_rerank {
             if let Some(ref reranker) = self.reranker {
@@ -238,6 +249,7 @@ where
                                     .unwrap_or(std::cmp::Ordering::Equal)
                             });
                             rerank_applied = true;
+                            rerank_model = Some(reranker.model_name().to_string());
                         }
                         Err(_) => {
                             // Degrade gracefully: skip reranking
@@ -257,9 +269,9 @@ where
             query: query.to_string(),
             filters_applied: HashMap::new(),
             lexical_mode,
-            lexical_fallback_used: false,
-            query_suggestions: vec![],
-            autocomplete_suggestions: vec![],
+            lexical_fallback_used,
+            query_suggestions,
+            autocomplete_suggestions,
             rerank_applied,
             rerank_model: if rerank_applied { rerank_model } else { None },
             rerank_top_n: if rerank_applied {
@@ -457,6 +469,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl Reranker for FakeReranker {
+        fn model_name(&self) -> &str {
+            "fake/reranker"
+        }
+
         async fn rerank(
             &self,
             _query: &str,
@@ -487,7 +503,7 @@ mod tests {
             stats: FusionStats::default(),
             query: "test query".to_string(),
             filters_applied: HashMap::new(),
-            lexical_mode: "none".to_string(),
+            lexical_mode: LexicalMode::None,
             lexical_fallback_used: false,
             query_suggestions: vec![],
             autocomplete_suggestions: vec![],
@@ -496,7 +512,7 @@ mod tests {
             rerank_top_n: None,
         };
         assert_eq!(result.query, "test query");
-        assert_eq!(result.lexical_mode, "none");
+        assert_eq!(result.lexical_mode, LexicalMode::None);
         assert!(!result.rerank_applied);
         assert!(result.results.is_empty());
     }
@@ -508,7 +524,7 @@ mod tests {
             stats: FusionStats::default(),
             query: "rerank test".to_string(),
             filters_applied: HashMap::new(),
-            lexical_mode: "fts".to_string(),
+            lexical_mode: LexicalMode::Fts,
             lexical_fallback_used: false,
             query_suggestions: vec![],
             autocomplete_suggestions: vec![],
@@ -551,7 +567,7 @@ mod tests {
             stats: FusionStats::default(),
             query: "json test".to_string(),
             filters_applied: HashMap::new(),
-            lexical_mode: "none".to_string(),
+            lexical_mode: LexicalMode::None,
             lexical_fallback_used: false,
             query_suggestions: vec![],
             autocomplete_suggestions: vec![],
@@ -561,7 +577,7 @@ mod tests {
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["query"], "json test");
-        assert_eq!(json["lexical_mode"], "none");
+        assert_eq!(json["lexical_mode"], "none"); // LexicalMode::None serializes as "none"
         assert_eq!(json["rerank_applied"], false);
     }
 
@@ -672,11 +688,11 @@ mod tests {
             assert!(r.semantic_score.is_some());
             assert!(r.fts_score.is_none());
         }
-        assert_eq!(result.lexical_mode, "none");
+        assert_eq!(result.lexical_mode, LexicalMode::None);
     }
 
     #[tokio::test]
-    async fn search_fts_only_skips_semantic() {
+    async fn search_fts_only_returns_db_error_without_real_pool() {
         let pool = fake_pool();
         let svc = SearchService::new(
             FakeEmbedding,
@@ -687,18 +703,9 @@ mod tests {
             20,
         );
 
-        // fts_only=true: semantic should be skipped, only FTS runs
-        // With a fake pool, FTS will fail or return empty - but the key behavior
-        // is that semantic_weight should be 0 and no embedding call happens.
-        let result = svc
-            .search(&params_fts_only("test query"))
-            .await
-            .unwrap();
-
-        // Semantic scores should all be None when fts_only
-        for r in &result.results {
-            assert!(r.semantic_score.is_none());
-        }
+        // fts_only=true triggers a real FTS query which fails with a fake pool
+        let result = svc.search(&params_fts_only("test query")).await;
+        assert!(result.is_err());
     }
 
     #[tokio::test]

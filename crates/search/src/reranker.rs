@@ -4,6 +4,9 @@ use crate::error::SearchError;
 #[async_trait::async_trait]
 #[cfg_attr(test, mockall::automock)]
 pub trait Reranker: Send + Sync {
+    /// The model name used for reranking.
+    fn model_name(&self) -> &str;
+
     /// Score (document_id, text) pairs against a query.
     /// Returns (document_id, score) pairs in arbitrary order.
     async fn rerank(
@@ -44,6 +47,10 @@ impl CrossEncoderReranker {
 
 #[async_trait::async_trait]
 impl Reranker for CrossEncoderReranker {
+    fn model_name(&self) -> &str {
+        &self.model_name
+    }
+
     async fn rerank(
         &self,
         query: &str,
