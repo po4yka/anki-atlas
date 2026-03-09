@@ -1,3 +1,4 @@
+use super::linter::*;
 use super::renderer::*;
 
 // ---------------------------------------------------------------------------
@@ -523,4 +524,556 @@ fn render_code_with_ampersand_and_quotes() {
 fn card_spec_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<CardSpec>();
+}
+
+// ===========================================================================
+// APF Linter tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Helper: generate valid APF HTML from a CardSpec via render()
+// ---------------------------------------------------------------------------
+
+fn valid_apf_html() -> String {
+    render(&full_spec())
+}
+
+fn valid_apf_html_simple() -> String {
+    render(&minimal_spec())
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+#[test]
+fn linter_max_line_width_is_88() {
+    assert_eq!(MAX_LINE_WIDTH, 88);
+}
+
+#[test]
+fn linter_min_tags_is_3() {
+    assert_eq!(MIN_TAGS, 3);
+}
+
+#[test]
+fn linter_max_tags_is_6() {
+    assert_eq!(MAX_TAGS, 6);
+}
+
+// ---------------------------------------------------------------------------
+// LintResult
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lint_result_is_valid_when_no_errors() {
+    let result = LintResult {
+        errors: vec![],
+        warnings: vec!["some warning".into()],
+    };
+    assert!(result.is_valid());
+}
+
+#[test]
+fn lint_result_is_invalid_when_errors() {
+    let result = LintResult {
+        errors: vec!["bad".into()],
+        warnings: vec![],
+    };
+    assert!(!result.is_valid());
+}
+
+#[test]
+fn lint_result_serialization_roundtrip() {
+    let result = LintResult {
+        errors: vec!["err1".into()],
+        warnings: vec!["warn1".into()],
+    };
+    let json = serde_json::to_string(&result).unwrap();
+    let deserialized: LintResult = serde_json::from_str(&json).unwrap();
+    assert_eq!(deserialized.errors, result.errors);
+    assert_eq!(deserialized.warnings, result.warnings);
+}
+
+#[test]
+fn lint_result_is_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<LintResult>();
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - valid input
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_valid_card_has_no_errors() {
+    let html = valid_apf_html();
+    let result = validate_apf(&html, None);
+    assert!(
+        result.is_valid(),
+        "Valid APF should have no errors, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_valid_simple_card_has_no_errors() {
+    let html = valid_apf_html_simple();
+    let result = validate_apf(&html, None);
+    assert!(
+        result.is_valid(),
+        "Valid simple APF should have no errors, got: {:?}",
+        result.errors
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - missing sentinels
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_missing_prompt_version_is_error() {
+    let html = valid_apf_html().replace("<!-- PROMPT_VERSION: apf-v2.1 -->", "");
+    let result = validate_apf(&html, None);
+    assert!(!result.is_valid());
+    assert!(
+        result.errors.iter().any(|e| e.contains("PROMPT_VERSION")),
+        "Should report missing PROMPT_VERSION, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_missing_begin_cards_is_error() {
+    let html = valid_apf_html().replace("<!-- BEGIN_CARDS -->", "");
+    let result = validate_apf(&html, None);
+    assert!(!result.is_valid());
+    assert!(
+        result.errors.iter().any(|e| e.contains("BEGIN_CARDS")),
+        "Should report missing BEGIN_CARDS, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_missing_end_cards_is_error() {
+    let html = valid_apf_html().replace("<!-- END_CARDS -->", "");
+    let result = validate_apf(&html, None);
+    assert!(!result.is_valid());
+    assert!(
+        result.errors.iter().any(|e| e.contains("END_CARDS")),
+        "Should report missing END_CARDS, got: {:?}",
+        result.errors
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - END_OF_CARDS final line
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_missing_end_of_cards_is_error() {
+    let html = valid_apf_html().replace("END_OF_CARDS", "");
+    let result = validate_apf(&html, None);
+    assert!(!result.is_valid());
+    assert!(
+        result.errors.iter().any(|e| e.contains("END_OF_CARDS")),
+        "Should report missing END_OF_CARDS, got: {:?}",
+        result.errors
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - card header format
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_invalid_card_header_format_is_error() {
+    let html = valid_apf_html().replace(
+        "<!-- Card 2 | slug: full-card-02 | CardType: Missing | Tags:",
+        "<!-- Card 2 | slug: full-card-02 | type: Missing | Tags:",
+    );
+    let result = validate_apf(&html, None);
+    assert!(!result.is_valid());
+}
+
+#[test]
+fn validate_apf_comma_separated_tags_in_header_is_error() {
+    // Replace space-separated tags with comma-separated
+    let html = valid_apf_html().replace(
+        "Tags: rust ownership memory borrow -->",
+        "Tags: rust,ownership,memory,borrow -->",
+    );
+    let result = validate_apf(&html, None);
+    assert!(!result.is_valid());
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - tag count validation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_too_few_tags_is_error() {
+    // Create a card with only 2 tags (below MIN_TAGS=3)
+    let mut spec = full_spec();
+    spec.tags = vec!["rust".into(), "basics".into()];
+    let html = render(&spec);
+    let result = validate_apf(&html, None);
+    assert!(
+        result.errors.iter().any(|e| e.contains("tag")),
+        "Should report tag count violation, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_too_many_tags_is_error() {
+    // Create a card with 7 tags (above MAX_TAGS=6)
+    let mut spec = full_spec();
+    spec.tags = vec![
+        "rust".into(),
+        "ownership".into(),
+        "memory".into(),
+        "borrow".into(),
+        "lifetime".into(),
+        "reference".into(),
+        "extra".into(),
+    ];
+    let html = render(&spec);
+    let result = validate_apf(&html, None);
+    assert!(
+        result.errors.iter().any(|e| e.contains("tag")),
+        "Should report too many tags, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_exactly_min_tags_is_valid() {
+    // 3 tags should be valid
+    let html = valid_apf_html_simple(); // minimal_spec has 3 tags
+    let result = validate_apf(&html, None);
+    assert!(
+        !result.errors.iter().any(|e| e.to_lowercase().contains("tag") && e.contains("3-6")),
+        "3 tags should be valid, got errors: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_exactly_max_tags_is_valid() {
+    let mut spec = full_spec();
+    spec.tags = vec![
+        "rust".into(),
+        "ownership".into(),
+        "memory".into(),
+        "borrow".into(),
+        "lifetime".into(),
+        "reference".into(),
+    ];
+    let html = render(&spec);
+    let result = validate_apf(&html, None);
+    assert!(
+        !result.errors.iter().any(|e| e.to_lowercase().contains("tag") && e.contains("3-6")),
+        "6 tags should be valid, got errors: {:?}",
+        result.errors
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - tag format
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_uppercase_tag_is_warning() {
+    let mut spec = full_spec();
+    spec.tags = vec!["Rust".into(), "Ownership".into(), "memory".into(), "basics".into()];
+    let html = render(&spec);
+    let result = validate_apf(&html, None);
+    assert!(
+        result.warnings.iter().any(|w| w.contains("lowercase")),
+        "Uppercase tags should produce warning, got: {:?}",
+        result.warnings
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - manifest validation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_missing_manifest_is_error() {
+    let html = valid_apf_html();
+    // Remove the manifest line
+    let html_no_manifest: String = html
+        .lines()
+        .filter(|l| !l.contains("<!-- manifest:"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let result = validate_apf(&html_no_manifest, None);
+    assert!(
+        result.errors.iter().any(|e| e.contains("manifest")),
+        "Should report missing manifest, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_invalid_manifest_json_is_error() {
+    let html = valid_apf_html();
+    // Replace manifest with invalid JSON
+    let html_bad_manifest = html.replace(
+        &html.lines().find(|l| l.contains("<!-- manifest:")).unwrap().to_string(),
+        "<!-- manifest:{not valid json} -->",
+    );
+    let result = validate_apf(&html_bad_manifest, None);
+    assert!(!result.is_valid());
+    assert!(
+        result.errors.iter().any(|e| e.contains("manifest") || e.contains("JSON")),
+        "Should report invalid manifest JSON, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_manifest_slug_mismatch_is_error() {
+    let html = valid_apf_html();
+    // Change slug in manifest but not in header
+    let html_mismatch = html.replace(
+        "\"slug\":\"full-card-02\"",
+        "\"slug\":\"wrong-slug-99\"",
+    );
+    let result = validate_apf(&html_mismatch, None);
+    assert!(
+        result.errors.iter().any(|e| e.contains("slug") && e.contains("mismatch")),
+        "Should report manifest slug mismatch, got: {:?}",
+        result.errors
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - required field headers
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_missing_title_header_is_error() {
+    let html = valid_apf_html().replace("<!-- Title -->", "");
+    let result = validate_apf(&html, None);
+    assert!(
+        result.errors.iter().any(|e| e.contains("Title")),
+        "Should report missing Title header, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_missing_key_point_header_is_error() {
+    let html = valid_apf_html().replace("<!-- Key point (code block / image) -->", "");
+    let result = validate_apf(&html, None);
+    assert!(
+        result.errors.iter().any(|e| e.contains("Key point")),
+        "Should report missing Key point header, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_missing_key_point_notes_header_is_error() {
+    let html = valid_apf_html().replace("<!-- Key point notes -->", "");
+    let result = validate_apf(&html, None);
+    assert!(
+        result.errors.iter().any(|e| e.contains("Key point notes")),
+        "Should report missing Key point notes header, got: {:?}",
+        result.errors
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - cloze density for Missing type
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_missing_type_no_cloze_is_warning() {
+    // full_spec has card_type "Missing" but no cloze deletions
+    let html = valid_apf_html();
+    let result = validate_apf(&html, None);
+    assert!(
+        result.warnings.iter().any(|w| w.contains("cloze")),
+        "Missing card without cloze should produce warning, got: {:?}",
+        result.warnings
+    );
+}
+
+#[test]
+fn validate_apf_missing_type_non_dense_cloze_is_error() {
+    // Insert cloze deletions with gap in numbering: {{c1::}} and {{c3::}} (missing c2)
+    let mut spec = full_spec();
+    spec.key_point_notes = vec![
+        "{{c1::First cloze}}".into(),
+        "{{c3::Third cloze}}".into(),
+    ];
+    let html = render(&spec);
+    let result = validate_apf(&html, None);
+    assert!(
+        result.errors.iter().any(|e| e.contains("cloze") || e.contains("Cloze")),
+        "Non-dense cloze should be error, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_missing_type_dense_cloze_no_error() {
+    // Insert proper dense cloze: {{c1::}} and {{c2::}}
+    let mut spec = full_spec();
+    spec.key_point_notes = vec![
+        "{{c1::First cloze}}".into(),
+        "{{c2::Second cloze}}".into(),
+    ];
+    let html = render(&spec);
+    let result = validate_apf(&html, None);
+    assert!(
+        !result.errors.iter().any(|e| e.to_lowercase().contains("cloze")),
+        "Dense cloze should not produce error, got: {:?}",
+        result.errors
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - duplicate slug detection
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_duplicate_slugs_is_error() {
+    let spec1 = minimal_spec();
+    let mut spec2 = minimal_spec();
+    spec2.card_index = 2;
+    // Same slug as spec1: "test-card-01"
+
+    let html = render_batch(&[spec1, spec2]);
+    let result = validate_apf(&html, None);
+    assert!(
+        result.errors.iter().any(|e| e.to_lowercase().contains("duplicate")),
+        "Duplicate slugs should be error, got: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_unique_slugs_no_error() {
+    let spec1 = minimal_spec();
+    let mut spec2 = minimal_spec();
+    spec2.card_index = 2;
+    spec2.slug = "another-card-02".into();
+
+    let html = render_batch(&[spec1, spec2]);
+    let result = validate_apf(&html, None);
+    assert!(
+        !result.errors.iter().any(|e| e.to_lowercase().contains("duplicate")),
+        "Unique slugs should not produce duplicate error, got: {:?}",
+        result.errors
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - slug parameter matching
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_slug_mismatch_produces_warning() {
+    let html = valid_apf_html(); // slug is "full-card-02"
+    let result = validate_apf(&html, Some("expected-slug-01"));
+    assert!(
+        result.warnings.iter().any(|w| w.to_lowercase().contains("slug") && w.contains("mismatch")),
+        "Slug mismatch with parameter should produce warning, got: {:?}",
+        result.warnings
+    );
+}
+
+#[test]
+fn validate_apf_slug_matches_no_warning() {
+    let html = valid_apf_html(); // slug is "full-card-02"
+    let result = validate_apf(&html, Some("full-card-02"));
+    assert!(
+        !result.warnings.iter().any(|w| w.to_lowercase().contains("slug") && w.contains("mismatch")),
+        "Matching slug should not produce mismatch warning, got: {:?}",
+        result.warnings
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - no card blocks
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_no_card_blocks_is_error() {
+    let html = "<!-- PROMPT_VERSION: apf-v2.1 -->\n<!-- BEGIN_CARDS -->\n<!-- END_CARDS -->\nEND_OF_CARDS";
+    let result = validate_apf(html, None);
+    assert!(!result.is_valid());
+    assert!(
+        result.errors.iter().any(|e| e.contains("card") || e.contains("Card")),
+        "No card blocks should be error, got: {:?}",
+        result.errors
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - empty input
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_empty_input_is_error() {
+    let result = validate_apf("", None);
+    assert!(!result.is_valid());
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - line width warnings
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_long_line_produces_warning() {
+    let mut spec = full_spec();
+    spec.other_notes = Some("x".repeat(100)); // > 88 chars
+    let html = render(&spec);
+    let result = validate_apf(&html, None);
+    assert!(
+        result.warnings.iter().any(|w| w.contains("88") || w.contains("character") || w.contains("width")),
+        "Line > 88 chars should produce warning, got: {:?}",
+        result.warnings
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - manifest tags mismatch
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_manifest_tags_mismatch_is_warning() {
+    let html = valid_apf_html();
+    // Change tags in manifest only
+    let html_modified = html.replace(
+        "\"tags\":[\"rust\",\"ownership\",\"memory\",\"borrow\"]",
+        "\"tags\":[\"rust\",\"ownership\"]",
+    );
+    let result = validate_apf(&html_modified, None);
+    assert!(
+        result.warnings.iter().any(|w| w.contains("tag") && w.contains("match")),
+        "Manifest tags mismatch should produce warning, got: {:?}",
+        result.warnings
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf() - batch input with multiple cards
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_batch_validates_all_cards() {
+    let spec1 = minimal_spec();
+    let spec2 = full_spec();
+    let html = render_batch(&[spec1, spec2]);
+    let result = validate_apf(&html, None);
+    // Should validate both cards without crashing
+    // (full_spec has Missing type without cloze, so at minimum a warning)
+    assert!(result.errors.is_empty() || result.warnings.len() > 0);
 }
