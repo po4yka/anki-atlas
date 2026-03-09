@@ -136,7 +136,7 @@ fn server_has_tag_audit_tool() {
 fn tool_names_are_all_prefixed() {
     let server = AnkiAtlasServer::new();
     let names = server.tool_names();
-    for name in &names {
+    for name in names {
         assert!(
             name.starts_with("ankiatlas_"),
             "tool name should start with 'ankiatlas_': got {name}"

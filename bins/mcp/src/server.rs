@@ -29,8 +29,8 @@ impl AnkiAtlasServer {
     }
 
     /// Return the list of registered tool names.
-    pub fn tool_names(&self) -> Vec<&str> {
-        TOOL_NAMES.to_vec()
+    pub fn tool_names(&self) -> &[&'static str] {
+        &TOOL_NAMES
     }
 
     /// Return the server name.
