@@ -7,7 +7,7 @@ pub mod types;
 
 pub use error::JobError;
 pub use manager::{JobManager, RedisJobManager};
-pub use types::{JobRecord, JobStatus, JobType, JOB_KEY_PREFIX};
+pub use types::{JOB_KEY_PREFIX, JobRecord, JobStatus, JobType};
 
 #[cfg(test)]
 mod tests;

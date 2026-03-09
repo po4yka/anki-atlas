@@ -1,8 +1,8 @@
-use crate::connection::{parse_redis_url, RedisConfig};
+use crate::connection::{RedisConfig, parse_redis_url};
 use crate::error::JobError;
 use crate::manager::{JobManager, MockJobManager};
 use crate::persistence::job_key;
-use crate::types::{JobRecord, JobStatus, JobType, JOB_KEY_PREFIX};
+use crate::types::{JOB_KEY_PREFIX, JobRecord, JobStatus, JobType};
 use chrono::Utc;
 use std::collections::HashMap;
 
@@ -298,8 +298,7 @@ async fn mock_job_manager_cancel() {
 #[tokio::test]
 async fn mock_job_manager_close() {
     let mut mock = MockJobManager::new();
-    mock.expect_close()
-        .returning(|| Box::pin(async { Ok(()) }));
+    mock.expect_close().returning(|| Box::pin(async { Ok(()) }));
 
     mock.close().await.expect("close");
 }

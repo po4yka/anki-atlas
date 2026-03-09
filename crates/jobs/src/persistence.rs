@@ -1,5 +1,5 @@
 use crate::error::JobError;
-use crate::types::{JobRecord, JOB_KEY_PREFIX};
+use crate::types::{JOB_KEY_PREFIX, JobRecord};
 
 /// Build Redis key from job ID.
 pub fn job_key(job_id: &str) -> String {
