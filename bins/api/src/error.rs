@@ -17,15 +17,21 @@ impl IntoResponse for AppError {
                 AnkiAtlasError::Conflict { message, .. } => {
                     (StatusCode::CONFLICT, "Conflict", message.clone())
                 }
-                AnkiAtlasError::DatabaseConnection { message, .. } => {
-                    (StatusCode::SERVICE_UNAVAILABLE, "DatabaseConnection", message.clone())
-                }
-                AnkiAtlasError::VectorStoreConnection { message, .. } => {
-                    (StatusCode::SERVICE_UNAVAILABLE, "VectorStoreConnection", message.clone())
-                }
-                AnkiAtlasError::JobBackendUnavailable { message, .. } => {
-                    (StatusCode::SERVICE_UNAVAILABLE, "JobBackendUnavailable", message.clone())
-                }
+                AnkiAtlasError::DatabaseConnection { message, .. } => (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "DatabaseConnection",
+                    message.clone(),
+                ),
+                AnkiAtlasError::VectorStoreConnection { message, .. } => (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "VectorStoreConnection",
+                    message.clone(),
+                ),
+                AnkiAtlasError::JobBackendUnavailable { message, .. } => (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "JobBackendUnavailable",
+                    message.clone(),
+                ),
                 other => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "InternalError",

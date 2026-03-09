@@ -1,9 +1,9 @@
 use anki_atlas_api::middleware::{ApiKeyLayer, CorrelationIdLayer};
+use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::get;
-use axum::Router;
 use tower::ServiceExt;
 
 async fn ok_handler() -> impl IntoResponse {
@@ -27,10 +27,7 @@ fn test_router_with_api_key(key: Option<String>) -> Router {
 #[tokio::test]
 async fn correlation_id_generated_when_not_provided() {
     let app = test_router_with_correlation_id();
-    let req = Request::builder()
-        .uri("/test")
-        .body(Body::empty())
-        .unwrap();
+    let req = Request::builder().uri("/test").body(Body::empty()).unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     assert!(
@@ -59,10 +56,7 @@ async fn correlation_id_preserved_from_request() {
 #[tokio::test]
 async fn api_key_passes_when_not_configured() {
     let app = test_router_with_api_key(None);
-    let req = Request::builder()
-        .uri("/test")
-        .body(Body::empty())
-        .unwrap();
+    let req = Request::builder().uri("/test").body(Body::empty()).unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
@@ -70,10 +64,7 @@ async fn api_key_passes_when_not_configured() {
 #[tokio::test]
 async fn api_key_blocks_when_missing() {
     let app = test_router_with_api_key(Some("secret-key".into()));
-    let req = Request::builder()
-        .uri("/test")
-        .body(Body::empty())
-        .unwrap();
+    let req = Request::builder().uri("/test").body(Body::empty()).unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }

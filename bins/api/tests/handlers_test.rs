@@ -7,7 +7,7 @@ use axum::response::Response;
 use common::config::Settings;
 use jobs::{JobError, JobManager, JobRecord, JobStatus, JobType};
 use mockall::mock;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tower::ServiceExt;
@@ -176,9 +176,8 @@ async fn sync_rejects_wrong_extension() {
 #[tokio::test]
 async fn enqueue_sync_job_returns_202() {
     let mut mock = MockJobs::new();
-    mock.expect_enqueue_sync_job().returning(|_, _| {
-        Ok(make_job_record("job-1", JobType::Sync, JobStatus::Queued))
-    });
+    mock.expect_enqueue_sync_job()
+        .returning(|_, _| Ok(make_job_record("job-1", JobType::Sync, JobStatus::Queued)));
 
     let app = build_router(test_state(mock));
     let body = json!({ "source": "/path/col.anki2" });
@@ -200,9 +199,8 @@ async fn enqueue_sync_job_returns_202() {
 #[tokio::test]
 async fn enqueue_index_job_returns_202() {
     let mut mock = MockJobs::new();
-    mock.expect_enqueue_index_job().returning(|_, _| {
-        Ok(make_job_record("job-2", JobType::Index, JobStatus::Queued))
-    });
+    mock.expect_enqueue_index_job()
+        .returning(|_, _| Ok(make_job_record("job-2", JobType::Index, JobStatus::Queued)));
 
     let app = build_router(test_state(mock));
     let body = json!({});
@@ -379,9 +377,7 @@ async fn duplicates_route_exists() {
 async fn index_info_route_exists() {
     let app = build_router(test_state(MockJobs::new()));
     let resp: Response = app
-        .oneshot(
-            Request::get("/index/info").body(Body::empty()).unwrap(),
-        )
+        .oneshot(Request::get("/index/info").body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_ne!(resp.status(), StatusCode::NOT_FOUND);

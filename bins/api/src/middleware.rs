@@ -107,10 +107,7 @@ where
 
     fn call(&mut self, req: Request<Body>) -> Self::Future {
         if let Some(expected) = &self.api_key {
-            let provided = req
-                .headers()
-                .get("x-api-key")
-                .and_then(|v| v.to_str().ok());
+            let provided = req.headers().get("x-api-key").and_then(|v| v.to_str().ok());
 
             if provided != Some(expected.as_str()) {
                 return Box::pin(async {

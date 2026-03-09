@@ -1,15 +1,13 @@
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde_json::json;
 use std::collections::HashMap;
 use tracing::instrument;
 
 use crate::error::AppError;
-use crate::schemas::{
-    AsyncIndexRequest, AsyncSyncRequest, JobAcceptedResponse, JobStatusResponse,
-};
+use crate::schemas::{AsyncIndexRequest, AsyncSyncRequest, JobAcceptedResponse, JobStatusResponse};
 use crate::state::AppState;
 
 /// Convert a `JobRecord` to a `JobAcceptedResponse` for 202 replies.
@@ -74,10 +72,7 @@ pub async fn enqueue_sync_job(
     Json(req): Json<AsyncSyncRequest>,
 ) -> Result<Response, AppError> {
     let mut payload = HashMap::new();
-    payload.insert(
-        "source".to_string(),
-        serde_json::Value::String(req.source),
-    );
+    payload.insert("source".to_string(), serde_json::Value::String(req.source));
     payload.insert(
         "run_migrations".to_string(),
         serde_json::Value::Bool(req.run_migrations),

@@ -1,5 +1,5 @@
 use axum::Json;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tracing::instrument;
 
 /// Returns information about the current search index state.

@@ -1,8 +1,8 @@
+use axum::Json;
 use axum::extract::Path;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tracing::instrument;
 
 /// List all top-level topics.
