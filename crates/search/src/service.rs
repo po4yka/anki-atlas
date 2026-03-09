@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use tracing::instrument;
 
@@ -8,6 +8,48 @@ use crate::error::SearchError;
 use crate::fts::SearchFilters;
 use crate::fusion::{FusionStats, SearchResult};
 use crate::reranker::Reranker;
+
+/// Parameters for a hybrid search query.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchParams {
+    pub query: String,
+    pub filters: Option<SearchFilters>,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+    #[serde(default = "default_weight")]
+    pub semantic_weight: f64,
+    #[serde(default = "default_weight")]
+    pub fts_weight: f64,
+    #[serde(default)]
+    pub semantic_only: bool,
+    #[serde(default)]
+    pub fts_only: bool,
+    pub rerank_override: Option<bool>,
+    pub rerank_top_n_override: Option<usize>,
+}
+
+fn default_limit() -> usize {
+    50
+}
+fn default_weight() -> f64 {
+    1.0
+}
+
+impl Default for SearchParams {
+    fn default() -> Self {
+        Self {
+            query: String::new(),
+            filters: None,
+            limit: default_limit(),
+            semantic_weight: default_weight(),
+            fts_weight: default_weight(),
+            semantic_only: false,
+            fts_only: false,
+            rerank_override: None,
+            rerank_top_n_override: None,
+        }
+    }
+}
 
 /// Complete hybrid search result.
 #[derive(Debug, Clone, Serialize)]
@@ -92,20 +134,20 @@ where
     }
 
     /// Execute hybrid search: semantic + FTS -> RRF fusion -> optional rerank.
-    #[allow(clippy::too_many_arguments)]
     #[instrument(skip(self))]
-    pub async fn search(
-        &self,
-        query: &str,
-        _filters: Option<&SearchFilters>,
-        limit: usize,
-        semantic_weight: f64,
-        fts_weight: f64,
-        semantic_only: bool,
-        fts_only: bool,
-        rerank_override: Option<bool>,
-        rerank_top_n_override: Option<usize>,
-    ) -> Result<HybridSearchResult, SearchError> {
+    pub async fn search(&self, params: &SearchParams) -> Result<HybridSearchResult, SearchError> {
+        let SearchParams {
+            ref query,
+            filters: ref _filters,
+            limit,
+            semantic_weight,
+            fts_weight,
+            semantic_only,
+            fts_only,
+            rerank_override,
+            rerank_top_n_override,
+        } = *params;
+
         // Empty/whitespace query short-circuit
         if query.trim().is_empty() {
             return Ok(HybridSearchResult {
@@ -280,6 +322,29 @@ mod tests {
     use super::*;
 
     // ── Test helpers ──────────────────────────────────────────────
+
+    fn params(query: &str) -> SearchParams {
+        SearchParams {
+            query: query.to_string(),
+            ..Default::default()
+        }
+    }
+
+    fn params_semantic_only(query: &str) -> SearchParams {
+        SearchParams {
+            query: query.to_string(),
+            semantic_only: true,
+            ..Default::default()
+        }
+    }
+
+    fn params_fts_only(query: &str) -> SearchParams {
+        SearchParams {
+            query: query.to_string(),
+            fts_only: true,
+            ..Default::default()
+        }
+    }
 
     /// Simple mock embedding provider for service tests.
     struct FakeEmbedding;
@@ -559,10 +624,7 @@ mod tests {
             20,
         );
 
-        let result = svc
-            .search("", None, 50, 1.0, 1.0, false, false, None, None)
-            .await
-            .unwrap();
+        let result = svc.search(&params("")).await.unwrap();
 
         assert!(result.results.is_empty());
         assert_eq!(result.query, "");
@@ -581,10 +643,7 @@ mod tests {
             20,
         );
 
-        let result = svc
-            .search("   ", None, 50, 1.0, 1.0, false, false, None, None)
-            .await
-            .unwrap();
+        let result = svc.search(&params("   ")).await.unwrap();
 
         assert!(result.results.is_empty());
     }
@@ -603,7 +662,7 @@ mod tests {
         );
 
         let result = svc
-            .search("test query", None, 50, 1.0, 1.0, true, false, None, None)
+            .search(&params_semantic_only("test query"))
             .await
             .unwrap();
 
@@ -632,7 +691,7 @@ mod tests {
         // With a fake pool, FTS will fail or return empty - but the key behavior
         // is that semantic_weight should be 0 and no embedding call happens.
         let result = svc
-            .search("test query", None, 50, 1.0, 1.0, false, true, None, None)
+            .search(&params_fts_only("test query"))
             .await
             .unwrap();
 
@@ -655,17 +714,7 @@ mod tests {
         );
 
         let result = svc
-            .search(
-                "my search query",
-                None,
-                50,
-                1.0,
-                1.0,
-                true,
-                false,
-                None,
-                None,
-            )
+            .search(&params_semantic_only("my search query"))
             .await
             .unwrap();
 
@@ -685,7 +734,7 @@ mod tests {
         );
 
         let result = svc
-            .search("test", None, 50, 1.0, 1.0, true, false, None, None)
+            .search(&params_semantic_only("test"))
             .await
             .unwrap();
 
@@ -708,7 +757,7 @@ mod tests {
 
         // Even though reranker fails, search should succeed with rerank_applied=false
         let result = svc
-            .search("test query", None, 50, 1.0, 1.0, true, false, None, None)
+            .search(&params_semantic_only("test query"))
             .await
             .unwrap();
 
@@ -730,17 +779,12 @@ mod tests {
 
         // Override with rerank_override=Some(true) should enable reranking
         let result = svc
-            .search(
-                "test query",
-                None,
-                50,
-                1.0,
-                1.0,
-                true,
-                false,
-                Some(true),
-                None,
-            )
+            .search(&SearchParams {
+                query: "test query".into(),
+                semantic_only: true,
+                rerank_override: Some(true),
+                ..Default::default()
+            })
             .await
             .unwrap();
 
@@ -763,17 +807,12 @@ mod tests {
 
         // Override with rerank_override=Some(false) should disable reranking
         let result = svc
-            .search(
-                "test query",
-                None,
-                50,
-                1.0,
-                1.0,
-                true,
-                false,
-                Some(false),
-                None,
-            )
+            .search(&SearchParams {
+                query: "test query".into(),
+                semantic_only: true,
+                rerank_override: Some(false),
+                ..Default::default()
+            })
             .await
             .unwrap();
 
@@ -794,7 +833,7 @@ mod tests {
 
         // Should degrade gracefully when no reranker is available
         let result = svc
-            .search("test query", None, 50, 1.0, 1.0, true, false, None, None)
+            .search(&params_semantic_only("test query"))
             .await
             .unwrap();
 
@@ -815,17 +854,12 @@ mod tests {
         );
 
         let result = svc
-            .search(
-                "test query",
-                None,
-                5, // limit to 5
-                1.0,
-                1.0,
-                true,
-                false,
-                None,
-                None,
-            )
+            .search(&SearchParams {
+                query: "test query".into(),
+                limit: 5,
+                semantic_only: true,
+                ..Default::default()
+            })
             .await
             .unwrap();
 

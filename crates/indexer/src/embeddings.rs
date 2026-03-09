@@ -77,10 +77,13 @@ impl EmbeddingProvider for MockEmbeddingProvider {
 pub struct OpenAiEmbeddingProvider {
     model: String,
     dimension: usize,
-    _batch_size: usize,
-    _client: reqwest::Client,
-    _api_key: String,
+    batch_size: usize,
+    client: reqwest::Client,
+    api_key: String,
 }
+
+const MAX_RETRIES: u32 = 5;
+const RETRYABLE_STATUS_CODES: &[u16] = &[429, 502, 503, 504];
 
 impl OpenAiEmbeddingProvider {
     pub fn new(
@@ -93,11 +96,22 @@ impl OpenAiEmbeddingProvider {
         Ok(Self {
             model: model.into(),
             dimension,
-            _batch_size: batch_size,
-            _client: reqwest::Client::new(),
-            _api_key: api_key,
+            batch_size,
+            client: reqwest::Client::new(),
+            api_key,
         })
     }
+}
+
+#[derive(Deserialize)]
+struct OpenAiEmbeddingItem {
+    index: usize,
+    embedding: Vec<f32>,
+}
+
+#[derive(Deserialize)]
+struct OpenAiEmbeddingResponse {
+    data: Vec<OpenAiEmbeddingItem>,
 }
 
 #[async_trait]
@@ -110,8 +124,64 @@ impl EmbeddingProvider for OpenAiEmbeddingProvider {
         self.dimension
     }
 
-    async fn embed(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
-        todo!("OpenAiEmbeddingProvider::embed not implemented")
+    async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        let mut all_embeddings = Vec::with_capacity(texts.len());
+
+        for batch in texts.chunks(self.batch_size) {
+            let body = serde_json::json!({
+                "model": self.model,
+                "input": batch,
+            });
+
+            let mut last_err = None;
+            for attempt in 0..MAX_RETRIES {
+                let response = self
+                    .client
+                    .post("https://api.openai.com/v1/embeddings")
+                    .bearer_auth(&self.api_key)
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(|e| EmbeddingError::BatchFailed {
+                        source: Box::new(e),
+                    })?;
+
+                let status = response.status().as_u16();
+
+                if status == 200 {
+                    let parsed: OpenAiEmbeddingResponse =
+                        response.json().await.map_err(|e| EmbeddingError::BatchFailed {
+                            source: Box::new(e),
+                        })?;
+                    let mut items = parsed.data;
+                    items.sort_by_key(|item| item.index);
+                    all_embeddings.extend(items.into_iter().map(|item| item.embedding));
+                    last_err = None;
+                    break;
+                }
+
+                if !RETRYABLE_STATUS_CODES.contains(&status) {
+                    let body_text = response.text().await.unwrap_or_default();
+                    return Err(EmbeddingError::BatchFailed {
+                        source: format!("HTTP {status}: {body_text}").into(),
+                    });
+                }
+
+                last_err = Some(format!("HTTP {status}"));
+                if attempt + 1 < MAX_RETRIES {
+                    let delay = std::time::Duration::from_secs(1 << (attempt + 1));
+                    tokio::time::sleep(delay).await;
+                }
+            }
+
+            if let Some(err) = last_err {
+                return Err(EmbeddingError::BatchFailed {
+                    source: format!("retries exhausted: {err}").into(),
+                });
+            }
+        }
+
+        Ok(all_embeddings)
     }
 }
 
@@ -119,9 +189,9 @@ impl EmbeddingProvider for OpenAiEmbeddingProvider {
 pub struct GoogleEmbeddingProvider {
     model: String,
     dimension: usize,
-    _batch_size: usize,
-    _client: reqwest::Client,
-    _api_key: String,
+    batch_size: usize,
+    client: reqwest::Client,
+    api_key: String,
 }
 
 impl GoogleEmbeddingProvider {
@@ -135,11 +205,21 @@ impl GoogleEmbeddingProvider {
         Ok(Self {
             model: model.into(),
             dimension,
-            _batch_size: batch_size,
-            _client: reqwest::Client::new(),
-            _api_key: api_key,
+            batch_size,
+            client: reqwest::Client::new(),
+            api_key,
         })
     }
+}
+
+#[derive(Deserialize)]
+struct GoogleEmbeddingValue {
+    values: Vec<f32>,
+}
+
+#[derive(Deserialize)]
+struct GoogleBatchEmbedResponse {
+    embeddings: Vec<GoogleEmbeddingValue>,
 }
 
 #[async_trait]
@@ -152,8 +232,76 @@ impl EmbeddingProvider for GoogleEmbeddingProvider {
         self.dimension
     }
 
-    async fn embed(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
-        todo!("GoogleEmbeddingProvider::embed not implemented")
+    async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        let mut all_embeddings = Vec::with_capacity(texts.len());
+
+        for (batch_idx, batch) in texts.chunks(self.batch_size).enumerate() {
+            if batch_idx > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+
+            let requests: Vec<serde_json::Value> = batch
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "model": format!("models/{}", self.model),
+                        "content": { "parts": [{ "text": t }] }
+                    })
+                })
+                .collect();
+
+            let body = serde_json::json!({ "requests": requests });
+            let url = format!(
+                "https://generativelanguage.googleapis.com/v1beta/models/{}:batchEmbedContents?key={}",
+                self.model, self.api_key
+            );
+
+            let mut last_err = None;
+            for attempt in 0..MAX_RETRIES {
+                let response = self
+                    .client
+                    .post(&url)
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(|e| EmbeddingError::BatchFailed {
+                        source: Box::new(e),
+                    })?;
+
+                let status = response.status().as_u16();
+
+                if status == 200 {
+                    let parsed: GoogleBatchEmbedResponse =
+                        response.json().await.map_err(|e| EmbeddingError::BatchFailed {
+                            source: Box::new(e),
+                        })?;
+                    all_embeddings.extend(parsed.embeddings.into_iter().map(|e| e.values));
+                    last_err = None;
+                    break;
+                }
+
+                if !RETRYABLE_STATUS_CODES.contains(&status) {
+                    let body_text = response.text().await.unwrap_or_default();
+                    return Err(EmbeddingError::BatchFailed {
+                        source: format!("HTTP {status}: {body_text}").into(),
+                    });
+                }
+
+                last_err = Some(format!("HTTP {status}"));
+                if attempt + 1 < MAX_RETRIES {
+                    let delay = std::time::Duration::from_secs(1 << (attempt + 1));
+                    tokio::time::sleep(delay).await;
+                }
+            }
+
+            if let Some(err) = last_err {
+                return Err(EmbeddingError::BatchFailed {
+                    source: format!("retries exhausted: {err}").into(),
+                });
+            }
+        }
+
+        Ok(all_embeddings)
     }
 }
 

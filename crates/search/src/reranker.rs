@@ -46,13 +46,60 @@ impl CrossEncoderReranker {
 impl Reranker for CrossEncoderReranker {
     async fn rerank(
         &self,
-        _query: &str,
+        query: &str,
         documents: &[(i64, String)],
     ) -> Result<Vec<(i64, f64)>, SearchError> {
         if documents.is_empty() {
             return Ok(Vec::new());
         }
-        todo!()
+
+        let mut all_scores = Vec::with_capacity(documents.len());
+
+        for batch in documents.chunks(self.batch_size) {
+            let texts: Vec<&str> = batch.iter().map(|(_, text)| text.as_str()).collect();
+            let body = serde_json::json!({
+                "query": query,
+                "documents": texts,
+                "model": self.model_name,
+            });
+
+            let response = self
+                .client
+                .post(&self.endpoint)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| SearchError::Rerank(e.to_string()))?;
+
+            if !response.status().is_success() {
+                let status = response.status().as_u16();
+                let body_text = response.text().await.unwrap_or_default();
+                return Err(SearchError::Rerank(format!("HTTP {status}: {body_text}")));
+            }
+
+            let parsed: serde_json::Value = response
+                .json()
+                .await
+                .map_err(|e| SearchError::Rerank(e.to_string()))?;
+
+            let results = parsed["results"]
+                .as_array()
+                .ok_or_else(|| SearchError::Rerank("missing results array".to_string()))?;
+
+            for item in results {
+                let index = item["index"]
+                    .as_u64()
+                    .ok_or_else(|| SearchError::Rerank("missing index".to_string()))?
+                    as usize;
+                let score = item["relevance_score"]
+                    .as_f64()
+                    .ok_or_else(|| SearchError::Rerank("missing relevance_score".to_string()))?;
+                let (note_id, _) = batch[index];
+                all_scores.push((note_id, score));
+            }
+        }
+
+        Ok(all_scores)
     }
 }
 

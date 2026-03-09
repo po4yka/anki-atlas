@@ -5,25 +5,21 @@ use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 use tracing::instrument;
 
-use llm::{GenerateOptions, LlmProvider};
+use llm::LlmProvider;
 
-use crate::agents::GeneratorAgent;
+use crate::agents::{GeneratorAgent, LlmAgentBase};
 use crate::error::GeneratorError;
 use crate::models::{GeneratedCard, GenerationDeps, GenerationResult};
 
 /// LLM-backed generator agent.
 pub struct LlmGeneratorAgent {
-    provider: Arc<dyn LlmProvider>,
-    model_name: String,
-    temperature: f32,
+    base: LlmAgentBase,
 }
 
 impl LlmGeneratorAgent {
     pub fn new(provider: Arc<dyn LlmProvider>, model_name: String, temperature: f32) -> Self {
         Self {
-            provider,
-            model_name,
-            temperature,
+            base: LlmAgentBase::new(provider, model_name, temperature),
         }
     }
 
@@ -58,28 +54,19 @@ impl GeneratorAgent for LlmGeneratorAgent {
             deps.note_title, deps.topic, deps.language_tags, qa_pairs
         );
 
-        let opts = GenerateOptions {
-            temperature: self.temperature,
-            json_mode: true,
-            ..Default::default()
-        };
-
-        let response = self
-            .provider
-            .generate(&self.model_name, &prompt, &opts)
-            .await?;
+        let text = self.base.call_llm(&prompt).await?;
 
         let json: serde_json::Value =
-            serde_json::from_str(&response.text).map_err(|e| GeneratorError::Generation {
+            serde_json::from_str(&text).map_err(|e| GeneratorError::Generation {
                 message: format!("Failed to parse LLM response: {e}"),
-                model: Some(self.model_name.clone()),
+                model: Some(self.base.model_name.clone()),
             })?;
 
         let raw_cards = json["cards"]
             .as_array()
             .ok_or_else(|| GeneratorError::Generation {
                 message: "Response missing 'cards' array".into(),
-                model: Some(self.model_name.clone()),
+                model: Some(self.base.model_name.clone()),
             })?;
 
         let mut cards = Vec::with_capacity(raw_cards.len());
@@ -101,7 +88,7 @@ impl GeneratorAgent for LlmGeneratorAgent {
         Ok(GenerationResult {
             cards,
             total_cards,
-            model_used: self.model_name.clone(),
+            model_used: self.base.model_name.clone(),
             generation_time_secs: start.elapsed().as_secs_f64(),
             warnings: vec![],
         })

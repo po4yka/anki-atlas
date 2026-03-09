@@ -168,23 +168,118 @@ pub fn load_taxonomy_from_yaml(path: &std::path::Path) -> Result<Taxonomy, Analy
 
 /// Sync taxonomy to database (upsert by path). Returns path -> topic_id map.
 pub async fn sync_taxonomy_to_db(
-    _pool: &sqlx::PgPool,
-    _taxonomy: &Taxonomy,
+    pool: &sqlx::PgPool,
+    taxonomy: &Taxonomy,
 ) -> Result<HashMap<String, i64>, AnalyticsError> {
-    todo!()
+    let mut id_map = HashMap::new();
+
+    for (path, topic) in &taxonomy.topics {
+        let row: (i32,) = sqlx::query_as(
+            "INSERT INTO topics (path, label, description) VALUES ($1, $2, $3) \
+             ON CONFLICT (path) DO UPDATE SET label = $2, description = $3 \
+             RETURNING topic_id",
+        )
+        .bind(path)
+        .bind(&topic.label)
+        .bind(&topic.description)
+        .fetch_one(pool)
+        .await?;
+
+        id_map.insert(path.clone(), i64::from(row.0));
+    }
+
+    Ok(id_map)
 }
 
 /// Load taxonomy from database, reconstructing tree structure.
-pub async fn load_taxonomy_from_db(_pool: &sqlx::PgPool) -> Result<Taxonomy, AnalyticsError> {
-    todo!()
+pub async fn load_taxonomy_from_db(pool: &sqlx::PgPool) -> Result<Taxonomy, AnalyticsError> {
+    let rows: Vec<(i32, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT topic_id, path, label, description FROM topics ORDER BY path",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    if rows.is_empty() {
+        return Ok(Taxonomy::default());
+    }
+
+    let mut taxonomy = Taxonomy::default();
+
+    for (topic_id, path, label, description) in &rows {
+        taxonomy.topics.insert(
+            path.clone(),
+            Topic {
+                path: path.clone(),
+                label: label.clone(),
+                description: description.clone(),
+                topic_id: Some(i64::from(*topic_id)),
+                children: vec![],
+            },
+        );
+    }
+
+    // Build tree: collect children per parent path
+    let mut children_map: HashMap<String, Vec<String>> = HashMap::new();
+    let mut root_paths = Vec::new();
+
+    for (_, path, _, _) in &rows {
+        let topic = taxonomy.topics.get(path).unwrap();
+        match topic.parent_path() {
+            Some(parent) => {
+                children_map
+                    .entry(parent.to_string())
+                    .or_default()
+                    .push(path.clone());
+            }
+            None => root_paths.push(path.clone()),
+        }
+    }
+
+    fn build_topic(
+        path: &str,
+        topics: &HashMap<String, Topic>,
+        children_map: &HashMap<String, Vec<String>>,
+    ) -> Topic {
+        let base = topics.get(path).cloned().unwrap();
+        let children = children_map
+            .get(path)
+            .map(|child_paths| {
+                child_paths
+                    .iter()
+                    .map(|cp| build_topic(cp, topics, children_map))
+                    .collect()
+            })
+            .unwrap_or_default();
+        Topic { children, ..base }
+    }
+
+    taxonomy.roots = root_paths
+        .iter()
+        .map(|p| build_topic(p, &taxonomy.topics, &children_map))
+        .collect();
+
+    Ok(taxonomy)
 }
 
 /// Get a single topic by path from database.
 pub async fn get_topic_by_path(
-    _pool: &sqlx::PgPool,
-    _path: &str,
+    pool: &sqlx::PgPool,
+    path: &str,
 ) -> Result<Option<Topic>, AnalyticsError> {
-    todo!()
+    let row: Option<(i32, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT topic_id, path, label, description FROM topics WHERE path = $1",
+    )
+    .bind(path)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|(topic_id, path, label, description)| Topic {
+        path,
+        label,
+        description,
+        topic_id: Some(i64::from(topic_id)),
+        children: vec![],
+    }))
 }
 
 #[cfg(test)]

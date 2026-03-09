@@ -8,9 +8,11 @@ use crate::provider::{GenerateOptions, LlmProvider};
 
 // -- Helpers --
 
+const TEST_API_KEY: &str = "test-key-123";
+
 fn config_with_url(base_url: &str) -> OpenRouterConfig {
     OpenRouterConfig {
-        api_key: "test-key-123".to_string(),
+        api_key: TEST_API_KEY.to_string(),
         base_url: base_url.to_string(),
         timeout_secs: 5,
         max_tokens: 1024,
@@ -58,7 +60,7 @@ fn new_returns_error_when_api_key_is_empty() {
 #[test]
 fn new_succeeds_with_valid_api_key() {
     let config = OpenRouterConfig {
-        api_key: "sk-test-key".to_string(),
+        api_key: TEST_API_KEY.to_string(),
         ..OpenRouterConfig::default()
     };
     let result = OpenRouterProvider::new(config);
@@ -84,7 +86,7 @@ async fn generate_sends_user_message_only_when_no_system() {
 
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
-        .and(header("Authorization", "Bearer test-key-123"))
+        .and(header("Authorization", &format!("Bearer {TEST_API_KEY}")))
         .respond_with(ResponseTemplate::new(200).set_body_json(success_response()))
         .expect(1)
         .mount(&server)
@@ -401,7 +403,7 @@ async fn check_connection_returns_true_on_200() {
 #[tokio::test]
 async fn check_connection_returns_false_on_error() {
     let config = OpenRouterConfig {
-        api_key: "test-key".to_string(),
+        api_key: TEST_API_KEY.to_string(),
         base_url: "http://127.0.0.1:1".to_string(),
         timeout_secs: 1,
         ..OpenRouterConfig::default()
@@ -440,7 +442,7 @@ async fn list_models_parses_model_ids() {
 #[tokio::test]
 async fn list_models_returns_empty_on_error() {
     let config = OpenRouterConfig {
-        api_key: "test-key".to_string(),
+        api_key: TEST_API_KEY.to_string(),
         base_url: "http://127.0.0.1:1".to_string(),
         timeout_secs: 1,
         ..OpenRouterConfig::default()
@@ -462,7 +464,7 @@ async fn generate_sends_authorization_header() {
 
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
-        .and(header("Authorization", "Bearer test-key-123"))
+        .and(header("Authorization", &format!("Bearer {TEST_API_KEY}")))
         .respond_with(ResponseTemplate::new(200).set_body_json(success_response()))
         .expect(1)
         .mount(&server)
@@ -493,7 +495,7 @@ async fn generate_sends_site_headers_when_configured() {
         .await;
 
     let config = OpenRouterConfig {
-        api_key: "test-key-123".to_string(),
+        api_key: TEST_API_KEY.to_string(),
         base_url: server.uri(),
         timeout_secs: 5,
         max_tokens: 1024,

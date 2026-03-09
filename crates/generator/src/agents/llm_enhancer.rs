@@ -3,25 +3,21 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::instrument;
 
-use llm::{GenerateOptions, LlmProvider};
+use llm::LlmProvider;
 
-use crate::agents::EnhancerAgent;
+use crate::agents::{EnhancerAgent, LlmAgentBase};
 use crate::error::GeneratorError;
 use crate::models::{GeneratedCard, GenerationDeps, SplitDecision};
 
 /// LLM-backed enhancer agent.
 pub struct LlmEnhancerAgent {
-    provider: Arc<dyn LlmProvider>,
-    model_name: String,
-    temperature: f32,
+    base: LlmAgentBase,
 }
 
 impl LlmEnhancerAgent {
     pub fn new(provider: Arc<dyn LlmProvider>, model_name: String, temperature: f32) -> Self {
         Self {
-            provider,
-            model_name,
-            temperature,
+            base: LlmAgentBase::new(provider, model_name, temperature),
         }
     }
 }
@@ -39,21 +35,12 @@ impl EnhancerAgent for LlmEnhancerAgent {
             deps.note_title, card.apf_html
         );
 
-        let opts = GenerateOptions {
-            temperature: self.temperature,
-            json_mode: true,
-            ..Default::default()
-        };
-
-        let response = self
-            .provider
-            .generate(&self.model_name, &prompt, &opts)
-            .await?;
+        let text = self.base.call_llm(&prompt).await?;
 
         let json: serde_json::Value =
-            serde_json::from_str(&response.text).map_err(|e| GeneratorError::Enhancement {
+            serde_json::from_str(&text).map_err(|e| GeneratorError::Enhancement {
                 message: format!("Failed to parse LLM response: {e}"),
-                model: Some(self.model_name.clone()),
+                model: Some(self.base.model_name.clone()),
             })?;
 
         let improvements = json["improvements"].as_array();
@@ -86,21 +73,12 @@ impl EnhancerAgent for LlmEnhancerAgent {
             deps.note_title, content
         );
 
-        let opts = GenerateOptions {
-            temperature: self.temperature,
-            json_mode: true,
-            ..Default::default()
-        };
-
-        let response = self
-            .provider
-            .generate(&self.model_name, &prompt, &opts)
-            .await?;
+        let text = self.base.call_llm(&prompt).await?;
 
         let decision: SplitDecision =
-            serde_json::from_str(&response.text).map_err(|e| GeneratorError::Enhancement {
+            serde_json::from_str(&text).map_err(|e| GeneratorError::Enhancement {
                 message: format!("Failed to parse split decision: {e}"),
-                model: Some(self.model_name.clone()),
+                model: Some(self.base.model_name.clone()),
             })?;
 
         Ok(decision)
