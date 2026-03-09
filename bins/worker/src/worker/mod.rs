@@ -94,6 +94,7 @@ impl<Q: QueueBackend + 'static> Worker<Q> {
 
         // Set status to Running before dispatch
         record.status = JobStatus::Running;
+        record.attempts += 1;
         if let Err(e) = self
             .queue
             .save_job_record(&record, self.config.result_ttl_seconds)
@@ -102,25 +103,9 @@ impl<Q: QueueBackend + 'static> Worker<Q> {
             tracing::warn!(job_id = %envelope.job_id, error = %e, "failed to save running status");
         }
 
-        // Check if task is known
-        let is_known = matches!(envelope.task_name.as_str(), "job_sync" | "job_index");
-
-        if !is_known {
-            record.status = JobStatus::Failed;
-            record.error = Some(format!("unknown task: {}", envelope.task_name));
-            if let Err(e) = self
-                .queue
-                .save_job_record(&record, self.config.result_ttl_seconds)
-                .await
-            {
-                tracing::warn!(job_id = %envelope.job_id, error = %e, "failed to save failed status");
-            }
-            return;
-        }
-
-        // Known task failed (stubs always fail) - apply retry logic
-        record.attempts += 1;
-
+        // TODO(impl): call crate::dispatcher::dispatch() once TaskContext
+        // can be constructed from the queue backend.
+        // For now, apply retry logic since task stubs always return errors.
         if record.attempts < record.max_retries {
             record.status = JobStatus::Retrying;
             if let Err(e) = self

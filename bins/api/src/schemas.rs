@@ -98,6 +98,27 @@ pub struct JobStatusResponse {
     pub error: Option<String>,
 }
 
+impl From<jobs::types::JobRecord> for JobStatusResponse {
+    fn from(rec: jobs::types::JobRecord) -> Self {
+        Self {
+            job_id: rec.job_id,
+            job_type: rec.job_type,
+            status: rec.status,
+            progress: rec.progress,
+            message: rec.message,
+            attempts: rec.attempts,
+            max_retries: rec.max_retries,
+            cancel_requested: rec.cancel_requested,
+            created_at: rec.created_at,
+            scheduled_for: rec.scheduled_for,
+            started_at: rec.started_at,
+            finished_at: rec.finished_at,
+            result: rec.result,
+            error: rec.error,
+        }
+    }
+}
+
 // --- Search ---
 
 #[derive(Debug, Deserialize)]

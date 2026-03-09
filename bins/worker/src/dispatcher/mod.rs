@@ -1,29 +1,25 @@
 use crate::envelope::JobEnvelope;
 use jobs::error::JobError;
 use jobs::tasks::TaskContext;
+use jobs::types::JobType;
 use std::collections::HashMap;
 
 /// Dispatch a job envelope to the appropriate task function.
 ///
-/// Maps task_name to:
-/// - "job_sync"  -> jobs::tasks::job_sync
-/// - "job_index" -> jobs::tasks::job_index
-///
-/// Unknown task names return an error.
+/// Routes based on `JobType` enum:
+/// - `Sync`  -> jobs::tasks::job_sync
+/// - `Index` -> jobs::tasks::job_index
 pub async fn dispatch(
     ctx: &TaskContext,
     envelope: &JobEnvelope,
 ) -> Result<HashMap<String, serde_json::Value>, JobError> {
-    match envelope.task_name.as_str() {
-        "job_sync" => {
+    match envelope.job_type {
+        JobType::Sync => {
             jobs::tasks::job_sync(ctx, &envelope.job_id, &envelope.payload).await
         }
-        "job_index" => {
+        JobType::Index => {
             jobs::tasks::job_index(ctx, &envelope.job_id, &envelope.payload).await
         }
-        other => Err(JobError::TaskExecution(format!(
-            "unknown task: {other}"
-        ))),
     }
 }
 

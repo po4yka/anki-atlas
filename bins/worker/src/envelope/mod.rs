@@ -1,3 +1,4 @@
+use jobs::types::JobType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -5,7 +6,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JobEnvelope {
     pub job_id: String,
-    pub task_name: String,
+    pub job_type: JobType,
     pub payload: HashMap<String, serde_json::Value>,
 }
 

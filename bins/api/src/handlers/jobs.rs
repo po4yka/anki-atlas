@@ -22,25 +22,6 @@ fn record_to_accepted(rec: &jobs::JobRecord) -> JobAcceptedResponse {
     }
 }
 
-/// Convert a `JobRecord` to a `JobStatusResponse` for status queries.
-fn record_to_status(rec: &jobs::JobRecord) -> JobStatusResponse {
-    JobStatusResponse {
-        job_id: rec.job_id.clone(),
-        job_type: rec.job_type,
-        status: rec.status,
-        progress: rec.progress,
-        message: rec.message.clone(),
-        attempts: rec.attempts,
-        max_retries: rec.max_retries,
-        cancel_requested: rec.cancel_requested,
-        created_at: rec.created_at,
-        scheduled_for: rec.scheduled_for,
-        started_at: rec.started_at,
-        finished_at: rec.finished_at,
-        result: rec.result.clone(),
-        error: rec.error.clone(),
-    }
-}
 
 /// Map `JobError` to `AppError`, translating backend-unavailable to a 503 domain error.
 fn map_job_error(e: jobs::JobError) -> AppError {
@@ -126,7 +107,7 @@ pub async fn get_job_status(
         .map_err(|e| AppError(anyhow::anyhow!(e)))?;
 
     match rec {
-        Some(r) => Ok((StatusCode::OK, Json(record_to_status(&r))).into_response()),
+        Some(r) => Ok((StatusCode::OK, Json(JobStatusResponse::from(r))).into_response()),
         None => Ok(job_not_found(&job_id)),
     }
 }
@@ -144,7 +125,7 @@ pub async fn cancel_job(
         .map_err(|e| AppError(anyhow::anyhow!(e)))?;
 
     match rec {
-        Some(r) => Ok((StatusCode::OK, Json(record_to_status(&r))).into_response()),
+        Some(r) => Ok((StatusCode::OK, Json(JobStatusResponse::from(r))).into_response()),
         None => Ok(job_not_found(&job_id)),
     }
 }

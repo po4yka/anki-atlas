@@ -38,10 +38,10 @@ fn test_job_record(job_id: &str, status: JobStatus) -> JobRecord {
     }
 }
 
-fn test_envelope(job_id: &str, task_name: &str) -> JobEnvelope {
+fn test_envelope(job_id: &str, job_type: JobType) -> JobEnvelope {
     JobEnvelope {
         job_id: job_id.to_string(),
-        task_name: task_name.to_string(),
+        job_type,
         payload: HashMap::new(),
     }
 }
@@ -131,7 +131,7 @@ async fn processes_valid_job_envelope_from_queue() {
     let config = test_config();
     let mut mock = MockQueueBackend::new();
 
-    let envelope = test_envelope("job-1", "job_sync");
+    let envelope = test_envelope("job-1", JobType::Sync);
     let envelope_json = serde_json::to_string(&envelope).unwrap();
 
     let call_count = Arc::new(AtomicU32::new(0));
@@ -176,7 +176,7 @@ async fn sets_job_status_to_running_before_dispatch() {
     let config = test_config();
     let mut mock = MockQueueBackend::new();
 
-    let envelope = test_envelope("job-2", "job_sync");
+    let envelope = test_envelope("job-2", JobType::Sync);
     let envelope_json = serde_json::to_string(&envelope).unwrap();
 
     let brpop_count = Arc::new(AtomicU32::new(0));
@@ -230,11 +230,11 @@ async fn sets_job_status_to_running_before_dispatch() {
 }
 
 #[tokio::test]
-async fn sets_job_status_to_failed_on_terminal_error() {
+async fn sets_job_status_to_retrying_on_first_failure() {
     let config = test_config();
     let mut mock = MockQueueBackend::new();
 
-    let envelope = test_envelope("job-3", "unknown_task");
+    let envelope = test_envelope("job-3", JobType::Index);
     let envelope_json = serde_json::to_string(&envelope).unwrap();
 
     let brpop_count = Arc::new(AtomicU32::new(0));
@@ -284,8 +284,8 @@ async fn sets_job_status_to_failed_on_terminal_error() {
     let status = final_status.lock().unwrap();
     assert_eq!(
         *status,
-        Some(JobStatus::Failed),
-        "unknown task should result in Failed status"
+        Some(JobStatus::Retrying),
+        "first failure with retries remaining should result in Retrying status"
     );
 }
 
@@ -294,7 +294,7 @@ async fn reenqueues_job_on_retryable_error_below_max_retries() {
     let config = test_config();
     let mut mock = MockQueueBackend::new();
 
-    let envelope = test_envelope("job-4", "job_sync");
+    let envelope = test_envelope("job-4", JobType::Sync);
     let envelope_json = serde_json::to_string(&envelope).unwrap();
 
     let brpop_count = Arc::new(AtomicU32::new(0));
@@ -349,7 +349,7 @@ async fn does_not_reenqueue_after_max_retries_exhausted() {
     let config = test_config();
     let mut mock = MockQueueBackend::new();
 
-    let envelope = test_envelope("job-5", "job_sync");
+    let envelope = test_envelope("job-5", JobType::Sync);
     let envelope_json = serde_json::to_string(&envelope).unwrap();
 
     let brpop_count = Arc::new(AtomicU32::new(0));
@@ -512,7 +512,7 @@ async fn graceful_shutdown_waits_for_inflight_jobs() {
 
     let mut mock = MockQueueBackend::new();
 
-    let envelope = test_envelope("shutdown-job", "job_sync");
+    let envelope = test_envelope("shutdown-job", JobType::Sync);
     let envelope_json = serde_json::to_string(&envelope).unwrap();
 
     let brpop_count = Arc::new(AtomicU32::new(0));
