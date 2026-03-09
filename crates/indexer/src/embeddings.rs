@@ -60,10 +60,10 @@ impl EmbeddingProvider for MockEmbeddingProvider {
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
         let mut results = Vec::with_capacity(texts.len());
         for text in texts {
-            let hash_bytes = md5::compute(text.as_bytes()).0;
+            let hash_bytes = Sha256::digest(text.as_bytes());
             let mut vec = Vec::with_capacity(self.dimension);
             for i in 0..self.dimension {
-                let byte = hash_bytes[i % 16];
+                let byte = hash_bytes[i % 32];
                 let val = (f32::from(byte) / 127.5) - 1.0;
                 vec.push(val);
             }

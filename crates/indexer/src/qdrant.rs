@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use blake2::{Blake2b, Digest};
+use sha2::{Digest, Sha256};
 use serde::{Deserialize, Serialize};
 
 /// Payload stored with each Qdrant point.
@@ -142,7 +142,7 @@ impl QdrantRepository {
         })
     }
 
-    /// Convert text into a hashed sparse vector (blake2b tokens, L2-normalized TF weights).
+    /// Convert text into a hashed sparse vector (sha256 tokens, L2-normalized TF weights).
     pub fn text_to_sparse_vector(text: &str) -> SparseVector {
         // Tokenize: lowercase, keep only alphanumeric tokens
         let mut token_counts: HashMap<u32, f32> = HashMap::new();
@@ -154,8 +154,8 @@ impl QdrantRepository {
                 continue;
             }
 
-            // Hash token to u32 index using blake2b
-            let mut hasher = Blake2b::<blake2::digest::consts::U8>::new();
+            // Hash token to u32 index using sha256
+            let mut hasher = Sha256::new();
             hasher.update(cleaned.as_bytes());
             let hash = hasher.finalize();
             let index = u32::from_le_bytes([hash[0], hash[1], hash[2], hash[3]]);

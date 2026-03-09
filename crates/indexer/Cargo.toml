@@ -15,13 +15,11 @@ serde_json = { workspace = true }
 reqwest = { workspace = true }
 qdrant-client = { workspace = true }
 sha2 = { workspace = true }
-blake2 = "0.10"
 hex = "0.4"
 thiserror = { workspace = true }
 tracing = { workspace = true }
 regex = { workspace = true }
 sqlx = { workspace = true }
-md5 = "0.8.0"
 
 [dev-dependencies]
 mockall = { workspace = true }
