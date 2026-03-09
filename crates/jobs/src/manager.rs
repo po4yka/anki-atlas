@@ -1,5 +1,5 @@
 use crate::error::JobError;
-use crate::types::{JobRecord, JobStatus, JobType};
+use crate::types::JobRecord;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
@@ -32,14 +32,11 @@ pub trait JobManager: Send + Sync {
 }
 
 /// Redis-backed job manager.
+#[allow(dead_code)]
 pub struct RedisJobManager {
-    #[allow(dead_code)]
     client: rustis::client::Client,
-    #[allow(dead_code)]
     queue_name: String,
-    #[allow(dead_code)]
     max_retries: u32,
-    #[allow(dead_code)]
     result_ttl_seconds: u64,
 }
 
@@ -54,10 +51,3 @@ impl RedisJobManager {
         Err(JobError::BackendUnavailable("not implemented".to_string()))
     }
 }
-
-// Suppress unused import warnings - these will be used in implementation
-#[allow(dead_code)]
-const _: () = {
-    let _ = std::mem::size_of::<JobType>();
-    let _ = std::mem::size_of::<JobStatus>();
-};

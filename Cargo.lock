@@ -552,6 +552,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19d374276b40fb8bbdee95aef7c7fa6b5316ec764510eb64b8dd0e2ed0d7e7f5"
 
 [[package]]
+name = "crc16"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "338089f42c427b86394a5ee60ff321da23a5c89c9d89514c829687b26359fcff"
+
+[[package]]
 name = "crc32fast"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -924,6 +930,12 @@ name = "fallible-streaming-iterator"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
+
+[[package]]
+name = "fast-float"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95765f67b4b18863968b4a1bd5bb576f732b29a4a28c7cd84c09fa3e2875f33c"
 
 [[package]]
 name = "fastrand"
@@ -1687,6 +1699,21 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 [[package]]
 name = "jobs"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "common",
+ "mockall",
+ "rustis",
+ "serde",
+ "serde_json",
+ "strum 0.26.3",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+]
 
 [[package]]
 name = "js-sys"
@@ -2779,6 +2806,31 @@ name = "rustc-hash"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
+
+[[package]]
+name = "rustis"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e44f8369b2f0de0ebdad3ab7aa8baef56fa24812daa7b91a405846634a880b16"
+dependencies = [
+ "atoi",
+ "bytes",
+ "crc16",
+ "dtoa",
+ "fast-float",
+ "futures-channel",
+ "futures-util",
+ "itoa",
+ "log",
+ "memchr",
+ "rand 0.8.5",
+ "serde",
+ "smallvec",
+ "socket2 0.5.10",
+ "tokio",
+ "tokio-util",
+ "url",
+]
 
 [[package]]
 name = "rustix"
@@ -4163,6 +4215,7 @@ checksum = "a68d3c8f01c0cfa54a75291d83601161799e4a89a39e0929f4b0354d88757a37"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 
