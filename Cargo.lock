@@ -137,6 +137,17 @@ dependencies = [
 [[package]]
 name = "anki-atlas-worker"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "common",
+ "jobs",
+ "rustis",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "anki-reader"

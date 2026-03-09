@@ -10,3 +10,16 @@ name = "anki-atlas-worker"
 path = "src/main.rs"
 
 [dependencies]
+common = { path = "../../crates/common" }
+jobs = { path = "../../crates/jobs" }
+
+rustis = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
