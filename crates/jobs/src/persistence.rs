@@ -1,5 +1,6 @@
 use crate::error::JobError;
 use crate::types::{JOB_KEY_PREFIX, JobRecord};
+use rustis::commands::StringCommands;
 
 /// Build Redis key from job ID.
 pub fn job_key(job_id: &str) -> String {
@@ -8,19 +9,42 @@ pub fn job_key(job_id: &str) -> String {
 
 /// Persist a job record in Redis with TTL.
 pub async fn save_job_record(
-    _client: &rustis::client::Client,
-    _record: &JobRecord,
-    _ttl_seconds: u64,
+    client: &rustis::client::Client,
+    record: &JobRecord,
+    ttl_seconds: u64,
 ) -> Result<(), JobError> {
-    // TODO(impl): implement
-    Err(JobError::Redis("not implemented".to_string()))
+    let key = job_key(&record.job_id);
+    let json =
+        serde_json::to_string(record).map_err(|e| JobError::Serialization(e.to_string()))?;
+    let _: bool = client
+        .set_with_options(
+            &key,
+            &json,
+            rustis::commands::SetCondition::None,
+            rustis::commands::SetExpiration::Ex(ttl_seconds),
+            false,
+        )
+        .await
+        .map_err(|e| JobError::Redis(e.to_string()))?;
+    Ok(())
 }
 
 /// Load a job record from Redis.
 pub async fn load_job_record(
-    _client: &rustis::client::Client,
-    _job_id: &str,
+    client: &rustis::client::Client,
+    job_id: &str,
 ) -> Result<Option<JobRecord>, JobError> {
-    // TODO(impl): implement
-    Err(JobError::Redis("not implemented".to_string()))
+    let key = job_key(job_id);
+    let raw: Option<String> = client
+        .get(&key)
+        .await
+        .map_err(|e| JobError::Redis(e.to_string()))?;
+    match raw {
+        Some(s) => {
+            let record = serde_json::from_str(&s)
+                .map_err(|e| JobError::Serialization(e.to_string()))?;
+            Ok(Some(record))
+        }
+        None => Ok(None),
+    }
 }

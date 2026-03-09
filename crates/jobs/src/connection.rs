@@ -50,7 +50,8 @@ pub fn parse_redis_url(redis_url: &str) -> Result<RedisConfig, JobError> {
 }
 
 /// Create a rustis Client from a Redis URL.
-pub async fn create_redis_client(_redis_url: &str) -> Result<rustis::client::Client, JobError> {
-    // TODO(impl): implement
-    Err(JobError::BackendUnavailable("not implemented".to_string()))
+pub async fn create_redis_client(redis_url: &str) -> Result<rustis::client::Client, JobError> {
+    rustis::client::Client::connect(redis_url)
+        .await
+        .map_err(|e| JobError::Redis(format!("connection failed: {e}")))
 }
