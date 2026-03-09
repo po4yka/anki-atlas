@@ -1500,3 +1500,427 @@ fn highlight_code_multiline() {
         "Multiline code should preserve all lines, got: {result}"
     );
 }
+
+// ===========================================================================
+// APF Validator tests
+// ===========================================================================
+
+use super::validator::*;
+
+// ---------------------------------------------------------------------------
+// validate_card_html: backtick fence detection
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_card_html_valid_html() {
+    let html = "<p>Hello <strong>world</strong></p>";
+    let errors = validate_card_html(html);
+    assert!(errors.is_empty(), "Valid HTML should produce no errors, got: {errors:?}");
+}
+
+#[test]
+fn validate_card_html_detects_backtick_fences() {
+    let html = "```python\nprint('hi')\n```";
+    let errors = validate_card_html(html);
+    assert!(
+        errors.iter().any(|e| e.contains("Backtick") || e.contains("backtick") || e.contains("code fence")),
+        "Should detect backtick code fences, got: {errors:?}"
+    );
+}
+
+#[test]
+fn validate_card_html_detects_markdown_bold() {
+    let html = "This is **bold** text";
+    let errors = validate_card_html(html);
+    assert!(
+        errors.iter().any(|e| e.contains("bold") || e.contains("**")),
+        "Should detect markdown bold markers, got: {errors:?}"
+    );
+}
+
+#[test]
+fn validate_card_html_detects_markdown_italic() {
+    let html = "This is *italic* text";
+    let errors = validate_card_html(html);
+    assert!(
+        errors.iter().any(|e| e.contains("italic") || e.contains("*")),
+        "Should detect markdown italic markers, got: {errors:?}"
+    );
+}
+
+#[test]
+fn validate_card_html_bold_inside_pre_not_flagged() {
+    // Bold inside <pre> should not be flagged -- regex strips <pre> content first
+    let html = "<pre>**this is code**</pre>";
+    let errors = validate_card_html(html);
+    assert!(
+        !errors.iter().any(|e| e.contains("bold")),
+        "Bold markers inside <pre> should not be flagged, got: {errors:?}"
+    );
+}
+
+#[test]
+fn validate_card_html_pre_without_code() {
+    let html = "<pre>some code without code tag</pre>";
+    let errors = validate_card_html(html);
+    assert!(
+        errors.iter().any(|e| e.contains("<pre>") && e.contains("<code>")),
+        "Should detect <pre> without nested <code>, got: {errors:?}"
+    );
+}
+
+#[test]
+fn validate_card_html_pre_with_code_is_valid() {
+    let html = "<pre><code class=\"language-python\">print('hi')</code></pre>";
+    let errors = validate_card_html(html);
+    assert!(
+        !errors.iter().any(|e| e.contains("<pre>")),
+        "Valid <pre><code> structure should not produce errors, got: {errors:?}"
+    );
+}
+
+#[test]
+fn validate_card_html_inline_code_outside_pre() {
+    let html = "<p>Use <code>foo()</code> here</p>";
+    let errors = validate_card_html(html);
+    assert!(
+        errors.iter().any(|e| e.contains("Inline") || e.contains("inline") || e.contains("<code>")),
+        "Inline <code> outside <pre> should be flagged, got: {errors:?}"
+    );
+}
+
+#[test]
+fn validate_card_html_empty_input() {
+    let errors = validate_card_html("");
+    assert!(errors.is_empty(), "Empty input should produce no errors, got: {errors:?}");
+}
+
+#[test]
+fn validate_card_html_multiple_errors() {
+    let html = "```python\nprint('hi')\n```\n**bold** and *italic*";
+    let errors = validate_card_html(html);
+    assert!(
+        errors.len() >= 2,
+        "Multiple issues should produce multiple errors, got {} errors: {errors:?}",
+        errors.len()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_markdown: code fence balance
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_markdown_valid_content() {
+    let content = "This is **bold** and `code` text.";
+    let result = validate_markdown(content);
+    assert!(result.is_valid, "Valid markdown should be valid, errors: {:?}", result.errors);
+}
+
+#[test]
+fn validate_markdown_empty_input() {
+    let result = validate_markdown("");
+    assert!(result.is_valid, "Empty input should be valid");
+    assert!(result.errors.is_empty(), "Empty input should have no errors");
+}
+
+#[test]
+fn validate_markdown_whitespace_only() {
+    let result = validate_markdown("   \n  \t  ");
+    assert!(result.is_valid, "Whitespace-only should be valid");
+}
+
+#[test]
+fn validate_markdown_unclosed_code_fence() {
+    let content = "Some text\n```python\nprint('hi')\n";
+    let result = validate_markdown(content);
+    assert!(!result.is_valid, "Unclosed code fence should be invalid");
+    assert!(
+        result.errors.iter().any(|e| e.contains("code fence") || e.contains("Unclosed")),
+        "Should mention unclosed code fence, errors: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_markdown_balanced_code_fences() {
+    let content = "```python\nprint('hi')\n```\n";
+    let result = validate_markdown(content);
+    assert!(
+        !result.errors.iter().any(|e| e.contains("code fence") || e.contains("Unclosed")),
+        "Balanced fences should not produce fence errors, errors: {:?}",
+        result.errors
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_markdown: formatting markers
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_markdown_unbalanced_backticks() {
+    let content = "Use `code for inline code";
+    let result = validate_markdown(content);
+    assert!(!result.is_valid, "Unbalanced backticks should be invalid");
+    assert!(
+        result.errors.iter().any(|e| e.contains("backtick") || e.contains("Unbalanced")),
+        "Should mention unbalanced backticks, errors: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_markdown_unbalanced_bold_markers() {
+    let content = "This is **bold text without closing";
+    let result = validate_markdown(content);
+    assert!(!result.is_valid, "Unbalanced bold should be invalid");
+    assert!(
+        result.errors.iter().any(|e| e.contains("bold") || e.contains("**")),
+        "Should mention unbalanced bold, errors: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_markdown_balanced_formatting() {
+    let content = "This is **bold** and `code` text.";
+    let result = validate_markdown(content);
+    assert!(
+        !result.errors.iter().any(|e| e.contains("Unbalanced")),
+        "Balanced formatting should not produce errors, errors: {:?}",
+        result.errors
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_markdown: warnings
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_markdown_html_tags_warning() {
+    let content = "Use <strong>bold</strong> in markdown";
+    let result = validate_markdown(content);
+    assert!(
+        result.warnings.iter().any(|e| e.contains("HTML") || e.contains("html")),
+        "HTML tags in markdown should produce a warning, warnings: {:?}",
+        result.warnings
+    );
+}
+
+#[test]
+fn validate_markdown_long_line_in_code_block_warning() {
+    let long_line = "x".repeat(201);
+    let content = format!("```\n{}\n```", long_line);
+    let result = validate_markdown(&content);
+    assert!(
+        result.warnings.iter().any(|e| e.contains("200") || e.contains("characters")),
+        "Long lines in code blocks should produce a warning, warnings: {:?}",
+        result.warnings
+    );
+}
+
+#[test]
+fn validate_markdown_long_line_outside_code_not_warned() {
+    // Long lines outside code blocks are not warned about (per Python source)
+    let long_line = "x".repeat(201);
+    let result = validate_markdown(&long_line);
+    assert!(
+        !result.warnings.iter().any(|e| e.contains("200") || e.contains("characters")),
+        "Long lines outside code blocks should not be warned, warnings: {:?}",
+        result.warnings
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_markdown: combined
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_markdown_multiple_errors() {
+    let content = "```python\nprint('hi')\n\nUnbalanced `backtick and **bold";
+    let result = validate_markdown(content);
+    assert!(!result.is_valid, "Multiple issues should be invalid");
+    assert!(
+        result.errors.len() >= 2,
+        "Should have multiple errors, got {}: {:?}",
+        result.errors.len(),
+        result.errors
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf_markdown: sentinel checks
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_markdown_valid_apf() {
+    let spec = minimal_spec();
+    let apf = render(&spec);
+    let result = validate_apf_markdown(&apf);
+    assert!(
+        result.is_valid,
+        "Rendered APF should be valid, errors: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_markdown_empty_input() {
+    let result = validate_apf_markdown("");
+    assert!(!result.is_valid, "Empty APF should be invalid");
+    assert!(
+        result.errors.iter().any(|e| e.contains("Empty") || e.contains("empty")),
+        "Should mention empty content, errors: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_markdown_missing_begin_cards() {
+    let spec = minimal_spec();
+    let apf = render(&spec).replace("<!-- BEGIN_CARDS -->", "");
+    let result = validate_apf_markdown(&apf);
+    assert!(!result.is_valid, "Missing BEGIN_CARDS should be invalid");
+    assert!(
+        result.errors.iter().any(|e| e.contains("BEGIN_CARDS")),
+        "Should mention missing BEGIN_CARDS, errors: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_markdown_missing_end_cards() {
+    let spec = minimal_spec();
+    let apf = render(&spec).replace("<!-- END_CARDS -->", "");
+    let result = validate_apf_markdown(&apf);
+    assert!(!result.is_valid, "Missing END_CARDS should be invalid");
+    assert!(
+        result.errors.iter().any(|e| e.contains("END_CARDS")),
+        "Should mention missing END_CARDS, errors: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_markdown_missing_card_header() {
+    let spec = minimal_spec();
+    let apf = render(&spec);
+    // Remove the card header line
+    let apf = apf
+        .lines()
+        .filter(|l| !l.starts_with("<!-- Card "))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let result = validate_apf_markdown(&apf);
+    assert!(!result.is_valid, "Missing card header should be invalid");
+    assert!(
+        result.errors.iter().any(|e| e.contains("card header") || e.contains("Card")),
+        "Should mention missing card header, errors: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn validate_apf_markdown_missing_title() {
+    let spec = minimal_spec();
+    let apf = render(&spec).replace("<!-- Title -->", "<!-- Other -->");
+    let result = validate_apf_markdown(&apf);
+    assert!(!result.is_valid, "Missing Title should be invalid");
+    assert!(
+        result.errors.iter().any(|e| e.contains("Title")),
+        "Should mention missing Title section, errors: {:?}",
+        result.errors
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf_markdown: key point warnings
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_markdown_missing_key_point_sections() {
+    let spec = minimal_spec();
+    let apf = render(&spec)
+        .replace("<!-- Key point (code block / image) -->", "<!-- Something -->")
+        .replace("<!-- Key point notes -->", "<!-- Something else -->");
+    let result = validate_apf_markdown(&apf);
+    assert!(
+        result.warnings.iter().any(|e| e.contains("Key point")),
+        "Missing key point sections should produce a warning, warnings: {:?}",
+        result.warnings
+    );
+}
+
+#[test]
+fn validate_apf_markdown_has_key_point_no_warning() {
+    let spec = minimal_spec();
+    let apf = render(&spec);
+    assert!(
+        apf.contains("<!-- Key point"),
+        "Rendered APF should contain Key point sentinel"
+    );
+    let result = validate_apf_markdown(&apf);
+    assert!(
+        !result.warnings.iter().any(|e| e.contains("Key point")),
+        "Present key point should not produce a warning, warnings: {:?}",
+        result.warnings
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf_markdown: markdown content validation within sections
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_markdown_with_unclosed_fence_in_section() {
+    let spec = CardSpec {
+        title: "```python\nprint('unclosed')".into(),
+        ..minimal_spec()
+    };
+    let apf = render(&spec);
+    let result = validate_apf_markdown(&apf);
+    // The section content has unclosed fences -- should produce errors
+    assert!(
+        result.errors.iter().any(|e| e.contains("fence") || e.contains("Unclosed"))
+            || !result.is_valid,
+        "Unclosed fence in section should be detected, result: {:?}",
+        result
+    );
+}
+
+// ---------------------------------------------------------------------------
+// validate_apf_markdown: full rendered card
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_apf_markdown_full_card() {
+    let spec = full_spec();
+    let apf = render(&spec);
+    let result = validate_apf_markdown(&apf);
+    assert!(
+        result.is_valid,
+        "Full rendered card should be valid, errors: {:?}",
+        result.errors
+    );
+}
+
+// ---------------------------------------------------------------------------
+// MarkdownValidationResult: struct behavior
+// ---------------------------------------------------------------------------
+
+#[test]
+fn markdown_validation_result_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<MarkdownValidationResult>();
+}
+
+#[test]
+fn markdown_validation_result_debug_clone() {
+    let result = MarkdownValidationResult {
+        is_valid: true,
+        errors: vec![],
+        warnings: vec!["test warning".into()],
+    };
+    let cloned = result.clone();
+    assert_eq!(format!("{:?}", result), format!("{:?}", cloned));
+}
