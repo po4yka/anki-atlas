@@ -1,5 +1,8 @@
 use std::fmt::Write;
 
+/// A single tag audit entry: (tag_name, issues, suggested_fix, close_matches).
+pub type TagAuditEntry = (String, Vec<String>, Option<String>, Vec<String>);
+
 /// Truncate text with ellipsis at max_len. Replaces newlines with spaces and trims.
 pub fn truncate(text: &str, max_len: usize) -> String {
     let cleaned = text.replace('\n', " ");
@@ -66,9 +69,7 @@ pub fn format_obsidian_sync_result(
 }
 
 /// Format tag audit result.
-pub fn format_tag_audit_result(
-    results: &[(String, Vec<String>, Option<String>, Vec<String>)],
-) -> String {
+pub fn format_tag_audit_result(results: &[TagAuditEntry]) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "## Tag Audit Results\n");
 

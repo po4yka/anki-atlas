@@ -146,7 +146,7 @@ fn format_tag_audit_result_with_issues() {
 
 #[test]
 fn format_tag_audit_result_empty() {
-    let results: Vec<(String, Vec<String>, Option<String>, Vec<String>)> = vec![];
+    let results: Vec<TagAuditEntry> = vec![];
     let output = format_tag_audit_result(&results);
     assert!(output.contains("**Total tags**: 0"));
     assert!(output.contains("All tags are valid"));
