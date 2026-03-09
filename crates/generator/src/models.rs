@@ -68,3 +68,29 @@ pub struct ValidationIssue {
 pub struct ValidationResult {
     pub issues: Vec<ValidationIssue>,
 }
+
+impl ValidationResult {
+    /// Returns `true` if there are no errors (warnings are acceptable).
+    pub fn is_valid(&self) -> bool {
+        !self
+            .issues
+            .iter()
+            .any(|i| matches!(i.severity, Severity::Error))
+    }
+
+    /// Returns only issues with `Severity::Error`.
+    pub fn errors(&self) -> Vec<&ValidationIssue> {
+        self.issues
+            .iter()
+            .filter(|i| matches!(i.severity, Severity::Error))
+            .collect()
+    }
+
+    /// Returns only issues with `Severity::Warning`.
+    pub fn warnings(&self) -> Vec<&ValidationIssue> {
+        self.issues
+            .iter()
+            .filter(|i| matches!(i.severity, Severity::Warning))
+            .collect()
+    }
+}
