@@ -11,7 +11,6 @@ fn make_envelope(task_name: &str) -> JobEnvelope {
     }
 }
 
-// Verify Send + Sync bounds on key types
 #[test]
 fn types_are_send_sync() {
     fn assert_send<T: Send>() {}
@@ -19,14 +18,13 @@ fn types_are_send_sync() {
 
     assert_send::<JobEnvelope>();
     assert_sync::<JobEnvelope>();
+    assert_send::<crate::config::WorkerConfig>();
+    assert_sync::<crate::config::WorkerConfig>();
 }
 
-// Verify dispatch exists and compiles - will panic with todo!() in RED phase.
-// Once implemented, these should test actual routing behavior.
 #[test]
 fn dispatch_function_exists() {
-    // Just verify the function is accessible and has correct module path.
-    // Cannot call it without a TaskContext (requires Redis), but we confirm it compiles.
+    // Verify the function is accessible and compiles with the correct signature.
     let _f = dispatch;
     let _ = make_envelope("job_sync");
 }

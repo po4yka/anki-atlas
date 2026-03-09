@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 /// Worker configuration, loaded from Settings.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WorkerConfig {
     /// Redis URL for job queue.
     pub redis_url: String,
