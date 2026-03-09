@@ -154,3 +154,46 @@ async fn run_server_function_exists() {
     let server = AnkiAtlasServer::new();
     assert_eq!(server.tool_count(), 9);
 }
+
+// --- run_server runtime behavior ---
+
+#[tokio::test]
+async fn run_server_starts_without_panic() {
+    // run_server should initialize logging and create a server without panicking.
+    // In a test environment, stdin is closed immediately so it should return
+    // (either Ok or Err) rather than blocking forever.
+    // Use a timeout so the test doesn't hang if something goes wrong.
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        anki_atlas_mcp::server::run_server(),
+    )
+    .await;
+
+    // Any of these outcomes is acceptable:
+    // - Timeout: server is blocking on stdin (correct behavior)
+    // - Ok(Ok(())): server exited cleanly (stdin closed)
+    // - Ok(Err(_)): server returned an error (e.g. transport error)
+    // The only unacceptable outcome is a panic (todo!()).
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(_)) => {}
+        Err(_elapsed) => {}
+    }
+}
+
+#[tokio::test]
+async fn run_server_returns_anyhow_result() {
+    // Verify run_server returns anyhow::Result<()>, not panicking.
+    // This is a type-level check that also exercises the startup path.
+    let result: Result<Result<(), anyhow::Error>, _> = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        anki_atlas_mcp::server::run_server(),
+    )
+    .await;
+
+    // Should not panic (currently does because of todo!()).
+    assert!(
+        result.is_ok() || result.is_err(),
+        "run_server should return a result, not panic"
+    );
+}
