@@ -36,7 +36,7 @@ pub fn create_provider(
                     .and_then(|v| v.as_str())
                     .map(String::from),
             };
-            Ok(Box::new(OllamaProvider::new(ollama_config)))
+            Ok(Box::new(OllamaProvider::new(ollama_config)?))
         }
         ProviderType::OpenRouter => {
             let api_key = config

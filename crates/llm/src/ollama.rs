@@ -36,12 +36,15 @@ pub struct OllamaProvider {
 
 impl OllamaProvider {
     /// Create a new Ollama provider with the given configuration.
-    pub fn new(config: OllamaConfig) -> Self {
+    pub fn new(config: OllamaConfig) -> Result<Self, LlmError> {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
             .build()
-            .expect("failed to build HTTP client");
-        Self { config, client }
+            .map_err(|e| LlmError::Provider {
+                message: format!("failed to build HTTP client: {e}"),
+                source: Some(Box::new(e)),
+            })?;
+        Ok(Self { config, client })
     }
 }
 

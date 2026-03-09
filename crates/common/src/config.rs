@@ -163,10 +163,32 @@ impl Settings {
     }
 }
 
-/// Return a lazily-initialized, globally cached `&'static Settings`.
-pub fn get_settings() -> &'static Settings {
+/// Try to return a lazily-initialized, globally cached `&'static Settings`.
+///
+/// Returns an error if settings fail to load (missing env vars, parse errors, etc.).
+/// Prefer this over [`get_settings`] in library code.
+pub fn try_get_settings() -> Result<&'static Settings, ConfigError> {
     static SETTINGS: OnceLock<Settings> = OnceLock::new();
-    SETTINGS.get_or_init(|| Settings::load().expect("failed to load settings"))
+    static ERROR: OnceLock<String> = OnceLock::new();
+    if let Some(s) = SETTINGS.get() {
+        return Ok(s);
+    }
+    match Settings::load() {
+        Ok(s) => Ok(SETTINGS.get_or_init(|| s)),
+        Err(e) => {
+            let msg = ERROR.get_or_init(|| e.to_string());
+            Err(ConfigError(msg.clone()))
+        }
+    }
+}
+
+/// Return a lazily-initialized, globally cached `&'static Settings`.
+///
+/// # Panics
+///
+/// Panics if settings fail to load. Use [`try_get_settings`] in library code.
+pub fn get_settings() -> &'static Settings {
+    try_get_settings().expect("failed to load settings")
 }
 
 fn env_or(key: &str, default: &str) -> String {
