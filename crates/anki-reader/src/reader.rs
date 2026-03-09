@@ -6,6 +6,14 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
+/// Create an `AnkiAtlasError::AnkiReader` with an empty context.
+fn reader_err(msg: impl Into<String>) -> AnkiAtlasError {
+    AnkiAtlasError::AnkiReader {
+        message: msg.into(),
+        context: Default::default(),
+    }
+}
+
 /// Read an Anki collection from a SQLite database file.
 ///
 /// Copies the file to a temp location before opening to avoid
@@ -21,10 +29,10 @@ impl AnkiReader {
     pub fn new(collection_path: impl AsRef<Path>) -> Result<Self> {
         let path = collection_path.as_ref();
         if !path.exists() {
-            return Err(AnkiAtlasError::AnkiReader {
-                message: format!("collection file not found: {}", path.display()),
-                context: HashMap::new(),
-            });
+            return Err(reader_err(format!(
+                "collection file not found: {}",
+                path.display()
+            )));
         }
         Ok(Self {
             collection_path: path.to_path_buf(),
@@ -35,22 +43,14 @@ impl AnkiReader {
 
     /// Open the database (copy to temp, connect).
     pub fn open(&mut self) -> Result<()> {
-        let temp_file = NamedTempFile::new().map_err(|e| AnkiAtlasError::AnkiReader {
-            message: format!("failed to create temp file: {e}"),
-            context: HashMap::new(),
-        })?;
+        let temp_file =
+            NamedTempFile::new().map_err(|e| reader_err(format!("failed to create temp file: {e}")))?;
 
-        std::fs::copy(&self.collection_path, temp_file.path()).map_err(|e| {
-            AnkiAtlasError::AnkiReader {
-                message: format!("failed to copy collection: {e}"),
-                context: HashMap::new(),
-            }
-        })?;
+        std::fs::copy(&self.collection_path, temp_file.path())
+            .map_err(|e| reader_err(format!("failed to copy collection: {e}")))?;
 
-        let conn = Connection::open(temp_file.path()).map_err(|e| AnkiAtlasError::AnkiReader {
-            message: format!("failed to open database: {e}"),
-            context: HashMap::new(),
-        })?;
+        let conn = Connection::open(temp_file.path())
+            .map_err(|e| reader_err(format!("failed to open database: {e}")))?;
 
         self.conn = Some(conn);
         self._temp_file = Some(temp_file);
@@ -66,10 +66,7 @@ impl AnkiReader {
     fn conn(&self) -> Result<&Connection> {
         self.conn
             .as_ref()
-            .ok_or_else(|| AnkiAtlasError::AnkiReader {
-                message: "reader not opened".to_string(),
-                context: HashMap::new(),
-            })
+            .ok_or_else(|| reader_err("reader not opened"))
     }
 
     fn has_modern_schema(&self) -> Result<bool> {
@@ -80,10 +77,7 @@ impl AnkiReader {
                 [],
                 |row| row.get(0),
             )
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("schema detection failed: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("schema detection failed: {e}")))?;
         Ok(count > 0)
     }
 
@@ -120,16 +114,10 @@ impl AnkiReader {
         let conn = self.conn()?;
         let decks_json: String = conn
             .query_row("SELECT decks FROM col", [], |row| row.get(0))
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to read decks: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to read decks: {e}")))?;
 
         let decks_map: HashMap<String, serde_json::Value> = serde_json::from_str(&decks_json)
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to parse decks JSON: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to parse decks JSON: {e}")))?;
 
         let mut decks = Vec::new();
         for (_key, val) in decks_map {
@@ -152,12 +140,9 @@ impl AnkiReader {
 
     fn read_decks_modern(&self) -> Result<Vec<AnkiDeck>> {
         let conn = self.conn()?;
-        let mut stmt =
-            conn.prepare("SELECT id, name FROM decks")
-                .map_err(|e| AnkiAtlasError::AnkiReader {
-                    message: format!("failed to query decks: {e}"),
-                    context: HashMap::new(),
-                })?;
+        let mut stmt = conn
+            .prepare("SELECT id, name FROM decks")
+            .map_err(|e| reader_err(format!("failed to query decks: {e}")))?;
 
         let decks = stmt
             .query_map([], |row| {
@@ -175,15 +160,9 @@ impl AnkiReader {
                     config: serde_json::Value::Null,
                 })
             })
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to read decks: {e}"),
-                context: HashMap::new(),
-            })?
+            .map_err(|e| reader_err(format!("failed to read decks: {e}")))?
             .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to collect decks: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to collect decks: {e}")))?;
 
         Ok(decks)
     }
@@ -201,16 +180,10 @@ impl AnkiReader {
         let conn = self.conn()?;
         let models_json: String = conn
             .query_row("SELECT models FROM col", [], |row| row.get(0))
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to read models: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to read models: {e}")))?;
 
         let models_map: HashMap<String, serde_json::Value> = serde_json::from_str(&models_json)
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to parse models JSON: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to parse models JSON: {e}")))?;
 
         let mut models = Vec::new();
         for (_key, val) in models_map {
@@ -235,10 +208,7 @@ impl AnkiReader {
         // Read fields grouped by notetype
         let mut field_stmt = conn
             .prepare("SELECT ntid, name, ord FROM fields ORDER BY ntid, ord")
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to query fields: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to query fields: {e}")))?;
 
         let mut model_fields: HashMap<i64, Vec<serde_json::Value>> = HashMap::new();
         let rows = field_stmt
@@ -248,16 +218,11 @@ impl AnkiReader {
                 let ord: i32 = row.get(2)?;
                 Ok((ntid, name, ord))
             })
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to read fields: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to read fields: {e}")))?;
 
         for row in rows {
-            let (ntid, name, ord) = row.map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to read field row: {e}"),
-                context: HashMap::new(),
-            })?;
+            let (ntid, name, ord) =
+                row.map_err(|e| reader_err(format!("failed to read field row: {e}")))?;
             model_fields
                 .entry(ntid)
                 .or_default()
@@ -277,10 +242,7 @@ impl AnkiReader {
         if has_templates > 0 {
             let mut tmpl_stmt = conn
                 .prepare("SELECT ntid, name, ord FROM templates ORDER BY ntid, ord")
-                .map_err(|e| AnkiAtlasError::AnkiReader {
-                    message: format!("failed to query templates: {e}"),
-                    context: HashMap::new(),
-                })?;
+                .map_err(|e| reader_err(format!("failed to query templates: {e}")))?;
 
             let rows = tmpl_stmt
                 .query_map([], |row| {
@@ -289,16 +251,11 @@ impl AnkiReader {
                     let ord: i32 = row.get(2)?;
                     Ok((ntid, name, ord))
                 })
-                .map_err(|e| AnkiAtlasError::AnkiReader {
-                    message: format!("failed to read templates: {e}"),
-                    context: HashMap::new(),
-                })?;
+                .map_err(|e| reader_err(format!("failed to read templates: {e}")))?;
 
             for row in rows {
-                let (ntid, name, ord) = row.map_err(|e| AnkiAtlasError::AnkiReader {
-                    message: format!("failed to read template row: {e}"),
-                    context: HashMap::new(),
-                })?;
+                let (ntid, name, ord) =
+                    row.map_err(|e| reader_err(format!("failed to read template row: {e}")))?;
                 model_templates
                     .entry(ntid)
                     .or_default()
@@ -309,10 +266,7 @@ impl AnkiReader {
         // Read notetypes
         let mut stmt = conn
             .prepare("SELECT id, name FROM notetypes")
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to query notetypes: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to query notetypes: {e}")))?;
 
         let models = stmt
             .query_map([], |row| {
@@ -320,15 +274,10 @@ impl AnkiReader {
                 let name: String = row.get(1)?;
                 Ok((model_id, name))
             })
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to read notetypes: {e}"),
-                context: HashMap::new(),
-            })?
+            .map_err(|e| reader_err(format!("failed to read notetypes: {e}")))?
             .map(|r| {
-                let (model_id, name) = r.map_err(|e| AnkiAtlasError::AnkiReader {
-                    message: format!("failed to read notetype row: {e}"),
-                    context: HashMap::new(),
-                })?;
+                let (model_id, name) =
+                    r.map_err(|e| reader_err(format!("failed to read notetype row: {e}")))?;
                 Ok(AnkiModel {
                     model_id,
                     name,
@@ -359,10 +308,7 @@ impl AnkiReader {
 
         let mut stmt = conn
             .prepare("SELECT id, mid, tags, flds, mod, usn FROM notes")
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to query notes: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to query notes: {e}")))?;
 
         let notes = stmt
             .query_map([], |row| {
@@ -374,16 +320,10 @@ impl AnkiReader {
                 let usn: i32 = row.get(5)?;
                 Ok((note_id, model_id, tags_str, fields_str, mtime, usn))
             })
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to read notes: {e}"),
-                context: HashMap::new(),
-            })?
+            .map_err(|e| reader_err(format!("failed to read notes: {e}")))?
             .map(|r| {
                 let (note_id, model_id, tags_str, fields_str, mtime, usn) =
-                    r.map_err(|e| AnkiAtlasError::AnkiReader {
-                        message: format!("failed to read note row: {e}"),
-                        context: HashMap::new(),
-                    })?;
+                    r.map_err(|e| reader_err(format!("failed to read note row: {e}")))?;
 
                 let tags: Vec<String> = tags_str.split_whitespace().map(String::from).collect();
 
@@ -424,10 +364,7 @@ impl AnkiReader {
         let conn = self.conn()?;
         let mut stmt = conn
             .prepare("SELECT id, nid, did, ord, mod, usn, type, queue, due, ivl, factor, reps, lapses FROM cards")
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to query cards: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to query cards: {e}")))?;
 
         let cards = stmt
             .query_map([], |row| {
@@ -447,15 +384,9 @@ impl AnkiReader {
                     lapses: row.get(12)?,
                 })
             })
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to read cards: {e}"),
-                context: HashMap::new(),
-            })?
+            .map_err(|e| reader_err(format!("failed to read cards: {e}")))?
             .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to collect cards: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to collect cards: {e}")))?;
 
         Ok(cards)
     }
@@ -465,10 +396,7 @@ impl AnkiReader {
         let conn = self.conn()?;
         let mut stmt = conn
             .prepare("SELECT id, cid, usn, ease, ivl, lastIvl, factor, time, type FROM revlog")
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to query revlog: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to query revlog: {e}")))?;
 
         let entries = stmt
             .query_map([], |row| {
@@ -484,15 +412,9 @@ impl AnkiReader {
                     review_type: row.get(8)?,
                 })
             })
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to read revlog: {e}"),
-                context: HashMap::new(),
-            })?
+            .map_err(|e| reader_err(format!("failed to read revlog: {e}")))?
             .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to collect revlog: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to collect revlog: {e}")))?;
 
         Ok(entries)
     }
@@ -512,10 +434,7 @@ impl AnkiReader {
                 FROM revlog
                 GROUP BY cid",
             )
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to query card stats: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to query card stats: {e}")))?;
 
         let stats = stmt
             .query_map([], |row| {
@@ -541,15 +460,9 @@ impl AnkiReader {
                     total_time_ms,
                 })
             })
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to read card stats: {e}"),
-                context: HashMap::new(),
-            })?
+            .map_err(|e| reader_err(format!("failed to read card stats: {e}")))?
             .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| AnkiAtlasError::AnkiReader {
-                message: format!("failed to collect card stats: {e}"),
-                context: HashMap::new(),
-            })?;
+            .map_err(|e| reader_err(format!("failed to collect card stats: {e}")))?;
 
         Ok(stats)
     }

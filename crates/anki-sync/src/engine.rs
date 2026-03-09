@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use crate::progress::{ProgressTracker, SyncPhase};
-use crate::state::StateDB;
+use crate::state::{StateDB, StateDbError};
 
 /// Result of an engine-level sync operation.
 #[derive(Debug, Clone)]
@@ -39,7 +39,7 @@ impl SyncEngine {
     }
 
     /// Run the sync lifecycle.
-    pub fn sync(&mut self, dry_run: bool) -> Result<SyncResult, Box<dyn std::error::Error>> {
+    pub fn sync(&mut self, dry_run: bool) -> Result<SyncResult, StateDbError> {
         let start = Instant::now();
 
         // SCANNING phase
