@@ -497,7 +497,7 @@ impl IndexingService {
                     COALESCE(bool_or(c.ivl >= 21), false) AS mature,
                     COALESCE(max(c.lapses), 0) AS lapses,
                     COALESCE(max(c.reps), 0) AS reps,
-                    MAX(cs.fail_rate) AS fail_rate
+                    MAX(cs.fail_rate)::float8 AS fail_rate
              FROM notes n
              LEFT JOIN cards c ON c.note_id = n.note_id
              LEFT JOIN decks d ON d.deck_id = c.deck_id
