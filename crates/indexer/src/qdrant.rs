@@ -305,12 +305,15 @@ pub struct QdrantRepository {
 impl QdrantRepository {
     /// Connect to Qdrant and create repository.
     pub async fn new(url: &str, collection_name: &str) -> Result<Self, VectorStoreError> {
+        let grpc_url = common::config::qdrant_grpc_url(url)
+            .map_err(|error| VectorStoreError::Connection(error.to_string()))?;
+
         // Validate URL by parsing it
-        reqwest::Url::parse(url)
+        reqwest::Url::parse(&grpc_url)
             .map_err(|e| VectorStoreError::Connection(format!("invalid URL: {e}")))?;
 
         // Try to connect to validate the URL is reachable
-        let _client = qdrant_client::Qdrant::from_url(url)
+        let _client = qdrant_client::Qdrant::from_url(&grpc_url)
             .build()
             .map_err(|e| VectorStoreError::Connection(e.to_string()))?;
 
@@ -321,7 +324,7 @@ impl QdrantRepository {
             .map_err(|e| VectorStoreError::Connection(e.to_string()))?;
 
         Ok(Self {
-            _url: url.to_string(),
+            _url: grpc_url,
             _collection_name: collection_name.to_string(),
         })
     }

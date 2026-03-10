@@ -1,6 +1,7 @@
 use std::env;
 
 use serde::Deserialize;
+use url::Url;
 
 /// Qdrant quantization mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -257,6 +258,25 @@ impl Settings {
             batch_size: self.rerank_batch_size,
         }
     }
+}
+
+/// Convert the configured Qdrant REST endpoint into the matching gRPC endpoint.
+///
+/// The public config uses the documented HTTP port (`6333`) by default, while the
+/// Rust gRPC client expects the gRPC port (`6334`).
+pub fn qdrant_grpc_url(qdrant_url: &str) -> Result<String, ConfigError> {
+    let mut url = Url::parse(qdrant_url)
+        .map_err(|error| ConfigError(format!("invalid qdrant_url {qdrant_url}: {error}")))?;
+
+    if matches!(url.port(), Some(6333)) {
+        url.set_port(Some(6334)).map_err(|()| {
+            ConfigError(format!(
+                "failed to convert qdrant_url to gRPC endpoint: {qdrant_url}"
+            ))
+        })?;
+    }
+
+    Ok(url.as_str().trim_end_matches('/').to_string())
 }
 
 fn env_or(key: &str, default: &str) -> String {

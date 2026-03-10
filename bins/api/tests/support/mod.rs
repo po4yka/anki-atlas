@@ -89,6 +89,7 @@ impl TestStack {
             .context("start redis container")?;
         let qdrant = GenericImage::new("qdrant/qdrant", QDRANT_IMAGE_TAG)
             .with_exposed_port(6333.tcp())
+            .with_exposed_port(6334.tcp())
             .start()
             .await
             .context("start qdrant container")?;
@@ -105,12 +106,16 @@ impl TestStack {
             .get_host_port_ipv4(6333)
             .await
             .context("qdrant port")?;
+        let qdrant_grpc_port = qdrant
+            .get_host_port_ipv4(6334)
+            .await
+            .context("qdrant grpc port")?;
 
         let queue_name = format!("test:jobs:{}", Uuid::new_v4());
         let qdrant_url = format!("http://{qdrant_host}:{qdrant_port}");
         let settings = build_settings(
             format!("postgresql://postgres:postgres@{postgres_host}:{postgres_port}/postgres"),
-            qdrant_url.clone(),
+            format!("http://{qdrant_host}:{qdrant_grpc_port}"),
             format!("redis://{redis_host}:{redis_port}/0"),
             queue_name.clone(),
             api_key.map(ToOwned::to_owned),

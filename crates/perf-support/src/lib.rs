@@ -227,7 +227,7 @@ async fn truncate_runtime_tables(pool: &PgPool) -> Result<()> {
 }
 
 async fn reset_qdrant(settings: &Settings, notes: &[SeededNote]) -> Result<()> {
-    let client = Qdrant::from_url(&settings.qdrant_url)
+    let client = Qdrant::from_url(&common::config::qdrant_grpc_url(&settings.qdrant_url)?)
         .build()
         .context("connect Qdrant for perf seeding")?;
     let _ = client.delete_collection(PERF_COLLECTION_NAME).await;

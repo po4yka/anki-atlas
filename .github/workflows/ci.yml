@@ -87,6 +87,7 @@ jobs:
         image: qdrant/qdrant:v1.16.3
         ports:
           - 6333:6333
+          - 6334:6334
 
       redis:
         image: redis:7-alpine
@@ -147,6 +148,7 @@ jobs:
         image: qdrant/qdrant:v1.16.3
         ports:
           - 6333:6333
+          - 6334:6334
 
       redis:
         image: redis:7-alpine

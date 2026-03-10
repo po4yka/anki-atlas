@@ -9,7 +9,7 @@ use analytics::labeling::LabelingStats;
 use analytics::service::AnalyticsService;
 use analytics::taxonomy::Taxonomy;
 use anyhow::{Context, Result as AnyhowResult};
-use common::config::{EmbeddingProviderKind, Settings};
+use common::config::{EmbeddingProviderKind, Settings, qdrant_grpc_url};
 use database::create_pool;
 use indexer::embeddings::{EmbeddingProvider, EmbeddingProviderConfig, create_embedding_provider};
 use indexer::qdrant::VectorRepository;
@@ -271,7 +271,7 @@ pub async fn build_surface_services(
             .context("create embedding provider for surface runtime")?,
     );
     let collection_name = "anki_notes";
-    let qdrant_client = Qdrant::from_url(&settings.qdrant_url)
+    let qdrant_client = Qdrant::from_url(&qdrant_grpc_url(&settings.qdrant_url)?)
         .build()
         .context("connect Qdrant client for surface runtime")?;
     qdrant_client

@@ -192,6 +192,18 @@ fn validate_accepts_https_qdrant_url() {
     );
 }
 
+#[test]
+fn qdrant_grpc_url_swaps_default_rest_port() {
+    let grpc_url = qdrant_grpc_url("http://localhost:6333").expect("grpc url");
+    assert_eq!(grpc_url, "http://localhost:6334");
+}
+
+#[test]
+fn qdrant_grpc_url_preserves_custom_port() {
+    let grpc_url = qdrant_grpc_url("http://localhost:7444").expect("grpc url");
+    assert_eq!(grpc_url, "http://localhost:7444");
+}
+
 // ── Validation: redis_url ───────────────────────────────────────────────
 
 #[test]
