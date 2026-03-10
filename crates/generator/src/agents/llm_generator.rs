@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tracing::instrument;
 
@@ -14,6 +15,21 @@ use crate::models::{GeneratedCard, GenerationDeps, GenerationResult};
 /// LLM-backed generator agent.
 pub struct LlmGeneratorAgent {
     base: LlmAgentBase,
+}
+
+#[derive(Deserialize)]
+struct GeneratedCardPayload {
+    card_index: u32,
+    slug: String,
+    lang: String,
+    front: String,
+    back: String,
+    confidence: f32,
+}
+
+#[derive(Deserialize)]
+struct GeneratedCardsPayload {
+    cards: Vec<GeneratedCardPayload>,
 }
 
 impl LlmGeneratorAgent {
@@ -56,30 +72,21 @@ impl GeneratorAgent for LlmGeneratorAgent {
 
         let text = self.base.call_llm(&prompt).await?;
 
-        let json: serde_json::Value =
+        let response: GeneratedCardsPayload =
             serde_json::from_str(&text).map_err(|e| GeneratorError::Generation {
                 message: format!("Failed to parse LLM response: {e}"),
                 model: Some(self.base.model_name.clone()),
             })?;
 
-        let raw_cards = json["cards"]
-            .as_array()
-            .ok_or_else(|| GeneratorError::Generation {
-                message: "Response missing 'cards' array".into(),
-                model: Some(self.base.model_name.clone()),
-            })?;
-
-        let mut cards = Vec::with_capacity(raw_cards.len());
-        for raw in raw_cards {
-            let front = raw["front"].as_str().unwrap_or_default();
-            let back = raw["back"].as_str().unwrap_or_default();
+        let mut cards = Vec::with_capacity(response.cards.len());
+        for raw in response.cards {
             let card = GeneratedCard {
-                card_index: raw["card_index"].as_u64().unwrap_or(0) as u32,
-                slug: raw["slug"].as_str().unwrap_or_default().to_string(),
-                lang: raw["lang"].as_str().unwrap_or_default().to_string(),
-                apf_html: format!("<p>{front}</p><hr><p>{back}</p>"),
-                confidence: raw["confidence"].as_f64().unwrap_or(0.0) as f32,
-                content_hash: Self::content_hash(front, back),
+                card_index: raw.card_index,
+                slug: raw.slug,
+                lang: raw.lang,
+                apf_html: format!("<p>{}</p><hr><p>{}</p>", raw.front, raw.back),
+                confidence: raw.confidence,
+                content_hash: Self::content_hash(&raw.front, &raw.back),
             };
             cards.push(card);
         }

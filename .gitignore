@@ -24,6 +24,7 @@ db.sqlite3-journal
 
 # Desloppify
 .desloppify/
+.claude/skills/desloppify/
 scorecard.png
 
 # Ralph orchestrator

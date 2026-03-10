@@ -35,9 +35,10 @@ where
     ) -> Result<Taxonomy, AnalyticsError> {
         match yaml_path {
             Some(path) => {
-                let taxonomy = crate::taxonomy::load_taxonomy_from_yaml(path)?;
+                let mut taxonomy = crate::taxonomy::load_taxonomy_from_yaml(path)?;
                 if !taxonomy.topics.is_empty() {
-                    crate::taxonomy::sync_taxonomy_to_db(&self.db, &taxonomy).await?;
+                    let id_map = crate::taxonomy::sync_taxonomy_to_db(&self.db, &taxonomy).await?;
+                    taxonomy.apply_topic_ids(&id_map);
                 }
                 Ok(taxonomy)
             }
@@ -175,11 +176,10 @@ where
         tag_filter: Option<&[String]>,
     ) -> Result<(Vec<DuplicateCluster>, DuplicateStats), AnalyticsError> {
         // Inline: fetch notes, find similar via vector_repo, cluster with UnionFind
-        let note_ids: Vec<(i64,)> = sqlx::query_as(
-            "SELECT note_id FROM notes WHERE deleted_at IS NULL ORDER BY note_id",
-        )
-        .fetch_all(&self.db)
-        .await?;
+        let note_ids: Vec<(i64,)> =
+            sqlx::query_as("SELECT note_id FROM notes WHERE deleted_at IS NULL ORDER BY note_id")
+                .fetch_all(&self.db)
+                .await?;
 
         let mut uf = crate::duplicates::UnionFind::new();
         let mut pair_scores: std::collections::HashMap<(i64, i64), f64> =
@@ -188,13 +188,7 @@ where
         for (note_id,) in &note_ids {
             let similar = self
                 .vector_repo
-                .find_similar_to_note(
-                    *note_id,
-                    20,
-                    threshold as f32,
-                    deck_filter,
-                    tag_filter,
-                )
+                .find_similar_to_note(*note_id, 20, threshold as f32, deck_filter, tag_filter)
                 .await?;
             for (other_id, score) in similar {
                 if other_id == *note_id {
@@ -237,12 +231,11 @@ where
                 }
             }
 
-            let (rep_text,): (String,) = sqlx::query_as(
-                "SELECT LEFT(normalized_text, 200) FROM notes WHERE note_id = $1",
-            )
-            .bind(best_id)
-            .fetch_one(&self.db)
-            .await?;
+            let (rep_text,): (String,) =
+                sqlx::query_as("SELECT LEFT(normalized_text, 200) FROM notes WHERE note_id = $1")
+                    .bind(best_id)
+                    .fetch_one(&self.db)
+                    .await?;
 
             let mut duplicates = Vec::new();
             let mut all_decks = Vec::new();
@@ -297,12 +290,11 @@ where
             .into_iter()
             .map(|(n,)| n)
             .collect();
-            let (rep_tags,): (Vec<String>,) = sqlx::query_as(
-                "SELECT COALESCE(tags, '{}') FROM notes WHERE note_id = $1",
-            )
-            .bind(best_id)
-            .fetch_one(&self.db)
-            .await?;
+            let (rep_tags,): (Vec<String>,) =
+                sqlx::query_as("SELECT COALESCE(tags, '{}') FROM notes WHERE note_id = $1")
+                    .bind(best_id)
+                    .fetch_one(&self.db)
+                    .await?;
 
             all_decks.extend(rep_dn);
             all_tags.extend(rep_tags);

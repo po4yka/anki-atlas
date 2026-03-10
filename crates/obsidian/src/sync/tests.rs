@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use tempfile::TempDir;
 
 use super::*;
+use crate::ObsidianError;
 use crate::parser::ParsedNote;
 
 // ---------------------------------------------------------------------------
@@ -34,15 +35,6 @@ struct EmptyGenerator;
 impl CardGenerator for EmptyGenerator {
     fn generate(&self, _note: &ParsedNote) -> Vec<GeneratedCardRef> {
         vec![]
-    }
-}
-
-/// A mock generator that panics (simulates generation failure).
-struct FailingGenerator;
-
-impl CardGenerator for FailingGenerator {
-    fn generate(&self, _note: &ParsedNote) -> Vec<GeneratedCardRef> {
-        panic!("generator exploded")
     }
 }
 
@@ -181,7 +173,7 @@ fn scan_vault_discovers_all_notes() {
     let generator = FixedGenerator { cards_per_note: 1 };
     let wf = ObsidianSyncWorkflow::new(generator, None);
 
-    let notes = wf.scan_vault(&vault, None);
+    let notes = wf.scan_vault(&vault, None).unwrap();
     assert_eq!(notes.len(), 3);
 }
 
@@ -192,7 +184,7 @@ fn scan_vault_returns_parsed_notes_with_titles() {
     let generator = FixedGenerator { cards_per_note: 1 };
     let wf = ObsidianSyncWorkflow::new(generator, None);
 
-    let notes = wf.scan_vault(&vault, None);
+    let notes = wf.scan_vault(&vault, None).unwrap();
     // All notes have frontmatter title
     for note in &notes {
         assert!(note.title.is_some());
@@ -205,7 +197,7 @@ fn scan_vault_empty_vault_returns_empty() {
     let generator = FixedGenerator { cards_per_note: 1 };
     let wf = ObsidianSyncWorkflow::new(generator, None);
 
-    let notes = wf.scan_vault(dir.path(), None);
+    let notes = wf.scan_vault(dir.path(), None).unwrap();
     assert!(notes.is_empty());
 }
 
@@ -217,7 +209,7 @@ fn scan_vault_with_source_dirs_filters() {
     let wf = ObsidianSyncWorkflow::new(generator, None);
 
     // Only scan "topics" subdirectory
-    let notes = wf.scan_vault(&vault, Some(&["topics"]));
+    let notes = wf.scan_vault(&vault, Some(&["topics"])).unwrap();
     assert_eq!(notes.len(), 2);
     for note in &notes {
         assert!(note.path.to_str().unwrap().contains("topics"));
@@ -231,7 +223,7 @@ fn scan_vault_with_multiple_source_dirs() {
     let generator = FixedGenerator { cards_per_note: 1 };
     let wf = ObsidianSyncWorkflow::new(generator, None);
 
-    let notes = wf.scan_vault(&vault, Some(&["topics", "archive"]));
+    let notes = wf.scan_vault(&vault, Some(&["topics", "archive"])).unwrap();
     assert_eq!(notes.len(), 3); // 2 in topics + 1 in archive
 }
 
@@ -242,23 +234,32 @@ fn scan_vault_source_dirs_nonexistent_subdir_returns_empty() {
     let generator = FixedGenerator { cards_per_note: 1 };
     let wf = ObsidianSyncWorkflow::new(generator, None);
 
-    let notes = wf.scan_vault(&vault, Some(&["nonexistent"]));
+    let notes = wf.scan_vault(&vault, Some(&["nonexistent"])).unwrap();
     assert!(notes.is_empty());
 }
 
 #[test]
-fn scan_vault_skips_unparseable_files() {
+fn scan_vault_invalid_note_returns_error() {
     let dir = TempDir::new().unwrap();
     let vault = dir.path().to_path_buf();
-    // Write a valid note and a non-.md file
     fs::write(vault.join("good.md"), "# Good\nContent\n").unwrap();
-    // Non-md files should be skipped by discover
-    fs::write(vault.join("readme.txt"), "not a note").unwrap();
+    fs::write(vault.join("broken.md"), "---\n: invalid yaml\n---\nBody\n").unwrap();
     let generator = FixedGenerator { cards_per_note: 1 };
     let wf = ObsidianSyncWorkflow::new(generator, None);
 
-    let notes = wf.scan_vault(&vault, None);
-    assert_eq!(notes.len(), 1);
+    let error = wf.scan_vault(&vault, None).unwrap_err();
+    assert!(matches!(error, ObsidianError::Yaml(_)));
+}
+
+#[test]
+fn scan_vault_missing_vault_returns_error() {
+    let generator = FixedGenerator { cards_per_note: 1 };
+    let wf = ObsidianSyncWorkflow::new(generator, None);
+
+    let error = wf
+        .scan_vault(&PathBuf::from("/nonexistent/vault"), None)
+        .unwrap_err();
+    assert!(matches!(error, ObsidianError::NotFound(_)));
 }
 
 // ---------------------------------------------------------------------------
@@ -272,7 +273,7 @@ fn run_generates_cards_for_all_notes() {
     let generator = FixedGenerator { cards_per_note: 2 };
     let wf = ObsidianSyncWorkflow::new(generator, None);
 
-    let result = wf.run(&vault, None);
+    let result = wf.run(&vault, None).unwrap();
     assert_eq!(result.generated, 6); // 3 notes * 2 cards
     assert_eq!(result.failed, 0);
     assert!(result.errors.is_empty());
@@ -284,7 +285,7 @@ fn run_empty_vault_returns_zero_counts() {
     let generator = FixedGenerator { cards_per_note: 1 };
     let wf = ObsidianSyncWorkflow::new(generator, None);
 
-    let result = wf.run(dir.path(), None);
+    let result = wf.run(dir.path(), None).unwrap();
     assert_eq!(result.generated, 0);
     assert_eq!(result.failed, 0);
     assert_eq!(result.skipped, 0);
@@ -298,7 +299,7 @@ fn run_empty_generator_counts_as_failed() {
     let generator = EmptyGenerator;
     let wf = ObsidianSyncWorkflow::new(generator, None);
 
-    let result = wf.run(&vault, None);
+    let result = wf.run(&vault, None).unwrap();
     assert_eq!(result.generated, 0);
     assert_eq!(result.failed, 2); // Both notes produced zero cards
 }
@@ -310,7 +311,7 @@ fn run_respects_source_dirs() {
     let generator = FixedGenerator { cards_per_note: 1 };
     let wf = ObsidianSyncWorkflow::new(generator, None);
 
-    let result = wf.run(&vault, Some(&["topics"]));
+    let result = wf.run(&vault, Some(&["topics"])).unwrap();
     assert_eq!(result.generated, 2); // Only 2 notes in topics/
 }
 
@@ -327,8 +328,20 @@ fn run_invokes_progress_callback() {
     });
 
     let wf = ObsidianSyncWorkflow::new(generator, Some(cb));
-    let _result = wf.run(&vault, None);
+    let _result = wf.run(&vault, None).unwrap();
     assert!(call_count.load(Ordering::Relaxed) > 0);
+}
+
+#[test]
+fn run_propagates_scan_errors() {
+    let dir = TempDir::new().unwrap();
+    let vault = dir.path().to_path_buf();
+    fs::write(vault.join("broken.md"), "---\n: invalid yaml\n---\nBody\n").unwrap();
+    let generator = FixedGenerator { cards_per_note: 1 };
+    let wf = ObsidianSyncWorkflow::new(generator, None);
+
+    let error = wf.run(&vault, None).unwrap_err();
+    assert!(matches!(error, ObsidianError::Yaml(_)));
 }
 
 // ---------------------------------------------------------------------------

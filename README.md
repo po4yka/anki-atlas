@@ -17,7 +17,7 @@ Unified Anki flashcard platform: hybrid search index + card generation + obsidia
 
 ### Prerequisites
 
-- Rust 1.85+ (edition 2024)
+- Rust 1.88+ (edition 2024)
 - Docker and Docker Compose (for PostgreSQL, Qdrant, Redis)
 
 ### Setup

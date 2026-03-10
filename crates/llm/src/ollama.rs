@@ -104,7 +104,11 @@ impl LlmProvider for OllamaProvider {
 
         let text = resp_json["response"]
             .as_str()
-            .unwrap_or_default()
+            .filter(|content| !content.trim().is_empty())
+            .ok_or_else(|| LlmError::Provider {
+                message: "response missing generated text".to_string(),
+                source: None,
+            })?
             .to_string();
 
         let resp_model = resp_json["model"]

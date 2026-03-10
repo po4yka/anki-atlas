@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-1. Install Rust 1.85+ via rustup
+1. Install Rust 1.88+ via rustup
 2. Install ralph-orchestrator:
    ```bash
    npm install -g @ralph-orchestrator/ralph-cli

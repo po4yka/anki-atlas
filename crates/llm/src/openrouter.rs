@@ -121,7 +121,11 @@ impl OpenRouterProvider {
         let choice = &choices[0];
         let text = choice["message"]["content"]
             .as_str()
-            .unwrap_or_default()
+            .filter(|content| !content.trim().is_empty())
+            .ok_or_else(|| LlmError::Provider {
+                message: "response missing assistant message content".to_string(),
+                source: None,
+            })?
             .to_string();
 
         let response_model = body["model"]

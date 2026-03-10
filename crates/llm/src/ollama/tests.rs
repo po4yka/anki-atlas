@@ -77,7 +77,8 @@ async fn generate_sends_correct_payload() {
     let provider = OllamaProvider::new(OllamaConfig {
         base_url: server.uri(),
         ..Default::default()
-    }).unwrap();
+    })
+    .unwrap();
 
     let opts = GenerateOptions::default();
     let result = provider.generate("llama3", "Hello", &opts).await;
@@ -101,7 +102,8 @@ async fn generate_includes_system_prompt_when_non_empty() {
     let provider = OllamaProvider::new(OllamaConfig {
         base_url: server.uri(),
         ..Default::default()
-    }).unwrap();
+    })
+    .unwrap();
 
     let opts = GenerateOptions {
         system: "You are helpful".to_string(),
@@ -128,7 +130,8 @@ async fn generate_includes_temperature_in_options() {
     let provider = OllamaProvider::new(OllamaConfig {
         base_url: server.uri(),
         ..Default::default()
-    }).unwrap();
+    })
+    .unwrap();
 
     let opts = GenerateOptions {
         temperature: 0.5,
@@ -159,7 +162,8 @@ async fn generate_sets_json_format_when_json_mode() {
     let provider = OllamaProvider::new(OllamaConfig {
         base_url: server.uri(),
         ..Default::default()
-    }).unwrap();
+    })
+    .unwrap();
 
     let opts = GenerateOptions {
         json_mode: true,
@@ -191,7 +195,8 @@ async fn generate_parses_full_response() {
     let provider = OllamaProvider::new(OllamaConfig {
         base_url: server.uri(),
         ..Default::default()
-    }).unwrap();
+    })
+    .unwrap();
 
     let result = provider
         .generate("llama3", "Hi", &GenerateOptions::default())
@@ -222,7 +227,8 @@ async fn generate_handles_missing_optional_fields() {
     let provider = OllamaProvider::new(OllamaConfig {
         base_url: server.uri(),
         ..Default::default()
-    }).unwrap();
+    })
+    .unwrap();
 
     let result = provider
         .generate("llama3", "Hi", &GenerateOptions::default())
@@ -233,6 +239,38 @@ async fn generate_handles_missing_optional_fields() {
     assert!(result.prompt_tokens.is_none());
     assert!(result.completion_tokens.is_none());
     assert!(result.finish_reason.is_none());
+}
+
+#[tokio::test]
+async fn generate_rejects_missing_response_text() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/api/generate"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "llama3",
+            "done": true
+        })))
+        .mount(&server)
+        .await;
+
+    let provider = OllamaProvider::new(OllamaConfig {
+        base_url: server.uri(),
+        ..Default::default()
+    })
+    .unwrap();
+
+    let result = provider
+        .generate("llama3", "Hi", &GenerateOptions::default())
+        .await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        LlmError::Provider { message, .. } => {
+            assert!(message.contains("generated text"));
+        }
+        other => panic!("expected Provider error, got: {other:?}"),
+    }
 }
 
 #[tokio::test]
@@ -251,7 +289,8 @@ async fn generate_uses_fallback_model_when_missing() {
     let provider = OllamaProvider::new(OllamaConfig {
         base_url: server.uri(),
         ..Default::default()
-    }).unwrap();
+    })
+    .unwrap();
 
     let result = provider
         .generate("my-model", "Hi", &GenerateOptions::default())
@@ -276,7 +315,8 @@ async fn generate_returns_error_on_http_error() {
     let provider = OllamaProvider::new(OllamaConfig {
         base_url: server.uri(),
         ..Default::default()
-    }).unwrap();
+    })
+    .unwrap();
 
     let result = provider
         .generate("llama3", "Hi", &GenerateOptions::default())
@@ -308,7 +348,8 @@ async fn generate_sends_auth_header_when_api_key_set() {
         base_url: server.uri(),
         api_key: Some("my-secret-key".to_string()),
         ..Default::default()
-    }).unwrap();
+    })
+    .unwrap();
 
     let result = provider
         .generate("llama3", "Hi", &GenerateOptions::default())
@@ -336,7 +377,8 @@ async fn check_connection_returns_true_on_200() {
     let provider = OllamaProvider::new(OllamaConfig {
         base_url: server.uri(),
         ..Default::default()
-    }).unwrap();
+    })
+    .unwrap();
 
     assert!(provider.check_connection().await);
 }
@@ -347,7 +389,8 @@ async fn check_connection_returns_false_on_error() {
         base_url: "http://127.0.0.1:1".to_string(),
         timeout_secs: 1,
         ..Default::default()
-    }).unwrap();
+    })
+    .unwrap();
 
     assert!(!provider.check_connection().await);
 }
@@ -372,7 +415,8 @@ async fn list_models_parses_model_names() {
     let provider = OllamaProvider::new(OllamaConfig {
         base_url: server.uri(),
         ..Default::default()
-    }).unwrap();
+    })
+    .unwrap();
 
     let models = provider.list_models().await.unwrap();
     assert_eq!(models, vec!["llama3:latest", "codellama:7b"]);
@@ -393,7 +437,8 @@ async fn list_models_returns_empty_on_no_models() {
     let provider = OllamaProvider::new(OllamaConfig {
         base_url: server.uri(),
         ..Default::default()
-    }).unwrap();
+    })
+    .unwrap();
 
     let models = provider.list_models().await.unwrap();
     assert!(models.is_empty());

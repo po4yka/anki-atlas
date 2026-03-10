@@ -235,6 +235,38 @@ async fn generate_handles_missing_usage_fields() {
     assert_eq!(result.completion_tokens, None);
 }
 
+#[tokio::test]
+async fn generate_rejects_missing_message_content() {
+    let server = MockServer::start().await;
+
+    let response = json!({
+        "model": "openai/gpt-4",
+        "choices": [{
+            "message": { "role": "assistant" },
+            "finish_reason": "stop"
+        }]
+    });
+
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(response))
+        .mount(&server)
+        .await;
+
+    let provider = OpenRouterProvider::new(config_with_url(&server.uri())).unwrap();
+    let result = provider
+        .generate("openai/gpt-4", "Hi", &GenerateOptions::default())
+        .await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        LlmError::Provider { message, .. } => {
+            assert!(message.contains("assistant message content"));
+        }
+        other => panic!("expected Provider error, got: {other:?}"),
+    }
+}
+
 // -- Retry logic --
 
 #[tokio::test]

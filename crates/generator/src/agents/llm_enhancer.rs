@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use tracing::instrument;
 
 use llm::LlmProvider;
@@ -12,6 +13,13 @@ use crate::models::{GeneratedCard, GenerationDeps, SplitDecision};
 /// LLM-backed enhancer agent.
 pub struct LlmEnhancerAgent {
     base: LlmAgentBase,
+}
+
+#[derive(Deserialize)]
+struct EnhancementPayload {
+    enhanced_front: String,
+    improvements: Vec<String>,
+    confidence: Option<f32>,
 }
 
 impl LlmEnhancerAgent {
@@ -37,26 +45,21 @@ impl EnhancerAgent for LlmEnhancerAgent {
 
         let text = self.base.call_llm(&prompt).await?;
 
-        let json: serde_json::Value =
+        let enhancement: EnhancementPayload =
             serde_json::from_str(&text).map_err(|e| GeneratorError::Enhancement {
                 message: format!("Failed to parse LLM response: {e}"),
                 model: Some(self.base.model_name.clone()),
             })?;
 
-        let improvements = json["improvements"].as_array();
-        let enhanced_front = json["enhanced_front"].as_str().unwrap_or_default();
-
         // Return original card if no improvements suggested
-        if enhanced_front.is_empty() || improvements.is_none_or(|arr| arr.is_empty()) {
+        if enhancement.enhanced_front.is_empty() || enhancement.improvements.is_empty() {
             return Ok(card.clone());
         }
 
-        let confidence = json["confidence"]
-            .as_f64()
-            .unwrap_or(card.confidence as f64) as f32;
+        let confidence = enhancement.confidence.unwrap_or(card.confidence);
         Ok(GeneratedCard {
             confidence,
-            apf_html: enhanced_front.to_string(),
+            apf_html: enhancement.enhanced_front,
             ..card.clone()
         })
     }

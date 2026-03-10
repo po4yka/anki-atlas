@@ -420,6 +420,35 @@ async fn llm_generator_agent_computes_content_hash() {
 }
 
 #[tokio::test]
+async fn llm_generator_agent_rejects_partial_cards() {
+    let mut mock_provider = MockTestLlmProvider::new();
+    mock_provider.expect_generate().returning(|_, _, _| {
+        Ok(make_llm_response(
+            &serde_json::json!({
+                "cards": [{
+                    "card_index": 1,
+                    "slug": "missing-back",
+                    "lang": "en",
+                    "front": "Q",
+                    "confidence": 0.8
+                }]
+            })
+            .to_string(),
+        ))
+    });
+
+    let provider: Arc<dyn llm::LlmProvider> = Arc::new(mock_provider);
+    let agent = LlmGeneratorAgent::new(provider, "gpt-4".into(), 0.3);
+    let deps = test_deps();
+    let err = agent
+        .generate(&deps, &[("Q".into(), "A".into())])
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, GeneratorError::Generation { .. }));
+}
+
+#[tokio::test]
 async fn llm_enhancer_agent_returns_original_when_no_improvements() {
     let mut mock_provider = MockTestLlmProvider::new();
     mock_provider.expect_generate().returning(|_, _, _| {
@@ -441,6 +470,28 @@ async fn llm_enhancer_agent_returns_original_when_no_improvements() {
 
     // Should return original card when no improvements suggested
     assert_eq!(enhanced.apf_html, card.apf_html);
+}
+
+#[tokio::test]
+async fn llm_enhancer_agent_rejects_missing_required_fields() {
+    let mut mock_provider = MockTestLlmProvider::new();
+    mock_provider.expect_generate().returning(|_, _, _| {
+        Ok(make_llm_response(
+            &serde_json::json!({
+                "enhanced_front": "<p>Better</p>",
+                "confidence": 0.95
+            })
+            .to_string(),
+        ))
+    });
+
+    let provider: Arc<dyn llm::LlmProvider> = Arc::new(mock_provider);
+    let agent = LlmEnhancerAgent::new(provider, "gpt-4".into(), 0.3);
+    let deps = test_deps();
+    let card = test_card();
+    let err = agent.enhance(&card, &deps).await.unwrap_err();
+
+    assert!(matches!(err, GeneratorError::Enhancement { .. }));
 }
 
 #[tokio::test]

@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use crate::error::ObsidianError;
 use crate::parser::{DEFAULT_IGNORE_DIRS, ParsedNote, discover_notes, parse_note};
 
 /// Progress callback: (phase, current, total).
@@ -63,7 +64,11 @@ impl<G: CardGenerator> ObsidianSyncWorkflow<G> {
     }
 
     /// Discover and parse all notes in vault.
-    pub fn scan_vault(&self, vault_path: &Path, source_dirs: Option<&[&str]>) -> Vec<ParsedNote> {
+    pub fn scan_vault(
+        &self,
+        vault_path: &Path,
+        source_dirs: Option<&[&str]>,
+    ) -> Result<Vec<ParsedNote>, ObsidianError> {
         let dirs_to_scan: Vec<PathBuf> = match source_dirs {
             Some(dirs) => dirs
                 .iter()
@@ -73,16 +78,24 @@ impl<G: CardGenerator> ObsidianSyncWorkflow<G> {
             None => vec![vault_path.to_path_buf()],
         };
 
-        dirs_to_scan
-            .iter()
-            .flat_map(|dir| discover_notes(dir, &["*.md"], DEFAULT_IGNORE_DIRS).unwrap_or_default())
-            .filter_map(|path| parse_note(&path, Some(vault_path)).ok())
-            .collect()
+        let mut notes = Vec::new();
+        for dir in &dirs_to_scan {
+            let note_paths = discover_notes(dir, &["*.md"], DEFAULT_IGNORE_DIRS)?;
+            for note_path in note_paths {
+                notes.push(parse_note(&note_path, Some(vault_path))?);
+            }
+        }
+
+        Ok(notes)
     }
 
     /// Full pipeline: scan -> process all notes -> aggregate results.
-    pub fn run(&self, vault_path: &Path, source_dirs: Option<&[&str]>) -> SyncResult {
-        let notes = self.scan_vault(vault_path, source_dirs);
+    pub fn run(
+        &self,
+        vault_path: &Path,
+        source_dirs: Option<&[&str]>,
+    ) -> Result<SyncResult, ObsidianError> {
+        let notes = self.scan_vault(vault_path, source_dirs)?;
         let total = notes.len();
         let mut result = SyncResult::default();
 
@@ -99,7 +112,7 @@ impl<G: CardGenerator> ObsidianSyncWorkflow<G> {
             }
         }
 
-        result
+        Ok(result)
     }
 }
 

@@ -5,6 +5,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use crate::error::ObsidianError;
 use crate::parser::{DEFAULT_IGNORE_DIRS, discover_notes, parse_note};
 
 /// Regex matching wikilinks: `[[target]]` or `[[target|alias]]`.
@@ -71,9 +72,9 @@ impl VaultAnalyzer {
     }
 
     /// Lazy scan: discover and parse all notes on first access.
-    fn ensure_scanned(&mut self) {
+    fn ensure_scanned(&mut self) -> Result<(), ObsidianError> {
         if self.scan.is_some() {
-            return;
+            return Ok(());
         }
 
         let mut links: HashMap<String, Vec<String>> = HashMap::new();
@@ -81,8 +82,7 @@ impl VaultAnalyzer {
         let mut has_frontmatter: HashSet<String> = HashSet::new();
         let mut dirs: HashSet<PathBuf> = HashSet::new();
 
-        let note_paths =
-            discover_notes(&self.vault_path, &["*.md"], DEFAULT_IGNORE_DIRS).unwrap_or_default();
+        let note_paths = discover_notes(&self.vault_path, &["*.md"], DEFAULT_IGNORE_DIRS)?;
 
         for note_path in &note_paths {
             let stem = note_path
@@ -97,13 +97,12 @@ impl VaultAnalyzer {
                 dirs.insert(parent.to_path_buf());
             }
 
-            if let Ok(parsed) = parse_note(note_path, Some(&self.vault_path)) {
-                if !parsed.frontmatter.is_empty() {
-                    has_frontmatter.insert(stem.clone());
-                }
-                let wikilinks = extract_wikilinks(&parsed.content);
-                links.insert(stem, wikilinks);
+            let parsed = parse_note(note_path, Some(&self.vault_path))?;
+            if !parsed.frontmatter.is_empty() {
+                has_frontmatter.insert(stem.clone());
             }
+            let wikilinks = extract_wikilinks(&parsed.content);
+            links.insert(stem, wikilinks);
         }
 
         self.scan = Some(ScanData {
@@ -112,30 +111,32 @@ impl VaultAnalyzer {
             has_frontmatter,
             dirs,
         });
+
+        Ok(())
     }
 
     /// Ensure vault is scanned and return a reference to cached data.
-    fn scan_data(&mut self) -> &ScanData {
-        self.ensure_scanned();
-        self.scan.as_ref().unwrap()
+    fn scan_data(&mut self) -> Result<&ScanData, ObsidianError> {
+        self.ensure_scanned()?;
+        Ok(self.scan.as_ref().unwrap())
     }
 
     /// Get wikilink targets from a specific note.
-    pub fn get_wikilinks(&mut self, path: &Path) -> Vec<String> {
-        let scan = self.scan_data();
+    pub fn get_wikilinks(&mut self, path: &Path) -> Result<Vec<String>, ObsidianError> {
+        let scan = self.scan_data()?;
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 
-        scan.links.get(stem).cloned().unwrap_or_default()
+        Ok(scan.links.get(stem).cloned().unwrap_or_default())
     }
 
     /// Find notes with no incoming or outgoing links.
-    pub fn find_orphaned(&mut self) -> Vec<PathBuf> {
-        self.scan_data().orphaned_paths()
+    pub fn find_orphaned(&mut self) -> Result<Vec<PathBuf>, ObsidianError> {
+        Ok(self.scan_data()?.orphaned_paths())
     }
 
     /// Compute comprehensive vault statistics.
-    pub fn analyze(&mut self) -> VaultStats {
-        let scan = self.scan_data();
+    pub fn analyze(&mut self) -> Result<VaultStats, ObsidianError> {
+        let scan = self.scan_data()?;
 
         let wikilinks_count: usize = scan.links.values().map(Vec::len).sum();
 
@@ -156,14 +157,14 @@ impl VaultAnalyzer {
             .filter_map(|p| p.file_stem().and_then(|s| s.to_str()).map(String::from))
             .collect();
 
-        VaultStats {
+        Ok(VaultStats {
             total_notes: scan.paths.len(),
             total_dirs: scan.dirs.len(),
             notes_with_frontmatter: scan.has_frontmatter.len(),
             wikilinks_count,
             orphaned_notes,
             broken_links,
-        }
+        })
     }
 }
 
@@ -178,7 +179,9 @@ fn extract_wikilinks(content: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ObsidianError;
     use std::fs;
+    use std::path::Path;
     use tempfile::TempDir;
 
     /// Helper: create a vault with notes. Each entry is (relative_path, content).
@@ -200,7 +203,9 @@ mod tests {
     fn get_wikilinks_basic() {
         let vault = create_vault(&[("note.md", "See [[target]] for info.")]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let links = analyzer.get_wikilinks(&vault.path().join("note.md"));
+        let links = analyzer
+            .get_wikilinks(&vault.path().join("note.md"))
+            .unwrap();
         assert_eq!(links, vec!["target"]);
     }
 
@@ -208,7 +213,9 @@ mod tests {
     fn get_wikilinks_with_alias() {
         let vault = create_vault(&[("note.md", "Read [[target|display text]] here.")]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let links = analyzer.get_wikilinks(&vault.path().join("note.md"));
+        let links = analyzer
+            .get_wikilinks(&vault.path().join("note.md"))
+            .unwrap();
         assert_eq!(links, vec!["target"]);
     }
 
@@ -216,7 +223,9 @@ mod tests {
     fn get_wikilinks_multiple() {
         let vault = create_vault(&[("note.md", "Links: [[alpha]], [[beta|b]], and [[gamma]].")]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let links = analyzer.get_wikilinks(&vault.path().join("note.md"));
+        let links = analyzer
+            .get_wikilinks(&vault.path().join("note.md"))
+            .unwrap();
         assert_eq!(links, vec!["alpha", "beta", "gamma"]);
     }
 
@@ -224,7 +233,9 @@ mod tests {
     fn get_wikilinks_none() {
         let vault = create_vault(&[("note.md", "No links here.")]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let links = analyzer.get_wikilinks(&vault.path().join("note.md"));
+        let links = analyzer
+            .get_wikilinks(&vault.path().join("note.md"))
+            .unwrap();
         assert!(links.is_empty());
     }
 
@@ -232,7 +243,9 @@ mod tests {
     fn get_wikilinks_unknown_note_returns_empty() {
         let vault = create_vault(&[("note.md", "Some content.")]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let links = analyzer.get_wikilinks(&vault.path().join("nonexistent.md"));
+        let links = analyzer
+            .get_wikilinks(&vault.path().join("nonexistent.md"))
+            .unwrap();
         assert!(links.is_empty());
     }
 
@@ -240,8 +253,19 @@ mod tests {
     fn get_wikilinks_strips_whitespace_in_target() {
         let vault = create_vault(&[("note.md", "See [[ spaced ]] here.")]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let links = analyzer.get_wikilinks(&vault.path().join("note.md"));
+        let links = analyzer
+            .get_wikilinks(&vault.path().join("note.md"))
+            .unwrap();
         assert_eq!(links, vec!["spaced"]);
+    }
+
+    #[test]
+    fn get_wikilinks_missing_vault_returns_error() {
+        let mut analyzer = VaultAnalyzer::new(Path::new("/nonexistent/vault"));
+        let error = analyzer
+            .get_wikilinks(Path::new("/nonexistent/vault/note.md"))
+            .unwrap_err();
+        assert!(matches!(error, ObsidianError::NotFound(_)));
     }
 
     // ── find_orphaned ──────────────────────────────────────────────
@@ -253,7 +277,7 @@ mod tests {
             ("b.md", "Standalone note B."),
         ]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let orphaned = analyzer.find_orphaned();
+        let orphaned = analyzer.find_orphaned().unwrap();
         // Both are orphaned (no outgoing, no incoming)
         let mut stems: Vec<_> = orphaned
             .iter()
@@ -267,7 +291,7 @@ mod tests {
     fn find_orphaned_linked_notes_not_orphaned() {
         let vault = create_vault(&[("a.md", "See [[b]]."), ("b.md", "See [[a]].")]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let orphaned = analyzer.find_orphaned();
+        let orphaned = analyzer.find_orphaned().unwrap();
         assert!(orphaned.is_empty());
     }
 
@@ -279,7 +303,7 @@ mod tests {
             ("c.md", "Completely alone."),
         ]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let orphaned = analyzer.find_orphaned();
+        let orphaned = analyzer.find_orphaned().unwrap();
         let stems: Vec<_> = orphaned
             .iter()
             .map(|p| p.file_stem().unwrap().to_str().unwrap().to_string())
@@ -292,7 +316,7 @@ mod tests {
         // b has no outgoing links but is linked by a -> not orphaned
         let vault = create_vault(&[("a.md", "See [[b]]."), ("b.md", "I have no links.")]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let orphaned = analyzer.find_orphaned();
+        let orphaned = analyzer.find_orphaned().unwrap();
         // a has outgoing (not orphaned), b has incoming (not orphaned)
         assert!(orphaned.is_empty());
     }
@@ -307,7 +331,7 @@ mod tests {
             ("sub/c.md", "Note C."),
         ]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let stats = analyzer.analyze();
+        let stats = analyzer.analyze().unwrap();
         assert_eq!(stats.total_notes, 3);
     }
 
@@ -319,7 +343,7 @@ mod tests {
             ("sub/deep/c.md", "Note."),
         ]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let stats = analyzer.analyze();
+        let stats = analyzer.analyze().unwrap();
         // Three distinct parent dirs: root, sub, sub/deep
         assert_eq!(stats.total_dirs, 3);
     }
@@ -332,7 +356,7 @@ mod tests {
             ("c.md", "---\ntags: [x]\n---\nBody."),
         ]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let stats = analyzer.analyze();
+        let stats = analyzer.analyze().unwrap();
         assert_eq!(stats.notes_with_frontmatter, 2);
     }
 
@@ -344,7 +368,7 @@ mod tests {
             ("c.md", "No links."),
         ]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let stats = analyzer.analyze();
+        let stats = analyzer.analyze().unwrap();
         assert_eq!(stats.wikilinks_count, 3);
     }
 
@@ -352,7 +376,7 @@ mod tests {
     fn analyze_broken_links() {
         let vault = create_vault(&[("a.md", "See [[b]] and [[missing]]."), ("b.md", "Content.")]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let stats = analyzer.analyze();
+        let stats = analyzer.analyze().unwrap();
         assert_eq!(
             stats.broken_links,
             vec![("a".to_string(), "missing".to_string())]
@@ -367,7 +391,7 @@ mod tests {
             ("c.md", "Alone."),
         ]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let stats = analyzer.analyze();
+        let stats = analyzer.analyze().unwrap();
         assert_eq!(stats.orphaned_notes, vec!["c"]);
     }
 
@@ -375,7 +399,7 @@ mod tests {
     fn analyze_empty_vault() {
         let vault = TempDir::new().unwrap();
         let mut analyzer = VaultAnalyzer::new(vault.path());
-        let stats = analyzer.analyze();
+        let stats = analyzer.analyze().unwrap();
         assert_eq!(stats.total_notes, 0);
         assert_eq!(stats.total_dirs, 0);
         assert_eq!(stats.wikilinks_count, 0);
@@ -388,9 +412,20 @@ mod tests {
         let vault = create_vault(&[("a.md", "See [[b]].")]);
         let mut analyzer = VaultAnalyzer::new(vault.path());
         // Call multiple methods - scan should happen once
-        let _ = analyzer.get_wikilinks(&vault.path().join("a.md"));
-        let stats = analyzer.analyze();
+        let _ = analyzer.get_wikilinks(&vault.path().join("a.md")).unwrap();
+        let stats = analyzer.analyze().unwrap();
         assert_eq!(stats.total_notes, 1);
+    }
+
+    #[test]
+    fn analyze_invalid_note_returns_error() {
+        let vault = create_vault(&[
+            ("good.md", "# Good\nBody\n"),
+            ("broken.md", "---\n: invalid yaml\n---\nBody\n"),
+        ]);
+        let mut analyzer = VaultAnalyzer::new(vault.path());
+        let error = analyzer.analyze().unwrap_err();
+        assert!(matches!(error, ObsidianError::Yaml(_)));
     }
 
     // ── Send + Sync compile-time assertion ─────────────────────────

@@ -86,7 +86,7 @@ git push origin feat/my-feature
 
 ## Code Conventions
 
-- Rust 1.85+ (edition 2024)
+- Rust 1.88+ (edition 2024)
 - All types must be `Send + Sync`
 - `thiserror` for library error types, `anyhow` only in binary crates
 - Trait-based DI at every external boundary (DB, HTTP, Qdrant, Redis)

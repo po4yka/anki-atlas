@@ -75,6 +75,22 @@ impl Taxonomy {
             .filter(|t| t.path == path || t.path.starts_with(&prefix))
             .collect()
     }
+
+    /// Populate in-memory topics with database IDs returned from a sync.
+    pub fn apply_topic_ids(&mut self, id_map: &HashMap<String, i64>) {
+        for (path, topic) in &mut self.topics {
+            topic.topic_id = id_map.get(path).copied();
+        }
+
+        fn hydrate_tree(topics: &mut [Topic], id_map: &HashMap<String, i64>) {
+            for topic in topics {
+                topic.topic_id = id_map.get(&topic.path).copied();
+                hydrate_tree(&mut topic.children, id_map);
+            }
+        }
+
+        hydrate_tree(&mut self.roots, id_map);
+    }
 }
 
 /// YAML deserialization helper for taxonomy file format.
@@ -109,10 +125,7 @@ pub fn load_taxonomy_from_yaml(path: &std::path::Path) -> Result<Taxonomy, Analy
         return Ok(Taxonomy::default());
     }
 
-    let parsed: YamlTaxonomy = match serde_yaml::from_str(&content) {
-        Ok(p) => p,
-        Err(_) => return Ok(Taxonomy::default()),
-    };
+    let parsed: YamlTaxonomy = serde_yaml::from_str(&content)?;
 
     if parsed.topics.is_empty() {
         return Ok(Taxonomy::default());
@@ -193,11 +206,10 @@ pub async fn sync_taxonomy_to_db(
 
 /// Load taxonomy from database, reconstructing tree structure.
 pub async fn load_taxonomy_from_db(pool: &sqlx::PgPool) -> Result<Taxonomy, AnalyticsError> {
-    let rows: Vec<(i32, String, String, Option<String>)> = sqlx::query_as(
-        "SELECT topic_id, path, label, description FROM topics ORDER BY path",
-    )
-    .fetch_all(pool)
-    .await?;
+    let rows: Vec<(i32, String, String, Option<String>)> =
+        sqlx::query_as("SELECT topic_id, path, label, description FROM topics ORDER BY path")
+            .fetch_all(pool)
+            .await?;
 
     if rows.is_empty() {
         return Ok(Taxonomy::default());
@@ -266,12 +278,11 @@ pub async fn get_topic_by_path(
     pool: &sqlx::PgPool,
     path: &str,
 ) -> Result<Option<Topic>, AnalyticsError> {
-    let row: Option<(i32, String, String, Option<String>)> = sqlx::query_as(
-        "SELECT topic_id, path, label, description FROM topics WHERE path = $1",
-    )
-    .bind(path)
-    .fetch_optional(pool)
-    .await?;
+    let row: Option<(i32, String, String, Option<String>)> =
+        sqlx::query_as("SELECT topic_id, path, label, description FROM topics WHERE path = $1")
+            .bind(path)
+            .fetch_optional(pool)
+            .await?;
 
     Ok(row.map(|(topic_id, path, label, description)| Topic {
         path,
@@ -431,6 +442,30 @@ mod tests {
         assert!(!paths.contains(&"x"));
     }
 
+    #[test]
+    fn taxonomy_apply_topic_ids_updates_lookup_and_tree() {
+        let mut taxonomy = make_taxonomy();
+        let id_map = HashMap::from([
+            ("a".to_string(), 1),
+            ("a/b".to_string(), 2),
+            ("a/b/c".to_string(), 3),
+            ("x".to_string(), 4),
+        ]);
+
+        taxonomy.apply_topic_ids(&id_map);
+
+        assert_eq!(taxonomy.topics["a"].topic_id, Some(1));
+        assert_eq!(taxonomy.topics["a/b"].topic_id, Some(2));
+        assert_eq!(taxonomy.topics["a/b/c"].topic_id, Some(3));
+        assert_eq!(taxonomy.topics["ab"].topic_id, None);
+
+        assert_eq!(taxonomy.roots[0].topic_id, Some(1));
+        assert_eq!(taxonomy.roots[0].children[0].topic_id, Some(2));
+        assert_eq!(taxonomy.roots[0].children[0].children[0].topic_id, Some(3));
+        assert_eq!(taxonomy.roots[1].topic_id, Some(4));
+        assert_eq!(taxonomy.roots[2].topic_id, None);
+    }
+
     // --- YAML loading ---
 
     #[test]
@@ -488,6 +523,20 @@ topics:
 
         let taxonomy = load_taxonomy_from_yaml(&yaml_path).unwrap();
         assert!(taxonomy.topics.is_empty());
+    }
+
+    #[test]
+    fn load_taxonomy_from_yaml_invalid_yaml_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let yaml_path = dir.path().join("invalid.yaml");
+        std::fs::write(
+            &yaml_path,
+            "topics:\n  - path: valid\n    label: ok\n  -\n    : bad\n",
+        )
+        .unwrap();
+
+        let error = load_taxonomy_from_yaml(&yaml_path).unwrap_err();
+        assert!(matches!(error, AnalyticsError::YamlParse(_)));
     }
 
     #[test]
