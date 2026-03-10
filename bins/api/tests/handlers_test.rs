@@ -136,55 +136,6 @@ async fn health_includes_version() {
     assert!(v["version"].is_string(), "health should include version");
 }
 
-// ---- Sync ----
-
-#[tokio::test]
-async fn sync_rejects_missing_source() {
-    let app = build_router(test_state(MockJobs::new()));
-    let resp: Response = app
-        .oneshot(
-            Request::post("/sync")
-                .header("content-type", "application/json")
-                .body(Body::from("{}"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn sync_rejects_nonexistent_path() {
-    let app = build_router(test_state(MockJobs::new()));
-    let body = json!({ "source": "/nonexistent/path.anki2" });
-    let resp: Response = app
-        .oneshot(
-            Request::post("/sync")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn sync_rejects_wrong_extension() {
-    let app = build_router(test_state(MockJobs::new()));
-    let body = json!({ "source": "/tmp/collection.db" });
-    let resp: Response = app
-        .oneshot(
-            Request::post("/sync")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-}
-
 // ---- Jobs ----
 
 #[tokio::test]
@@ -337,10 +288,40 @@ async fn job_backend_unavailable_returns_503() {
     assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
-// ---- Search ----
+// ---- Removed surfaces ----
 
 #[tokio::test]
-async fn search_accepts_minimal_request() {
+async fn removed_sync_route_returns_404() {
+    let app = build_router(test_state(MockJobs::new()));
+    let resp: Response = app
+        .oneshot(
+            Request::post("/sync")
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn removed_index_route_returns_404() {
+    let app = build_router(test_state(MockJobs::new()));
+    let resp: Response = app
+        .oneshot(
+            Request::post("/index")
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn removed_search_route_returns_404() {
     let app = build_router(test_state(MockJobs::new()));
     let body = json!({ "query": "test query" });
     let resp: Response = app
@@ -352,25 +333,22 @@ async fn search_accepts_minimal_request() {
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-// ---- Topics ----
-
 #[tokio::test]
-async fn topics_route_exists() {
+async fn removed_topics_routes_return_404() {
     let app = build_router(test_state(MockJobs::new()));
-    let resp: Response = app
+
+    let topics = app
+        .clone()
         .oneshot(Request::get("/topics").body(Body::empty()).unwrap())
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
-}
+    assert_eq!(topics.status(), StatusCode::NOT_FOUND);
 
-#[tokio::test]
-async fn topic_coverage_route_exists() {
-    let app = build_router(test_state(MockJobs::new()));
-    let resp: Response = app
+    let coverage = app
+        .clone()
         .oneshot(
             Request::get("/topics/cs/algorithms/coverage")
                 .body(Body::empty())
@@ -378,13 +356,9 @@ async fn topic_coverage_route_exists() {
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
-}
+    assert_eq!(coverage.status(), StatusCode::NOT_FOUND);
 
-#[tokio::test]
-async fn topic_gaps_route_exists() {
-    let app = build_router(test_state(MockJobs::new()));
-    let resp: Response = app
+    let gaps = app
         .oneshot(
             Request::get("/topics/cs/algorithms/gaps")
                 .body(Body::empty())
@@ -392,66 +366,25 @@ async fn topic_gaps_route_exists() {
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    assert_eq!(gaps.status(), StatusCode::NOT_FOUND);
 }
 
-// ---- Duplicates ----
-
 #[tokio::test]
-async fn duplicates_route_exists() {
+async fn removed_duplicates_route_returns_404() {
     let app = build_router(test_state(MockJobs::new()));
     let resp: Response = app
         .oneshot(Request::get("/duplicates").body(Body::empty()).unwrap())
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-// ---- Index Info ----
-
 #[tokio::test]
-async fn index_info_route_exists() {
+async fn removed_index_info_route_returns_404() {
     let app = build_router(test_state(MockJobs::new()));
     let resp: Response = app
         .oneshot(Request::get("/index/info").body(Body::empty()).unwrap())
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
-}
-
-#[tokio::test]
-async fn sync_reports_unwired_surface_for_valid_request() {
-    let app = build_router(test_state(MockJobs::new()));
-    let source = std::env::temp_dir().join(format!("anki-atlas-sync-{}.anki2", std::process::id()));
-    std::fs::write(&source, "").unwrap();
-
-    let body = json!({ "source": source });
-    let resp: Response = app
-        .oneshot(
-            Request::post("/sync")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let _ = std::fs::remove_file(source);
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
-}
-
-#[tokio::test]
-async fn index_reports_unwired_surface() {
-    let app = build_router(test_state(MockJobs::new()));
-    let body = json!({});
-    let resp: Response = app
-        .oneshot(
-            Request::post("/index")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }

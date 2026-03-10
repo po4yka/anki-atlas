@@ -7,7 +7,7 @@ use tracing::instrument;
 use crate::formatters::{
     format_generate_result, format_obsidian_sync_result, format_tag_audit_result, TagAuditEntry,
 };
-use crate::tools::{GenerateInput, ObsidianSyncInput, SyncInput, TagAuditInput};
+use crate::tools::{GenerateInput, ObsidianSyncInput, TagAuditInput};
 
 /// Categories of errors returned by handler operations.
 #[derive(Debug)]
@@ -54,24 +54,6 @@ pub fn format_error(kind: ErrorKind, operation: &str) -> String {
 /// Clamp a value to the range [min, max].
 pub fn clamp_limit(value: usize, min: usize, max: usize) -> usize {
     value.clamp(min, max)
-}
-
-/// Validate that a path points to an existing `.anki2` file.
-/// Returns `Ok(())` on success, `Err(message)` on failure.
-pub fn validate_anki2_path(path: &str) -> Result<(), String> {
-    let p = Path::new(path);
-
-    if p.extension().and_then(|e| e.to_str()) != Some("anki2") {
-        return Err(format!(
-            "Invalid path: expected .anki2 extension, got `{path}`"
-        ));
-    }
-
-    if !p.exists() {
-        return Err(format!("File not found: `{path}` does not exist"));
-    }
-
-    Ok(())
 }
 
 /// Validate that a path points to an existing directory.
@@ -125,16 +107,6 @@ pub async fn handle_generate(input: GenerateInput) -> String {
     }
 
     format_generate_result(title, &sections, text.len())
-}
-
-/// Validate .anki2 path and sync collection.
-#[instrument(skip(input), fields(path = %input.collection_path))]
-pub async fn handle_sync(input: SyncInput) -> String {
-    if let Err(msg) = validate_anki2_path(&input.collection_path) {
-        return msg;
-    }
-
-    format!("Sync started for `{}`", input.collection_path)
 }
 
 /// Scan an Obsidian vault and return a summary.

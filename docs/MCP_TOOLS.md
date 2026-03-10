@@ -1,31 +1,17 @@
 # Anki Atlas MCP Tools
 
-MCP (Model Context Protocol) server exposing Anki Atlas tools for AI agents like Claude Code.
-
-## Installation
-
-The MCP server is included in the main package. Install Anki Atlas and ensure the MCP dependency is available:
-
-```bash
-uv sync
-```
+MCP (Model Context Protocol) support in `main` is intentionally narrow. The server should advertise only tools that have real handler implementations and do not depend on unwired search or analytics surfaces.
 
 ## Running the Server
 
-### Standalone
-
 ```bash
-# Via entry point
-uv run anki-atlas-mcp
-
-# Or directly
-uv run python -m apps.mcp.cli
+cargo run --bin anki-atlas-mcp
 ```
 
-### With MCP Inspector (for testing)
+### With MCP Inspector
 
 ```bash
-npx @anthropic-ai/mcp-inspector uv run anki-atlas-mcp
+npx @anthropic-ai/mcp-inspector cargo run --bin anki-atlas-mcp
 ```
 
 ## Configuration
@@ -38,8 +24,8 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 {
   "mcpServers": {
     "anki-atlas": {
-      "command": "uv",
-      "args": ["run", "--directory", "/path/to/anki-atlas", "anki-atlas-mcp"],
+      "command": "cargo",
+      "args": ["run", "--bin", "anki-atlas-mcp"],
       "env": {
         "ANKIATLAS_POSTGRES_URL": "postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas",
         "ANKIATLAS_QDRANT_URL": "http://localhost:6333",
@@ -59,8 +45,8 @@ Add to your project's `.mcp.json`:
 {
   "servers": {
     "anki-atlas": {
-      "command": "uv",
-      "args": ["run", "anki-atlas-mcp"],
+      "command": "cargo",
+      "args": ["run", "--bin", "anki-atlas-mcp"],
       "cwd": "/path/to/anki-atlas",
       "env": {
         "ANKIATLAS_POSTGRES_URL": "postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas",
@@ -73,123 +59,31 @@ Add to your project's `.mcp.json`:
 
 ## Available Tools
 
-### ankiatlas_search
+### ankiatlas_generate
 
-Search Anki notes using hybrid semantic and full-text search.
+Parse markdown text and return a generation preview.
 
-**Parameters:**
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `query` | string | Yes | - | Search query text |
-| `limit` | integer | No | 20 | Maximum results (1-100) |
-| `deck_filter` | string[] | No | null | Filter by deck names |
-| `tag_filter` | string[] | No | null | Filter by tags |
-| `semantic_only` | boolean | No | false | Use only semantic search |
-| `fts_only` | boolean | No | false | Use only full-text search |
+### ankiatlas_obsidian_sync
 
-**Example prompts:**
-- "Search my Anki cards for 'mitochondria'"
-- "Find all calculus cards in my Math deck"
-- "Search for cards tagged 'exam' about derivatives"
+Scan an Obsidian vault directory and summarize discovered markdown notes.
 
-### ankiatlas_topic_coverage
+### ankiatlas_tag_audit
 
-Get coverage metrics for a topic in your Anki collection.
-
-**Parameters:**
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `topic_path` | string | Yes | - | Topic path (e.g., 'math/calculus') |
-| `include_subtree` | boolean | No | true | Include child topics in metrics |
-
-**Example prompts:**
-- "How well do I cover the topic 'biology/genetics'?"
-- "Show me coverage stats for my math collection"
-- "What's my progress on the 'programming/python' topic?"
-
-### ankiatlas_topic_gaps
-
-Find knowledge gaps in topic coverage.
-
-**Parameters:**
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `topic_path` | string | Yes | - | Root topic path to analyze |
-| `min_coverage` | integer | No | 1 | Minimum notes for coverage |
-
-**Example prompts:**
-- "What topics am I missing in my chemistry notes?"
-- "Find gaps in my language learning cards"
-- "Show me undercovered areas in 'history'"
-
-### ankiatlas_duplicates
-
-Find near-duplicate notes in your Anki collection.
-
-**Parameters:**
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `threshold` | float | No | 0.92 | Similarity threshold (0.5-1.0) |
-| `max_clusters` | integer | No | 50 | Maximum clusters to return |
-| `deck_filter` | string[] | No | null | Filter by deck names |
-| `tag_filter` | string[] | No | null | Filter by tags |
-
-**Example prompts:**
-- "Find duplicate cards in my collection"
-- "Are there any near-duplicates in my vocabulary deck?"
-- "Check for redundant flashcards with 95% similarity"
-
-### ankiatlas_sync
-
-Sync an Anki collection to the search index.
-
-**Parameters:**
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `collection_path` | string | Yes | - | Path to collection.anki2 file |
-| `run_index` | boolean | No | false | Rebuild vector index after sync |
-
-**Example prompts:**
-- "Sync my Anki collection at /path/to/collection.anki2"
-- "Update the index from my Anki database and rebuild embeddings"
+Inspect tags for normalization issues such as uppercase characters or `/` separators.
 
 ## Example Agent Workflows
 
-### Comprehensive Collection Review
+### Local Note Review
 
 ```
-1. First, sync my Anki collection from ~/Library/Application Support/Anki2/User 1/collection.anki2
-
-2. Then find any duplicate cards in my collection with 90% similarity threshold
-
-3. Show me topic coverage for 'medicine' and identify any gaps
-
-4. Search for cards about 'pharmacology' to see what I have
-```
-
-### Study Session Preparation
-
-```
-1. Show me coverage for 'math/linear-algebra'
-
-2. Find gaps in the linear algebra topic tree
-
-3. Search for weak cards (high lapse rate) about matrices
-```
-
-### Collection Cleanup
-
-```
-1. Find all duplicates in my 'Vocabulary' deck
-
-2. Search for cards with similar content about 'verb conjugation'
-
-3. Show me notes that might be redundant
+1. Preview cards from this markdown note
+2. Scan this Obsidian vault for candidate notes
+3. Audit these tags before importing them
 ```
 
 ## Output Format
 
-All tools return markdown-formatted responses optimized for LLM readability:
+Current tools return markdown-formatted responses optimized for LLM readability:
 
 - **Tables** for search results and gap lists
 - **Headings** for section organization
@@ -201,17 +95,12 @@ All tools return markdown-formatted responses optimized for LLM readability:
 
 Tools return user-friendly error messages prefixed with `**Error**:` instead of raising exceptions. Common errors:
 
-- Collection file not found
-- Topic not found in taxonomy
-- Database connection issues
+- Vault path not found
 - Invalid parameters
 
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ANKIATLAS_POSTGRES_URL` | Yes | PostgreSQL connection string |
-| `ANKIATLAS_QDRANT_URL` | Yes | Qdrant vector database URL |
-| `ANKIATLAS_EMBEDDING_PROVIDER` | No | "openai" or "local" (default: openai) |
-| `ANKIATLAS_EMBEDDING_MODEL` | No | Model name (default: text-embedding-3-small) |
-| `OPENAI_API_KEY` | If using OpenAI | OpenAI API key for embeddings |
+| `ANKIATLAS_POSTGRES_URL` | No | Reserved for future data-backed MCP tools |
+| `ANKIATLAS_QDRANT_URL` | No | Reserved for future data-backed MCP tools |

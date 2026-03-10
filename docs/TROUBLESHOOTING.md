@@ -86,7 +86,7 @@ Common issues and their solutions when running Anki Atlas.
    kill <pid>
 
    # Or use different port
-   ANKIATLAS_API_PORT=8001 uv run anki-atlas api
+   ANKIATLAS_API_PORT=8001 cargo run --bin anki-atlas-api
    ```
 
 ## Embedding Issues
@@ -113,11 +113,8 @@ Common issues and their solutions when running Anki Atlas.
    echo $OPENAI_API_KEY | head -c 10
    ```
 
-4. **Try with smaller batch:**
-   ```bash
-   # Index in smaller chunks by running multiple times
-   anki-atlas index --force
-   ```
+4. **Retry with a smaller operational scope:**
+   Reduce the data set you are reprocessing or enqueue indexing after a narrower sync.
 
 ### "Collection dimension mismatch"
 
@@ -127,9 +124,11 @@ Common issues and their solutions when running Anki Atlas.
 
 **Solutions:**
 
-1. **Force reindex to recreate collection:**
+1. **Enqueue a fresh sync followed by index work:**
    ```bash
-   anki-atlas sync --source /path/to/collection.anki2 --force-reindex
+   curl -X POST http://localhost:8000/jobs/sync \
+     -H "Content-Type: application/json" \
+     -d '{"source":"/path/to/collection.anki2","force_reindex":true}'
    ```
 
 2. **Manually delete collection:**
@@ -192,39 +191,39 @@ Common issues and their solutions when running Anki Atlas.
    anki-atlas migrate
    ```
 
-## Search Issues
+## Indexing and Retrieval Issues
 
-### "No results found"
+### "Indexed data looks incomplete"
 
 **Symptoms:**
-- Search returns empty results
+- Search or downstream analytics return empty results
 - Expected cards not appearing
 
 **Solutions:**
 
-1. **Verify indexing completed:**
+1. **Verify the service is ready:**
    ```bash
-   curl http://localhost:8000/index/info
-   # Check points_count > 0
+   curl http://localhost:8000/ready
    ```
 
-2. **Check collection was synced:**
+2. **Check collection data exists in PostgreSQL:**
    ```bash
-   anki-atlas sync --source /path/to/collection.anki2
+   psql $ANKIATLAS_POSTGRES_URL -c "SELECT COUNT(*) FROM notes"
    ```
 
-3. **Try FTS-only search:**
+3. **Check vectors exist in Qdrant:**
    ```bash
-   anki-atlas search "query" --fts
+   curl http://localhost:6333/collections/anki_notes | jq .result.points_count
    ```
 
-4. **Check filters aren't too restrictive:**
+4. **If counts are zero, enqueue a fresh sync job:**
    ```bash
-   # Try without filters first
-   anki-atlas search "query"
+   curl -X POST http://localhost:8000/jobs/sync \
+     -H "Content-Type: application/json" \
+     -d '{"source":"/path/to/collection.anki2"}'
    ```
 
-### "Search is slow"
+### "Retrieval is slow"
 
 **Symptoms:**
 - Search takes more than 2 seconds
@@ -238,12 +237,7 @@ Common issues and their solutions when running Anki Atlas.
    # Should be "green"
    ```
 
-2. **Reduce result limit:**
-   ```bash
-   anki-atlas search "query" --top 10
-   ```
-
-3. **Check system resources:**
+2. **Check system resources:**
    ```bash
    htop
    # Look for high CPU/memory usage
@@ -264,7 +258,10 @@ Common issues and their solutions when running Anki Atlas.
 
 2. **Enable on-disk storage:**
    ```bash
-   ANKIATLAS_QDRANT_ON_DISK=true anki-atlas sync --source ... --force-reindex
+   export ANKIATLAS_QDRANT_ON_DISK=true
+   curl -X POST http://localhost:8000/jobs/index \
+     -H "Content-Type: application/json" \
+     -d '{"force_reindex":true}'
    ```
 
 3. **Increase Qdrant memory limit:**

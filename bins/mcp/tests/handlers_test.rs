@@ -1,10 +1,8 @@
 use anki_atlas_mcp::handlers::{
-    format_error, ErrorKind, clamp_limit, validate_anki2_path, validate_vault_path,
-    handle_generate, handle_obsidian_sync, handle_sync, handle_tag_audit,
+    clamp_limit, format_error, handle_generate, handle_obsidian_sync, handle_tag_audit,
+    validate_vault_path, ErrorKind,
 };
-use anki_atlas_mcp::tools::{
-    GenerateInput, ObsidianSyncInput, SyncInput, TagAuditInput,
-};
+use anki_atlas_mcp::tools::{GenerateInput, ObsidianSyncInput, TagAuditInput};
 use tempfile::TempDir;
 
 // ─── format_error ───────────────────────────────────────────────────
@@ -67,34 +65,6 @@ fn clamp_limit_above_max() {
 fn clamp_limit_at_boundaries() {
     assert_eq!(clamp_limit(1, 1, 100), 1);
     assert_eq!(clamp_limit(100, 1, 100), 100);
-}
-
-// ─── validate_anki2_path ────────────────────────────────────────────
-
-#[test]
-fn validate_anki2_path_valid_file() {
-    let dir = TempDir::new().unwrap();
-    let path = dir.path().join("collection.anki2");
-    std::fs::write(&path, b"fake anki2").unwrap();
-    assert!(validate_anki2_path(path.to_str().unwrap()).is_ok());
-}
-
-#[test]
-fn validate_anki2_path_wrong_extension() {
-    let dir = TempDir::new().unwrap();
-    let path = dir.path().join("collection.db");
-    std::fs::write(&path, b"fake db").unwrap();
-    let err = validate_anki2_path(path.to_str().unwrap()).unwrap_err();
-    assert!(err.contains(".anki2"), "should mention required extension");
-}
-
-#[test]
-fn validate_anki2_path_nonexistent() {
-    let err = validate_anki2_path("/nonexistent/collection.anki2").unwrap_err();
-    assert!(
-        err.contains("not found") || err.contains("does not exist"),
-        "should indicate file not found"
-    );
 }
 
 // ─── validate_vault_path ────────────────────────────────────────────
@@ -162,31 +132,6 @@ async fn handle_generate_empty_text() {
     let result = handle_generate(input).await;
     // Should return a result (possibly with 0 sections), not panic
     assert!(!result.is_empty(), "should return non-empty response");
-}
-
-// ─── handle_sync (validation paths) ────────────────────────────────
-
-#[tokio::test]
-async fn handle_sync_invalid_extension() {
-    let input = SyncInput {
-        collection_path: "/tmp/collection.db".to_string(),
-        run_index: false,
-    };
-    let result = handle_sync(input).await;
-    assert!(result.contains(".anki2"), "should mention required extension");
-}
-
-#[tokio::test]
-async fn handle_sync_nonexistent_path() {
-    let input = SyncInput {
-        collection_path: "/nonexistent/collection.anki2".to_string(),
-        run_index: false,
-    };
-    let result = handle_sync(input).await;
-    assert!(
-        result.contains("not found") || result.contains("does not exist"),
-        "should indicate file not found"
-    );
 }
 
 // ─── handle_obsidian_sync (validation paths) ────────────────────────

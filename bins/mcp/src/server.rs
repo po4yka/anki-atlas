@@ -5,16 +5,10 @@ use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::{ServerHandler, ServiceExt};
 
 /// All registered tool names, sorted alphabetically.
-const TOOL_NAMES: [&str; 9] = [
-    "ankiatlas_duplicates",
+const TOOL_NAMES: [&str; 3] = [
     "ankiatlas_generate",
     "ankiatlas_obsidian_sync",
-    "ankiatlas_search",
-    "ankiatlas_sync",
     "ankiatlas_tag_audit",
-    "ankiatlas_topic_coverage",
-    "ankiatlas_topic_gaps",
-    "ankiatlas_validate",
 ];
 
 /// The MCP server struct that registers all anki-atlas tools.

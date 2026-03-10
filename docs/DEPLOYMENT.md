@@ -75,7 +75,7 @@ docker compose up -d
 |----------|-------------|---------|
 | `ANKIATLAS_POSTGRES_URL` | PostgreSQL connection string | `postgresql://user:pass@host:5432/db` |
 | `ANKIATLAS_QDRANT_URL` | Qdrant server URL | `http://localhost:6333` |
-| `ANKIATLAS_REDIS_URL` | Redis URL used by arq workers | `redis://localhost:6379/0` |
+| `ANKIATLAS_REDIS_URL` | Redis URL used by the job manager and worker | `redis://localhost:6379/0` |
 | `OPENAI_API_KEY` | OpenAI API key for embeddings | `sk-...` |
 
 ### Optional
@@ -89,7 +89,7 @@ docker compose up -d
 | `ANKIATLAS_EMBEDDING_DIMENSION` | `1536` | Embedding vector dimension |
 | `ANKIATLAS_QDRANT_QUANTIZATION` | `scalar` | Quantization: none, scalar, binary |
 | `ANKIATLAS_QDRANT_ON_DISK` | `false` | Store vectors on disk |
-| `ANKIATLAS_JOB_QUEUE_NAME` | `ankiatlas_jobs` | arq queue name |
+| `ANKIATLAS_JOB_QUEUE_NAME` | `ankiatlas_jobs` | Redis list name used for jobs |
 | `ANKIATLAS_JOB_MAX_RETRIES` | `3` | Max retries for failed jobs |
 | `ANKIATLAS_JOB_RESULT_TTL_SECONDS` | `86400` | Job metadata retention |
 
@@ -130,17 +130,19 @@ curl http://localhost:8000/ready
 docker compose exec api anki-atlas migrate
 ```
 
-### 2. Sync Anki Collection
+### 2. Queue an Anki Sync Job
 
 ```bash
-# Copy collection to container or mount volume
-docker compose exec api anki-atlas sync --source /data/collection.anki2
+# Copy collection to container or mount volume, then enqueue sync via HTTP
+curl -X POST http://localhost:8000/jobs/sync \
+  -H "Content-Type: application/json" \
+  -d '{"source":"/data/collection.anki2"}'
 ```
 
-### 3. Verify Index
+### 3. Verify Job API
 
 ```bash
-curl http://localhost:8000/index/info
+curl http://localhost:8000/ready
 ```
 
 ## Production Configuration
@@ -248,10 +250,10 @@ curl -X PUT http://localhost:6333/collections/anki_notes/snapshots/recover \
 
 - PostgreSQL: Use connection pooling (pgbouncer)
 - Qdrant: Enable quantization, tune memory
-- API: Run multiple uvicorn workers
+- API: Run multiple `anki-atlas-api` instances behind a reverse proxy
 
 ```bash
-uvicorn apps.api.main:app --workers 4
+ANKIATLAS_API_PORT=8000 cargo run --bin anki-atlas-api
 ```
 
 ### Multi-Node (Future)
@@ -289,7 +291,7 @@ See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for common issues.
 3. **Memory pressure:** Enable quantization, increase container memory
   worker:
     image: anki-atlas:latest
-    command: ["arq", "apps.worker.WorkerSettings"]
+    command: ["sh", "-lc", "ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1 anki-atlas-worker"]
     environment:
       - ANKIATLAS_POSTGRES_URL=postgresql://ankiatlas:secret@postgres:5432/ankiatlas
       - ANKIATLAS_QDRANT_URL=http://qdrant:6333

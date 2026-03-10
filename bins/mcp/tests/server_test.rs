@@ -30,63 +30,13 @@ fn server_version_is_set() {
 // --- Tool registration ---
 
 #[test]
-fn server_registers_9_tools() {
+fn server_registers_only_supported_tools() {
     let server = AnkiAtlasServer::new();
     assert_eq!(
         server.tool_count(),
-        9,
-        "expected 9 tools registered, got {}",
+        3,
+        "expected 3 tools registered, got {}",
         server.tool_count()
-    );
-}
-
-#[test]
-fn server_has_search_tool() {
-    let server = AnkiAtlasServer::new();
-    let names = server.tool_names();
-    assert!(
-        names.contains(&"ankiatlas_search"),
-        "missing ankiatlas_search tool, got: {names:?}"
-    );
-}
-
-#[test]
-fn server_has_topic_coverage_tool() {
-    let server = AnkiAtlasServer::new();
-    let names = server.tool_names();
-    assert!(
-        names.contains(&"ankiatlas_topic_coverage"),
-        "missing ankiatlas_topic_coverage tool, got: {names:?}"
-    );
-}
-
-#[test]
-fn server_has_topic_gaps_tool() {
-    let server = AnkiAtlasServer::new();
-    let names = server.tool_names();
-    assert!(
-        names.contains(&"ankiatlas_topic_gaps"),
-        "missing ankiatlas_topic_gaps tool, got: {names:?}"
-    );
-}
-
-#[test]
-fn server_has_duplicates_tool() {
-    let server = AnkiAtlasServer::new();
-    let names = server.tool_names();
-    assert!(
-        names.contains(&"ankiatlas_duplicates"),
-        "missing ankiatlas_duplicates tool, got: {names:?}"
-    );
-}
-
-#[test]
-fn server_has_sync_tool() {
-    let server = AnkiAtlasServer::new();
-    let names = server.tool_names();
-    assert!(
-        names.contains(&"ankiatlas_sync"),
-        "missing ankiatlas_sync tool, got: {names:?}"
     );
 }
 
@@ -97,16 +47,6 @@ fn server_has_generate_tool() {
     assert!(
         names.contains(&"ankiatlas_generate"),
         "missing ankiatlas_generate tool, got: {names:?}"
-    );
-}
-
-#[test]
-fn server_has_validate_tool() {
-    let server = AnkiAtlasServer::new();
-    let names = server.tool_names();
-    assert!(
-        names.contains(&"ankiatlas_validate"),
-        "missing ankiatlas_validate tool, got: {names:?}"
     );
 }
 
@@ -152,7 +92,7 @@ async fn run_server_function_exists() {
     // because it blocks on stdio. Instead, verify AnkiAtlasServer can be
     // created and has the expected tools.
     let server = AnkiAtlasServer::new();
-    assert_eq!(server.tool_count(), 9);
+    assert_eq!(server.tool_count(), 3);
 }
 
 // --- run_server runtime behavior ---
