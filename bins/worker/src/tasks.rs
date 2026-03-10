@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::PathBuf;
 
 use jobs::error::JobError;
 use jobs::tasks::TaskContext;
@@ -30,7 +30,7 @@ pub async fn job_sync(
     let summary = services
         .sync
         .sync_collection(
-            Path::new(&payload.source),
+            PathBuf::from(&payload.source),
             payload.run_migrations,
             payload.index,
             payload.force_reindex,

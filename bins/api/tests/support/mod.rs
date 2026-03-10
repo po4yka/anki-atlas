@@ -26,6 +26,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 const QDRANT_COLLECTION_NAME: &str = "anki_notes";
+const QDRANT_IMAGE_TAG: &str = "v1.16.3";
 
 pub struct SeedNote<'a> {
     pub note_id: i64,
@@ -86,7 +87,7 @@ impl TestStack {
             .start()
             .await
             .context("start redis container")?;
-        let qdrant = GenericImage::new("qdrant/qdrant", "latest")
+        let qdrant = GenericImage::new("qdrant/qdrant", QDRANT_IMAGE_TAG)
             .with_exposed_port(6333.tcp())
             .start()
             .await
@@ -636,13 +637,16 @@ fn default_env(settings: &Settings) -> HashMap<String, String> {
 async fn wait_for_qdrant_ready(qdrant_url: &str) -> Result<()> {
     let client = reqwest::Client::new();
     let deadline = Instant::now() + Duration::from_secs(30);
+    let readiness_paths = ["readyz", "healthz"];
 
     loop {
-        let response = client.get(format!("{qdrant_url}/readyz")).send().await;
-        if let Ok(response) = response
-            && response.status().is_success()
-        {
-            return Ok(());
+        for path in readiness_paths {
+            let response = client.get(format!("{qdrant_url}/{path}")).send().await;
+            if let Ok(response) = response
+                && response.status().is_success()
+            {
+                return Ok(());
+            }
         }
 
         if Instant::now() >= deadline {

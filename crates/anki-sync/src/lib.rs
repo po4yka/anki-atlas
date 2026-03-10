@@ -14,7 +14,7 @@ pub(crate) fn now_secs() -> f64 {
         .as_secs_f64()
 }
 
-pub use core::{SyncService, SyncStats, sync_anki_collection};
+pub use core::{SyncService, SyncStats, sync_anki_collection, sync_anki_collection_owned};
 pub use engine::{SyncEngine, SyncResult};
 pub use progress::{ProgressTracker, SyncPhase, SyncProgress, VALID_STATS};
 pub use recovery::{CardRecovery, CardTransaction, RollbackAction};

@@ -38,6 +38,11 @@ pub static MIGRATIONS: &[(&str, &str)] = &[
 /// 4. Each migration runs in its own transaction (applied atomically).
 #[instrument(skip_all)]
 pub async fn run_migrations(pool: &PgPool) -> Result<MigrationResult> {
+    run_migrations_owned(pool.clone()).await
+}
+
+#[instrument(skip_all)]
+pub async fn run_migrations_owned(pool: PgPool) -> Result<MigrationResult> {
     // 1. Create tracking table
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -45,13 +50,13 @@ pub async fn run_migrations(pool: &PgPool) -> Result<MigrationResult> {
             applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )",
     )
-    .execute(pool)
+    .execute(&pool)
     .await
     .map_err(migration_error("failed to create schema_migrations table"))?;
 
     // 2. Load already-applied migrations
     let applied_rows: Vec<String> = sqlx::query_scalar("SELECT name FROM schema_migrations")
-        .fetch_all(pool)
+        .fetch_all(&pool)
         .await
         .map_err(migration_error("failed to query schema_migrations"))?;
     let already_applied: HashSet<&str> = applied_rows.iter().map(|s| s.as_str()).collect();
@@ -72,7 +77,7 @@ pub async fn run_migrations(pool: &PgPool) -> Result<MigrationResult> {
             "failed to begin transaction for {name}"
         )))?;
 
-        sqlx::query(sql)
+        sqlx::raw_sql(sql)
             .execute(&mut *txn)
             .await
             .map_err(migration_error(&format!("migration {name} failed")))?;

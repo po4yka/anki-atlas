@@ -7,7 +7,7 @@ pub async fn run(args: &SyncArgs, services: &SurfaceServices) -> anyhow::Result<
     let summary = services
         .sync
         .sync_collection(
-            &args.source,
+            args.source.clone(),
             !args.no_migrate,
             !args.no_index,
             args.force_reindex,

@@ -2,7 +2,7 @@ pub mod connection;
 pub mod migrations;
 pub mod pool;
 
-pub use migrations::{MigrationResult, run_migrations};
+pub use migrations::{MigrationResult, run_migrations, run_migrations_owned};
 pub use pool::{check_connection, create_pool};
 
 use std::collections::HashMap;

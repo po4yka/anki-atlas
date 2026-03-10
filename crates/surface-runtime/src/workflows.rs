@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 
 use anki_sync::SyncStats;
@@ -553,15 +555,14 @@ pub struct SyncExecutionService {
     indexer: Arc<dyn IndexExecutor>,
 }
 
-#[async_trait::async_trait]
 pub trait SyncExecutor: Send + Sync {
-    async fn sync_collection(
+    fn sync_collection(
         &self,
-        source: &Path,
+        source: PathBuf,
         run_migrations: bool,
         run_index: bool,
         force_reindex: bool,
-    ) -> Result<SyncExecutionSummary, SurfaceError>;
+    ) -> Pin<Box<dyn Future<Output = Result<SyncExecutionSummary, SurfaceError>> + '_>>;
 }
 
 impl SyncExecutionService {
@@ -578,44 +579,75 @@ impl SyncExecutionService {
 
     pub async fn sync_collection(
         &self,
-        source: &Path,
+        source: PathBuf,
         run_migrations: bool,
         run_index: bool,
         force_reindex: bool,
     ) -> Result<SyncExecutionSummary, SurfaceError> {
-        if !source.exists() {
-            return Err(SurfaceError::PathNotFound(source.to_path_buf()));
-        }
-        if run_migrations {
-            database::run_migrations(&self.db).await?;
-        }
-        let sync = anki_sync::sync_anki_collection(&self.db, source).await?;
-        let index = if run_index {
-            Some(self.indexer.index_all_notes(force_reindex).await?)
-        } else {
-            None
-        };
+        run_sync_collection(
+            self.db.clone(),
+            self.indexer.clone(),
+            source,
+            run_migrations,
+            run_index,
+            force_reindex,
+        )
+        .await
+    }
+}
 
-        Ok(SyncExecutionSummary {
-            source: source.to_path_buf(),
-            migrations_applied: run_migrations,
-            sync: sync.into(),
-            index,
+impl SyncExecutor for SyncExecutionService {
+    fn sync_collection(
+        &self,
+        source: PathBuf,
+        run_migrations: bool,
+        run_index: bool,
+        force_reindex: bool,
+    ) -> Pin<Box<dyn Future<Output = Result<SyncExecutionSummary, SurfaceError>> + '_>> {
+        let db = self.db.clone();
+        let indexer = self.indexer.clone();
+
+        Box::pin(async move {
+            run_sync_collection(
+                db,
+                indexer,
+                source,
+                run_migrations,
+                run_index,
+                force_reindex,
+            )
+            .await
         })
     }
 }
 
-#[async_trait::async_trait]
-impl SyncExecutor for SyncExecutionService {
-    async fn sync_collection(
-        &self,
-        source: &Path,
-        run_migrations: bool,
-        run_index: bool,
-        force_reindex: bool,
-    ) -> Result<SyncExecutionSummary, SurfaceError> {
-        Self::sync_collection(self, source, run_migrations, run_index, force_reindex).await
+async fn run_sync_collection(
+    db: PgPool,
+    indexer: Arc<dyn IndexExecutor>,
+    source: PathBuf,
+    run_migrations: bool,
+    run_index: bool,
+    force_reindex: bool,
+) -> Result<SyncExecutionSummary, SurfaceError> {
+    if !source.exists() {
+        return Err(SurfaceError::PathNotFound(source));
     }
+    if run_migrations {
+        database::run_migrations_owned(db.clone()).await?;
+    }
+    let sync = anki_sync::sync_anki_collection_owned(db, source.clone()).await?;
+    let index = if run_index {
+        Some(indexer.index_all_notes(force_reindex).await?)
+    } else {
+        None
+    };
+
+    Ok(SyncExecutionSummary {
+        source,
+        migrations_applied: run_migrations,
+        sync: sync.into(),
+        index,
+    })
 }
 
 struct UnsupportedVectorRepository;
