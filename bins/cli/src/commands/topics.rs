@@ -3,9 +3,11 @@ use crate::args::TopicsArgs;
 /// Manage topic taxonomy.
 pub async fn run(args: &TopicsArgs) -> anyhow::Result<()> {
     if let Some(ref file) = args.file {
-        println!("Loading topics from {}", file.display());
-    } else {
-        println!("Listing topics.");
+        anyhow::bail!(
+            "topics CLI is not wired to taxonomy services yet for file {}",
+            file.display()
+        );
     }
-    Ok(())
+
+    anyhow::bail!("topics CLI is not wired to taxonomy services yet");
 }

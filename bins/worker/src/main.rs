@@ -1,3 +1,5 @@
+use std::env;
+
 pub mod config;
 pub mod dispatcher;
 pub mod envelope;
@@ -12,6 +14,21 @@ use jobs::JobRecord;
 /// Redis-backed queue backend for production use.
 struct RedisQueueBackend {
     client: rustis::client::Client,
+}
+
+fn ensure_worker_runtime_enabled() -> anyhow::Result<()> {
+    let enabled = env::var("ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER")
+        .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false);
+
+    if enabled {
+        return Ok(());
+    }
+
+    anyhow::bail!(
+        "anki-atlas-worker is disabled until background job task execution is implemented; \
+set ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1 only for development and test runs"
+    )
 }
 
 impl RedisQueueBackend {
@@ -62,6 +79,8 @@ async fn main() -> anyhow::Result<()> {
     })?;
 
     let config = WorkerConfig::from_job_settings(&job_settings);
+
+    ensure_worker_runtime_enabled()?;
 
     tracing::info!(queue = %config.queue_name, concurrency = config.max_concurrency, "starting worker");
 

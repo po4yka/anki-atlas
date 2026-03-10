@@ -5,6 +5,7 @@ use axum::response::{IntoResponse, Response};
 use serde_json::json;
 use tracing::instrument;
 
+use crate::error::AppError;
 use crate::schemas::{IndexRequest, IndexResponse, SyncRequest};
 
 /// Synchronous sync endpoint. Validates the source path and extension.
@@ -45,24 +46,20 @@ pub async fn sync(body: Result<Json<SyncRequest>, JsonRejection>) -> Response {
             .into_response();
     }
 
-    // Stub: real implementation would call sync service
     let _ = req;
-    (
-        StatusCode::OK,
-        Json(json!({ "status": "completed", "message": "sync not yet implemented" })),
+    super::unwired_surface(
+        "the synchronous /sync endpoint",
+        "use /jobs/sync until the direct sync service is wired",
     )
-        .into_response()
+    .into_response()
 }
 
 /// Index all notes. Returns processing statistics.
 #[instrument(skip(_req))]
-pub async fn index_notes(Json(_req): Json<IndexRequest>) -> Json<IndexResponse> {
-    Json(IndexResponse {
-        status: "completed".into(),
-        notes_processed: 0,
-        notes_embedded: 0,
-        notes_skipped: 0,
-        notes_deleted: 0,
-        errors: vec![],
-    })
+pub async fn index_notes(Json(_req): Json<IndexRequest>) -> Result<Response, AppError> {
+    let _response_shape: Option<IndexResponse> = None;
+    Err(super::unwired_surface(
+        "the synchronous /index endpoint",
+        "use /jobs/index until the direct index service is wired",
+    ))
 }

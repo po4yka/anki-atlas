@@ -1,9 +1,16 @@
 use super::*;
 use crate::config::WorkerConfig;
 use crate::envelope::JobEnvelope;
-use jobs::{IndexJobPayload, JobPayload, JobRecord, JobStatus, JobType, SyncJobPayload};
+use jobs::{
+    IndexJobPayload, JobManager, JobPayload, JobRecord, JobStatus, JobType, RedisJobManager,
+    SyncJobPayload,
+};
+use std::future::Future;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use testcontainers::runners::AsyncRunner;
+use testcontainers_modules::redis::{REDIS_PORT, Redis};
 
 fn test_config() -> WorkerConfig {
     WorkerConfig {
@@ -62,6 +69,95 @@ fn test_envelope(job_id: &str, job_type: JobType) -> JobEnvelope {
     }
 }
 
+async fn wait_until<F>(timeout: Duration, mut condition: F)
+where
+    F: FnMut() -> bool,
+{
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        if condition() {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "condition not met within {:?}",
+            timeout
+        );
+        tokio::task::yield_now().await;
+    }
+}
+
+async fn wait_until_async<F, Fut>(timeout: Duration, mut condition: F)
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = bool>,
+{
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        if condition().await {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "async condition not met within {:?}",
+            timeout
+        );
+        tokio::task::yield_now().await;
+    }
+}
+
+async fn shutdown_and_join<Q: QueueBackend + 'static>(
+    worker: &Arc<Worker<Q>>,
+    handle: tokio::task::JoinHandle<anyhow::Result<()>>,
+) {
+    worker.shutdown(Duration::from_secs(1)).await;
+    let result = tokio::time::timeout(Duration::from_secs(2), handle).await;
+    assert!(result.is_ok(), "worker task should shut down cleanly");
+}
+
+struct RealRedisBackend {
+    client: rustis::client::Client,
+}
+
+impl RealRedisBackend {
+    async fn connect(redis_url: &str) -> anyhow::Result<Self> {
+        Ok(Self {
+            client: jobs::connection::create_redis_client(redis_url)
+                .await
+                .map_err(anyhow::Error::from)?,
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl QueueBackend for RealRedisBackend {
+    async fn brpop(&self, key: &str, timeout: f64) -> anyhow::Result<Option<String>> {
+        use rustis::commands::BlockingCommands;
+
+        let result: Option<(String, String)> = self.client.brpop(key, timeout).await?;
+        Ok(result.map(|(_, value)| value))
+    }
+
+    async fn lpush(&self, key: &str, value: &str) -> anyhow::Result<()> {
+        use rustis::commands::ListCommands;
+
+        let _: usize = self.client.lpush(key, value).await?;
+        Ok(())
+    }
+
+    async fn load_job_record(&self, job_id: &str) -> anyhow::Result<Option<JobRecord>> {
+        jobs::persistence::load_job_record(&self.client, job_id)
+            .await
+            .map_err(anyhow::Error::from)
+    }
+
+    async fn save_job_record(&self, record: &JobRecord, ttl_seconds: u64) -> anyhow::Result<()> {
+        jobs::persistence::save_job_record(&self.client, record, ttl_seconds)
+            .await
+            .map_err(anyhow::Error::from)
+    }
+}
+
 // --- Send + Sync compile-time assertions ---
 
 #[test]
@@ -106,29 +202,30 @@ fn new_stores_config() {
 async fn run_blocks_until_shutdown_signal() {
     let config = test_config();
     let mut mock = MockQueueBackend::new();
+    let brpop_count = Arc::new(AtomicU32::new(0));
+    let brpop_count_clone = Arc::clone(&brpop_count);
 
-    mock.expect_brpop()
-        .returning(|_, _| Box::pin(async { Ok(None) }));
+    mock.expect_brpop().returning(move |_, _| {
+        brpop_count_clone.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async { Ok(None) })
+    });
 
     let worker = Arc::new(Worker::new(config, mock));
     let worker_clone = Arc::clone(&worker);
 
     let run_handle = tokio::spawn(async move { worker_clone.run().await });
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_until(Duration::from_secs(1), || {
+        brpop_count.load(Ordering::SeqCst) > 0
+    })
+    .await;
 
     assert!(
         !run_handle.is_finished(),
         "run() should block until shutdown"
     );
 
-    worker.shutdown(Duration::from_secs(1)).await;
-
-    let result = tokio::time::timeout(Duration::from_secs(2), run_handle).await;
-    assert!(
-        result.is_ok(),
-        "run() should complete after shutdown signal"
-    );
+    shutdown_and_join(&worker, run_handle).await;
 }
 
 #[tokio::test]
@@ -168,17 +265,23 @@ async fn processes_valid_job_envelope_from_queue() {
         Box::pin(async { Ok(Some(record)) })
     });
 
-    mock.expect_save_job_record()
-        .returning(|_, _| Box::pin(async { Ok(()) }));
+    let save_count = Arc::new(AtomicU32::new(0));
+    let save_count_clone = Arc::clone(&save_count);
+    mock.expect_save_job_record().returning(move |_, _| {
+        save_count_clone.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async { Ok(()) })
+    });
 
     let worker = Arc::new(Worker::new(config, mock));
     let worker_clone = Arc::clone(&worker);
 
     let handle = tokio::spawn(async move { worker_clone.run().await });
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    worker.shutdown(Duration::from_secs(1)).await;
-    let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
+    wait_until(Duration::from_secs(1), || {
+        save_count.load(Ordering::SeqCst) > 0
+    })
+    .await;
+    shutdown_and_join(&worker, handle).await;
 }
 
 #[tokio::test]
@@ -225,9 +328,11 @@ async fn sets_job_status_to_running_before_dispatch() {
 
     let handle = tokio::spawn(async move { worker_clone.run().await });
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    worker.shutdown(Duration::from_secs(1)).await;
-    let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
+    wait_until(Duration::from_secs(1), || {
+        save_call.load(Ordering::SeqCst) >= 1
+    })
+    .await;
+    shutdown_and_join(&worker, handle).await;
 
     assert!(
         save_call.load(Ordering::SeqCst) >= 1,
@@ -257,7 +362,7 @@ async fn sets_job_status_to_failed_on_terminal_task_error() {
         Box::pin(async { Ok(Some(record)) })
     });
 
-    let final_status = Arc::new(std::sync::Mutex::new(None));
+    let final_status = Arc::new(Mutex::new(None));
     let final_status_clone = Arc::clone(&final_status);
     mock.expect_save_job_record().returning(move |record, _| {
         let status = record.status;
@@ -275,9 +380,11 @@ async fn sets_job_status_to_failed_on_terminal_task_error() {
 
     let handle = tokio::spawn(async move { worker_clone.run().await });
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    worker.shutdown(Duration::from_secs(1)).await;
-    let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
+    wait_until(Duration::from_secs(1), || {
+        *final_status.lock().unwrap() == Some(JobStatus::Failed)
+    })
+    .await;
+    shutdown_and_join(&worker, handle).await;
 
     let status = final_status.lock().unwrap();
     assert_eq!(
@@ -310,10 +417,13 @@ async fn does_not_reenqueue_terminal_task_failures() {
         Box::pin(async { Ok(Some(record)) })
     });
 
-    mock.expect_save_job_record()
-        .returning(|_, _| Box::pin(async { Ok(()) }));
+    let save_count = Arc::new(AtomicU32::new(0));
+    let save_count_clone = Arc::clone(&save_count);
+    mock.expect_save_job_record().returning(move |_, _| {
+        save_count_clone.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async { Ok(()) })
+    });
 
-    let lpush_called = Arc::new(AtomicU32::new(0));
     mock.expect_lpush().times(0);
 
     let worker = Arc::new(Worker::new(config, mock));
@@ -321,14 +431,11 @@ async fn does_not_reenqueue_terminal_task_failures() {
 
     let handle = tokio::spawn(async move { worker_clone.run().await });
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    worker.shutdown(Duration::from_secs(1)).await;
-    let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
-
-    assert!(
-        lpush_called.load(Ordering::SeqCst) == 0,
-        "terminal task failures should not re-enqueue work"
-    );
+    wait_until(Duration::from_secs(1), || {
+        save_count.load(Ordering::SeqCst) > 0
+    })
+    .await;
+    shutdown_and_join(&worker, handle).await;
 }
 
 #[tokio::test]
@@ -355,7 +462,7 @@ async fn marks_job_failed_after_terminal_task_execution() {
         Box::pin(async { Ok(Some(record)) })
     });
 
-    let final_status = Arc::new(std::sync::Mutex::new(None));
+    let final_status = Arc::new(Mutex::new(None));
     let final_status_clone = Arc::clone(&final_status);
     mock.expect_save_job_record().returning(move |record, _| {
         let status = record.status;
@@ -366,7 +473,6 @@ async fn marks_job_failed_after_terminal_task_execution() {
         })
     });
 
-    let lpush_called = Arc::new(AtomicU32::new(0));
     mock.expect_lpush().times(0);
 
     let worker = Arc::new(Worker::new(config, mock));
@@ -374,15 +480,12 @@ async fn marks_job_failed_after_terminal_task_execution() {
 
     let handle = tokio::spawn(async move { worker_clone.run().await });
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    worker.shutdown(Duration::from_secs(1)).await;
-    let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
+    wait_until(Duration::from_secs(1), || {
+        *final_status.lock().unwrap() == Some(JobStatus::Failed)
+    })
+    .await;
+    shutdown_and_join(&worker, handle).await;
 
-    assert_eq!(
-        lpush_called.load(Ordering::SeqCst),
-        0,
-        "terminal task failures should not re-enqueue"
-    );
     assert_eq!(
         *final_status.lock().unwrap(),
         Some(JobStatus::Failed),
@@ -426,9 +529,11 @@ async fn handles_empty_queue_by_polling_again() {
 
     let handle = tokio::spawn(async move { worker_clone.run().await });
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    worker.shutdown(Duration::from_secs(1)).await;
-    let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
+    wait_until(Duration::from_secs(1), || {
+        poll_count.load(Ordering::SeqCst) >= 2
+    })
+    .await;
+    shutdown_and_join(&worker, handle).await;
 
     let polls = poll_count.load(Ordering::SeqCst);
     assert!(
@@ -462,14 +567,11 @@ async fn skips_malformed_envelope_without_crashing() {
 
     let handle = tokio::spawn(async move { worker_clone.run().await });
 
-    tokio::time::sleep(Duration::from_millis(150)).await;
-    worker.shutdown(Duration::from_secs(1)).await;
-
-    let result = tokio::time::timeout(Duration::from_secs(2), handle).await;
-    assert!(
-        result.is_ok(),
-        "worker should not crash on malformed envelope"
-    );
+    wait_until(Duration::from_secs(1), || {
+        brpop_count.load(Ordering::SeqCst) >= 2
+    })
+    .await;
+    shutdown_and_join(&worker, handle).await;
 }
 
 // --- Graceful shutdown ---
@@ -513,15 +615,11 @@ async fn graceful_shutdown_waits_for_inflight_jobs() {
 
     let handle = tokio::spawn(async move { worker_clone.run().await });
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    worker.shutdown(Duration::from_secs(5)).await;
-
-    let result = tokio::time::timeout(Duration::from_secs(3), handle).await;
-    assert!(
-        result.is_ok(),
-        "shutdown should complete after in-flight jobs finish"
-    );
+    wait_until(Duration::from_secs(1), || {
+        save_count.load(Ordering::SeqCst) > 0
+    })
+    .await;
+    shutdown_and_join(&worker, handle).await;
 
     assert!(
         save_count.load(Ordering::SeqCst) > 0,
@@ -554,9 +652,11 @@ async fn brpop_uses_configured_queue_name_and_timeout() {
 
     let handle = tokio::spawn(async move { worker_clone.run().await });
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    worker.shutdown(Duration::from_secs(1)).await;
-    let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
+    wait_until(Duration::from_secs(1), || {
+        brpop_queue.lock().unwrap().is_some()
+    })
+    .await;
+    shutdown_and_join(&worker, handle).await;
 
     assert_eq!(
         *brpop_queue.lock().unwrap(),
@@ -568,4 +668,78 @@ async fn brpop_uses_configured_queue_name_and_timeout() {
         Some(expected_timeout),
         "brpop should use poll_interval as timeout"
     );
+}
+
+#[tokio::test]
+async fn redis_manager_and_worker_drive_terminal_job_status() {
+    let (redis_url, _container) = match Redis::default().start().await {
+        Ok(container) => {
+            let host = container.get_host().await.expect("redis host");
+            let port = container
+                .get_host_port_ipv4(REDIS_PORT)
+                .await
+                .expect("redis port");
+            (format!("redis://{host}:{port}/0"), container)
+        }
+        Err(error) => {
+            eprintln!("skipping redis e2e test: {error}");
+            return;
+        }
+    };
+    let queue_name = "test:jobs:e2e";
+    let manager = RedisJobManager::new(&redis_url, queue_name, 3, 3600)
+        .await
+        .expect("create job manager");
+    let job = manager
+        .enqueue_sync_job(
+            SyncJobPayload {
+                source: "/tmp/collection.anki2".to_string(),
+                run_migrations: true,
+                index: true,
+                force_reindex: false,
+            },
+            None,
+        )
+        .await
+        .expect("enqueue sync job");
+
+    let mut config = test_config();
+    config.redis_url = redis_url.clone();
+    config.queue_name = queue_name.to_string();
+    config.poll_interval = Duration::from_millis(10);
+
+    let backend = RealRedisBackend::connect(&redis_url)
+        .await
+        .expect("connect worker backend");
+    let worker = Arc::new(Worker::new(config, backend));
+    let worker_clone = Arc::clone(&worker);
+    let handle = tokio::spawn(async move { worker_clone.run().await });
+
+    wait_until_async(Duration::from_secs(3), || {
+        let manager = &manager;
+        let job_id = job.job_id.clone();
+        async move {
+            matches!(
+                manager.get_job(&job_id).await,
+                Ok(record) if record.status == JobStatus::Failed
+            )
+        }
+    })
+    .await;
+
+    let persisted = manager
+        .get_job(&job.job_id)
+        .await
+        .expect("load persisted job");
+    assert_eq!(persisted.status, JobStatus::Failed);
+    assert!(
+        persisted
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("not implemented yet"),
+        "terminal job error should explain the unsupported execution path"
+    );
+
+    shutdown_and_join(&worker, handle).await;
 }

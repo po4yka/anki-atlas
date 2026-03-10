@@ -1,11 +1,13 @@
-use axum::Json;
-use serde_json::{Value, json};
+use axum::response::Response;
 use tracing::instrument;
+
+use crate::error::AppError;
 
 /// Returns information about the current search index state.
 #[instrument]
-pub async fn index_info() -> Json<Value> {
-    Json(json!({
-        "status": "not_implemented",
-    }))
+pub async fn index_info() -> Result<Response, AppError> {
+    Err(super::unwired_surface(
+        "the /index/info endpoint",
+        "wire it to the real indexer status source before exposing it",
+    ))
 }

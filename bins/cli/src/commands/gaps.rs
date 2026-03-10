@@ -2,6 +2,8 @@ use crate::args::GapsArgs;
 
 /// Detect gaps in topic coverage.
 pub async fn run(args: &GapsArgs) -> anyhow::Result<()> {
-    println!("Gaps for topic: {}", args.topic);
-    Ok(())
+    anyhow::bail!(
+        "gaps CLI is not wired to the analytics service yet for topic {}",
+        args.topic
+    );
 }

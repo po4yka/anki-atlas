@@ -95,31 +95,54 @@ fn obsidian_sync_with_nonexistent_vault_fails() {
 
 #[test]
 fn index_command_runs() {
-    // Should succeed or fail gracefully, not panic
-    cmd().arg("index").assert().success();
+    cmd()
+        .arg("index")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not wired"));
 }
 
 #[test]
 fn search_command_with_query_runs() {
-    cmd().args(["search", "test query"]).assert().success();
+    cmd()
+        .args(["search", "test query"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not wired"));
 }
 
 #[test]
 fn duplicates_command_runs() {
-    cmd().arg("duplicates").assert().success();
+    cmd()
+        .arg("duplicates")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not wired"));
 }
 
 #[test]
 fn topics_command_runs() {
-    cmd().arg("topics").assert().success();
+    cmd()
+        .arg("topics")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not wired"));
 }
 
 #[test]
 fn coverage_command_with_topic_runs() {
-    cmd().args(["coverage", "test/topic"]).assert().success();
+    cmd()
+        .args(["coverage", "test/topic"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not wired"));
 }
 
 #[test]
 fn gaps_command_with_topic_runs() {
-    cmd().args(["gaps", "test/topic"]).assert().success();
+    cmd()
+        .args(["gaps", "test/topic"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not wired"));
 }
