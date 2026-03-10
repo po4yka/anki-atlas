@@ -173,4 +173,6 @@ jobs:
           ANKIATLAS_EMBEDDING_MODEL: mock/test
           ANKIATLAS_EMBEDDING_DIMENSION: "384"
           ANKIATLAS_RERANK_ENABLED: "false"
-        run: cargo test -p anki-atlas-api --test project_surface_flows -- --test-threads=1
+        run: |
+          cargo test -p anki-atlas-api --test project_surface_flows -- --test-threads=1
+          cargo test -p anki-atlas-api --test project_cli_runtime_flows -- --test-threads=1

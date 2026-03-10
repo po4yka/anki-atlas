@@ -1,4 +1,7 @@
+#![allow(dead_code)]
+
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
@@ -23,6 +26,22 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 const QDRANT_COLLECTION_NAME: &str = "anki_notes";
+
+pub struct SeedNote<'a> {
+    pub note_id: i64,
+    pub card_id: i64,
+    pub deck_id: i64,
+    pub deck_name: &'a str,
+    pub model_id: i64,
+    pub model_name: &'a str,
+    pub tags: Vec<&'a str>,
+    pub normalized_text: &'a str,
+    pub raw_fields: &'a str,
+    pub ivl: i32,
+    pub lapses: i32,
+    pub reps: i32,
+    pub fail_rate: Option<f32>,
+}
 
 pub struct WorkerProcess {
     child: Child,
@@ -219,6 +238,143 @@ impl TestStack {
         .context("seed sqlite fixture")?;
 
         Ok(path)
+    }
+
+    pub fn create_taxonomy_fixture(&self, file_name: &str) -> Result<PathBuf> {
+        let path = self.fixture_dir.path().join(file_name);
+        fs::write(
+            &path,
+            r#"topics:
+  - path: rust
+    label: Rust
+    description: Systems programming and memory safety.
+    children:
+      - path: rust/ownership
+        label: Ownership
+        description: Ownership rules and move semantics.
+      - path: rust/borrowing
+        label: Borrowing
+        description: Shared and mutable borrowing.
+"#,
+        )
+        .context("write taxonomy fixture")?;
+        Ok(path)
+    }
+
+    pub async fn seed_note(&self, seed: SeedNote<'_>) -> Result<()> {
+        let tags = seed
+            .tags
+            .into_iter()
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+
+        sqlx::query(
+            "INSERT INTO decks (deck_id, name, parent_name) \
+             VALUES ($1, $2, NULL) \
+             ON CONFLICT (deck_id) DO UPDATE SET name = EXCLUDED.name",
+        )
+        .bind(seed.deck_id)
+        .bind(seed.deck_name)
+        .execute(&self.pool)
+        .await
+        .context("upsert deck")?;
+
+        sqlx::query(
+            "INSERT INTO models (model_id, name, fields, templates) \
+             VALUES ($1, $2, $3, $4) \
+             ON CONFLICT (model_id) DO UPDATE SET name = EXCLUDED.name",
+        )
+        .bind(seed.model_id)
+        .bind(seed.model_name)
+        .bind(serde_json::json!(["Front", "Back"]))
+        .bind(serde_json::json!(["Card 1"]))
+        .execute(&self.pool)
+        .await
+        .context("upsert model")?;
+
+        sqlx::query(
+            "INSERT INTO notes \
+             (note_id, model_id, tags, fields_json, raw_fields, normalized_text, mtime, usn) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(seed.note_id)
+        .bind(seed.model_id)
+        .bind(&tags)
+        .bind(serde_json::json!({
+            "Front": seed.normalized_text,
+            "Back": format!("Answer for {}", seed.note_id),
+        }))
+        .bind(seed.raw_fields)
+        .bind(seed.normalized_text)
+        .bind(seed.note_id)
+        .bind(0_i32)
+        .execute(&self.pool)
+        .await
+        .with_context(|| format!("insert note {}", seed.note_id))?;
+
+        sqlx::query(
+            "INSERT INTO cards \
+             (card_id, note_id, deck_id, ord, due, ivl, ease, lapses, reps, queue, type, mtime, usn) \
+             VALUES ($1, $2, $3, 0, 0, $4, 2500, $5, $6, 0, 2, $7, 0)",
+        )
+        .bind(seed.card_id)
+        .bind(seed.note_id)
+        .bind(seed.deck_id)
+        .bind(seed.ivl)
+        .bind(seed.lapses)
+        .bind(seed.reps)
+        .bind(seed.note_id)
+        .execute(&self.pool)
+        .await
+        .with_context(|| format!("insert card {}", seed.card_id))?;
+
+        sqlx::query(
+            "INSERT INTO card_stats \
+             (card_id, reviews, avg_ease, fail_rate, last_review_at, total_time_ms) \
+             VALUES ($1, $2, 2.5, $3, NOW(), $4)",
+        )
+        .bind(seed.card_id)
+        .bind(seed.reps)
+        .bind(seed.fail_rate)
+        .bind(i64::from(seed.reps) * 1_000_i64)
+        .execute(&self.pool)
+        .await
+        .with_context(|| format!("insert card stats {}", seed.card_id))?;
+
+        Ok(())
+    }
+
+    pub async fn assign_topic(
+        &self,
+        note_id: i64,
+        topic_path: &str,
+        confidence: f32,
+        method: &str,
+    ) -> Result<()> {
+        let topic_id = self.topic_id(topic_path).await?;
+        sqlx::query(
+            "INSERT INTO note_topics (note_id, topic_id, confidence, method) \
+             VALUES ($1, $2, $3, $4) \
+             ON CONFLICT (note_id, topic_id) DO UPDATE \
+             SET confidence = EXCLUDED.confidence, method = EXCLUDED.method",
+        )
+        .bind(note_id)
+        .bind(topic_id as i32)
+        .bind(confidence)
+        .bind(method)
+        .execute(&self.pool)
+        .await
+        .with_context(|| format!("assign topic {topic_path} to note {note_id}"))?;
+        Ok(())
+    }
+
+    pub async fn topic_id(&self, topic_path: &str) -> Result<i64> {
+        let topic_id = sqlx::query_scalar::<_, i32>("SELECT topic_id FROM topics WHERE path = $1")
+            .bind(topic_path)
+            .fetch_one(&self.pool)
+            .await
+            .with_context(|| format!("fetch topic id for {topic_path}"))?;
+        Ok(i64::from(topic_id))
     }
 
     pub fn run_cli(&self, args: &[&str]) -> Result<Output> {
