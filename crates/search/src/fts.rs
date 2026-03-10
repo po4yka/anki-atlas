@@ -223,7 +223,7 @@ pub async fn search_lexical(
 
     // Stage 1: Full-text search
     let fts_sql = format!(
-        "SELECT n.note_id AS note_id, ts_rank(to_tsvector('english', n.normalized_text), plainto_tsquery('english', $1)) AS rank, \
+        "SELECT n.note_id AS note_id, ts_rank(to_tsvector('english', n.normalized_text), plainto_tsquery('english', $1))::float8 AS rank, \
          ts_headline('english', n.normalized_text, plainto_tsquery('english', $1)) AS headline \
          FROM notes n {join} WHERE n.deleted_at IS NULL \
          AND to_tsvector('english', n.normalized_text) @@ plainto_tsquery('english', $1) {filter_sql} \
@@ -247,7 +247,7 @@ pub async fn search_lexical(
 
     // Stage 2: Fuzzy search fallback
     let fuzzy_sql = format!(
-        "SELECT n.note_id AS note_id, similarity(n.normalized_text, $1) AS rank, \
+        "SELECT n.note_id AS note_id, similarity(n.normalized_text, $1)::float8 AS rank, \
          NULL AS headline \
          FROM notes n {join} WHERE n.deleted_at IS NULL \
          AND similarity(n.normalized_text, $1) > 0.1 {filter_sql} \
@@ -271,7 +271,7 @@ pub async fn search_lexical(
 
     // Stage 3: Autocomplete fallback
     let auto_sql = format!(
-        "SELECT n.note_id AS note_id, 1.0 AS rank, NULL AS headline \
+        "SELECT n.note_id AS note_id, 1.0::float8 AS rank, NULL AS headline \
          FROM notes n {join} WHERE n.deleted_at IS NULL AND n.normalized_text ILIKE $1 {filter_sql} \
          {group_by} ORDER BY n.note_id LIMIT $2",
     );
