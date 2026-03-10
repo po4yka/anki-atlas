@@ -18,7 +18,6 @@ common = { path = "../../crates/common" }
 jobs = { path = "../../crates/jobs" }
 
 anyhow = { workspace = true }
-async-trait = { workspace = true }
 axum = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
@@ -31,6 +30,7 @@ tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+async-trait = { workspace = true }
 axum-test = "16"
 mockall = { workspace = true }
 serde_json = { workspace = true }

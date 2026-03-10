@@ -9,8 +9,6 @@ license.workspace = true
 common = { path = "../common" }
 database = { path = "../database" }
 indexer = { path = "../indexer" }
-async-trait = { workspace = true }
-tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
@@ -19,6 +17,6 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-mockall = { workspace = true }
 tokio = { workspace = true }
+mockall = { workspace = true }
 tempfile = { workspace = true }

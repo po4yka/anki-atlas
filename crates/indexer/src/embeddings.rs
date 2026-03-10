@@ -7,6 +7,14 @@ use sha2::{Digest, Sha256};
 pub enum EmbeddingError {
     #[error("provider not configured: {0}")]
     NotConfigured(String),
+    #[error("http {status}: {body}")]
+    Http { status: u16, body: String },
+    #[error("retry attempts exhausted after {attempts} tries (last http {status}: {body})")]
+    RetryExhausted {
+        attempts: u32,
+        status: u16,
+        body: String,
+    },
     #[error("batch embedding failed: {source}")]
     BatchFailed {
         source: Box<dyn std::error::Error + Send + Sync>,
@@ -186,23 +194,27 @@ impl EmbeddingProvider for OpenAiEmbeddingProvider {
                     break;
                 }
 
+                let body_text = response.text().await.unwrap_or_default();
+
                 if !RETRYABLE_STATUS_CODES.contains(&status) {
-                    let body_text = response.text().await.unwrap_or_default();
-                    return Err(EmbeddingError::BatchFailed {
-                        source: format!("HTTP {status}: {body_text}").into(),
+                    return Err(EmbeddingError::Http {
+                        status,
+                        body: body_text,
                     });
                 }
 
-                last_err = Some(format!("HTTP {status}"));
+                last_err = Some((status, body_text));
                 if attempt + 1 < MAX_RETRIES {
                     let delay = std::time::Duration::from_secs(1 << (attempt + 1));
                     tokio::time::sleep(delay).await;
                 }
             }
 
-            if let Some(err) = last_err {
-                return Err(EmbeddingError::BatchFailed {
-                    source: format!("retries exhausted: {err}").into(),
+            if let Some((status, body)) = last_err {
+                return Err(EmbeddingError::RetryExhausted {
+                    attempts: MAX_RETRIES,
+                    status,
+                    body,
                 });
             }
         }
@@ -314,23 +326,27 @@ impl EmbeddingProvider for GoogleEmbeddingProvider {
                     break;
                 }
 
+                let body_text = response.text().await.unwrap_or_default();
+
                 if !RETRYABLE_STATUS_CODES.contains(&status) {
-                    let body_text = response.text().await.unwrap_or_default();
-                    return Err(EmbeddingError::BatchFailed {
-                        source: format!("HTTP {status}: {body_text}").into(),
+                    return Err(EmbeddingError::Http {
+                        status,
+                        body: body_text,
                     });
                 }
 
-                last_err = Some(format!("HTTP {status}"));
+                last_err = Some((status, body_text));
                 if attempt + 1 < MAX_RETRIES {
                     let delay = std::time::Duration::from_secs(1 << (attempt + 1));
                     tokio::time::sleep(delay).await;
                 }
             }
 
-            if let Some(err) = last_err {
-                return Err(EmbeddingError::BatchFailed {
-                    source: format!("retries exhausted: {err}").into(),
+            if let Some((status, body)) = last_err {
+                return Err(EmbeddingError::RetryExhausted {
+                    attempts: MAX_RETRIES,
+                    status,
+                    body,
                 });
             }
         }

@@ -200,6 +200,30 @@ fn embedding_error_is_send_sync() {
     assert_send_sync::<EmbeddingError>();
 }
 
+#[test]
+fn embedding_error_http_preserves_status_and_body() {
+    let err = EmbeddingError::Http {
+        status: 503,
+        body: "backend unavailable".to_string(),
+    };
+    let message = err.to_string();
+    assert!(message.contains("503"));
+    assert!(message.contains("backend unavailable"));
+}
+
+#[test]
+fn embedding_error_retry_exhausted_preserves_last_http_failure() {
+    let err = EmbeddingError::RetryExhausted {
+        attempts: 5,
+        status: 429,
+        body: "rate limit".to_string(),
+    };
+    let message = err.to_string();
+    assert!(message.contains("5"));
+    assert!(message.contains("429"));
+    assert!(message.contains("rate limit"));
+}
+
 // ── Edge cases ────────────────────────────────────────────────────
 
 #[test]
