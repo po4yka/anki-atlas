@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 common = { path = "../../crates/common" }
 jobs = { path = "../../crates/jobs" }
+surface-runtime = { path = "../../crates/surface-runtime" }
 
 rustis = { workspace = true }
 serde = { workspace = true }

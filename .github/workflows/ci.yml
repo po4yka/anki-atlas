@@ -65,8 +65,8 @@ jobs:
       - name: cargo test
         run: cargo test --workspace --exclude anki-sync --exclude database
 
-  integration:
-    name: Integration Test
+  crate-integration:
+    name: Crate Integration Test
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -110,9 +110,67 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Run integration tests
+      - name: Run crate integration tests
         env:
           ANKIATLAS_POSTGRES_URL: postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas
           ANKIATLAS_QDRANT_URL: http://localhost:6333
           ANKIATLAS_REDIS_URL: redis://localhost:6379/0
-        run: cargo test --workspace -p anki-sync -p database
+        run: |
+          cargo test -p database --tests
+          cargo test -p anki-sync --tests
+
+  surface-integration:
+    name: Surface Integration Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ankiatlas
+          POSTGRES_PASSWORD: ankiatlas
+          POSTGRES_DB: ankiatlas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ankiatlas -d ankiatlas"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:6333/readyz || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.88.0
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run surface integration tests
+        env:
+          ANKIATLAS_POSTGRES_URL: postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas
+          ANKIATLAS_QDRANT_URL: http://localhost:6333
+          ANKIATLAS_REDIS_URL: redis://localhost:6379/0
+          ANKIATLAS_EMBEDDING_PROVIDER: mock
+          ANKIATLAS_EMBEDDING_MODEL: mock/test
+          ANKIATLAS_EMBEDDING_DIMENSION: "384"
+          ANKIATLAS_RERANK_ENABLED: "false"
+        run: cargo test -p anki-atlas-api --test project_surface_flows -- --test-threads=1

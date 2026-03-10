@@ -29,24 +29,86 @@ pub trait QueueBackend: Send + Sync {
     ) -> anyhow::Result<()>;
 }
 
+#[async_trait::async_trait]
+pub trait JobDispatcher: Send + Sync {
+    async fn dispatch(
+        &self,
+        ctx: &TaskContext,
+        envelope: &JobEnvelope,
+    ) -> Result<JobResultData, JobError>;
+}
+
+pub struct RuntimeDispatcher;
+
+#[async_trait::async_trait]
+impl JobDispatcher for RuntimeDispatcher {
+    async fn dispatch(
+        &self,
+        ctx: &TaskContext,
+        envelope: &JobEnvelope,
+    ) -> Result<JobResultData, JobError> {
+        crate::dispatcher::dispatch(ctx, envelope).await
+    }
+}
+
+#[cfg(test)]
+pub struct TestDispatcher;
+
+#[cfg(test)]
+#[async_trait::async_trait]
+impl JobDispatcher for TestDispatcher {
+    async fn dispatch(
+        &self,
+        _ctx: &TaskContext,
+        _envelope: &JobEnvelope,
+    ) -> Result<JobResultData, JobError> {
+        Err(JobError::Unsupported(
+            "task execution is stubbed in worker unit tests".to_string(),
+        ))
+    }
+}
+
+#[cfg(test)]
+type DefaultDispatcher = TestDispatcher;
+#[cfg(not(test))]
+type DefaultDispatcher = RuntimeDispatcher;
+
+#[cfg(test)]
+fn default_dispatcher() -> DefaultDispatcher {
+    TestDispatcher
+}
+
+#[cfg(not(test))]
+fn default_dispatcher() -> DefaultDispatcher {
+    RuntimeDispatcher
+}
+
 /// Background job worker that polls Redis and dispatches tasks.
-pub struct Worker<Q: QueueBackend> {
+pub struct Worker<Q: QueueBackend, D: JobDispatcher = DefaultDispatcher> {
     pub config: WorkerConfig,
     pub queue: Arc<Q>,
     pub semaphore: Arc<Semaphore>,
+    dispatcher: Arc<D>,
     shutdown_tx: tokio::sync::watch::Sender<bool>,
     pub shutdown_rx: tokio::sync::watch::Receiver<bool>,
 }
 
-impl<Q: QueueBackend + 'static> Worker<Q> {
+impl<Q: QueueBackend + 'static> Worker<Q, DefaultDispatcher> {
     /// Create a new worker with the given configuration and queue backend.
     pub fn new(config: WorkerConfig, queue: Q) -> Self {
+        Self::new_with_dispatcher(config, queue, default_dispatcher())
+    }
+}
+
+impl<Q: QueueBackend + 'static, D: JobDispatcher + 'static> Worker<Q, D> {
+    pub fn new_with_dispatcher(config: WorkerConfig, queue: Q, dispatcher: D) -> Self {
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
         let max_concurrency = config.max_concurrency;
         Self {
             config,
             queue: Arc::new(queue),
             semaphore: Arc::new(Semaphore::new(max_concurrency)),
+            dispatcher: Arc::new(dispatcher),
             shutdown_tx,
             shutdown_rx,
         }
@@ -132,7 +194,7 @@ impl<Q: QueueBackend + 'static> Worker<Q> {
             attempt: record.attempts,
         };
 
-        match crate::dispatcher::dispatch(&ctx, &envelope).await {
+        match self.dispatcher.dispatch(&ctx, &envelope).await {
             Ok(result) => self.finish_succeeded(&mut record, result).await,
             Err(error) => self.finish_error(&mut record, &envelope, error).await,
         }

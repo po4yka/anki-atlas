@@ -37,7 +37,13 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 async-trait = { workspace = true }
-axum-test = "16"
+database = { path = "../../crates/database" }
+escargot = "0.5"
 mockall = { workspace = true }
+reqwest = { workspace = true }
+rusqlite = { workspace = true }
 serde_json = { workspace = true }
+tempfile = { workspace = true }
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres", "redis"] }
 tokio = { workspace = true }

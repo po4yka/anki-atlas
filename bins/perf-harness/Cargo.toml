@@ -1,0 +1,21 @@
+[package]
+name = "perf-harness"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "perf-harness"
+path = "src/main.rs"
+
+[dependencies]
+common = { path = "../../crates/common" }
+perf-support = { path = "../../crates/perf-support" }
+
+anyhow = { workspace = true }
+goose = { workspace = true }
+gumdrop = "0.8.1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }

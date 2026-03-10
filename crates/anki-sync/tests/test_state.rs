@@ -20,9 +20,9 @@ fn open_creates_database_and_table() {
 
     // Table should exist: inserting should not panic
     let state = make_state("test-slug", "abc123");
-    db.upsert(&state);
+    db.upsert(&state).unwrap();
 
-    let retrieved = db.get("test-slug");
+    let retrieved = db.get("test-slug").unwrap();
     assert!(retrieved.is_some());
 }
 
@@ -46,9 +46,9 @@ fn upsert_inserts_new_state() {
     let db = StateDB::open(dir.path().join("state.db")).unwrap();
 
     let state = make_state("card-1", "hash-a");
-    db.upsert(&state);
+    db.upsert(&state).unwrap();
 
-    let retrieved = db.get("card-1").unwrap();
+    let retrieved = db.get("card-1").unwrap().unwrap();
     assert_eq!(retrieved.slug, "card-1");
     assert_eq!(retrieved.content_hash, "hash-a");
     assert_eq!(retrieved.anki_guid, None);
@@ -63,7 +63,7 @@ fn upsert_updates_existing_state() {
     let db = StateDB::open(dir.path().join("state.db")).unwrap();
 
     let state1 = make_state("card-1", "hash-a");
-    db.upsert(&state1);
+    db.upsert(&state1).unwrap();
 
     let state2 = CardState {
         slug: "card-1".to_string(),
@@ -73,9 +73,9 @@ fn upsert_updates_existing_state() {
         source_path: "notes/updated.md".to_string(),
         synced_at: 1700001000.0,
     };
-    db.upsert(&state2);
+    db.upsert(&state2).unwrap();
 
-    let retrieved = db.get("card-1").unwrap();
+    let retrieved = db.get("card-1").unwrap().unwrap();
     assert_eq!(retrieved.content_hash, "hash-b");
     assert_eq!(retrieved.anki_guid, Some(12345));
     assert_eq!(retrieved.note_type, "Cloze");
@@ -88,7 +88,7 @@ fn get_returns_none_for_missing_slug() {
     let dir = TempDir::new().unwrap();
     let db = StateDB::open(dir.path().join("state.db")).unwrap();
 
-    assert!(db.get("nonexistent").is_none());
+    assert!(db.get("nonexistent").unwrap().is_none());
 }
 
 #[test]
@@ -96,11 +96,11 @@ fn get_all_returns_sorted_by_slug() {
     let dir = TempDir::new().unwrap();
     let db = StateDB::open(dir.path().join("state.db")).unwrap();
 
-    db.upsert(&make_state("charlie", "h3"));
-    db.upsert(&make_state("alpha", "h1"));
-    db.upsert(&make_state("bravo", "h2"));
+    db.upsert(&make_state("charlie", "h3")).unwrap();
+    db.upsert(&make_state("alpha", "h1")).unwrap();
+    db.upsert(&make_state("bravo", "h2")).unwrap();
 
-    let all = db.get_all();
+    let all = db.get_all().unwrap();
     assert_eq!(all.len(), 3);
     assert_eq!(all[0].slug, "alpha");
     assert_eq!(all[1].slug, "bravo");
@@ -112,7 +112,7 @@ fn get_all_returns_empty_vec_when_no_states() {
     let dir = TempDir::new().unwrap();
     let db = StateDB::open(dir.path().join("state.db")).unwrap();
 
-    let all = db.get_all();
+    let all = db.get_all().unwrap();
     assert!(all.is_empty());
 }
 
@@ -121,11 +121,11 @@ fn delete_removes_state() {
     let dir = TempDir::new().unwrap();
     let db = StateDB::open(dir.path().join("state.db")).unwrap();
 
-    db.upsert(&make_state("to-delete", "hash"));
-    assert!(db.get("to-delete").is_some());
+    db.upsert(&make_state("to-delete", "hash")).unwrap();
+    assert!(db.get("to-delete").unwrap().is_some());
 
-    db.delete("to-delete");
-    assert!(db.get("to-delete").is_none());
+    db.delete("to-delete").unwrap();
+    assert!(db.get("to-delete").unwrap().is_none());
 }
 
 #[test]
@@ -134,7 +134,7 @@ fn delete_nonexistent_is_noop() {
     let db = StateDB::open(dir.path().join("state.db")).unwrap();
 
     // Should not panic
-    db.delete("nonexistent");
+    db.delete("nonexistent").unwrap();
 }
 
 #[test]
@@ -149,16 +149,16 @@ fn get_by_source_filters_by_source_path() {
     let mut s3 = make_state("card-c", "h3");
     s3.source_path = "notes/physics.md".to_string();
 
-    db.upsert(&s1);
-    db.upsert(&s2);
-    db.upsert(&s3);
+    db.upsert(&s1).unwrap();
+    db.upsert(&s2).unwrap();
+    db.upsert(&s3).unwrap();
 
-    let math_cards = db.get_by_source("notes/math.md");
+    let math_cards = db.get_by_source("notes/math.md").unwrap();
     assert_eq!(math_cards.len(), 2);
     assert_eq!(math_cards[0].slug, "card-a");
     assert_eq!(math_cards[1].slug, "card-b");
 
-    let physics_cards = db.get_by_source("notes/physics.md");
+    let physics_cards = db.get_by_source("notes/physics.md").unwrap();
     assert_eq!(physics_cards.len(), 1);
     assert_eq!(physics_cards[0].slug, "card-c");
 }
@@ -168,7 +168,7 @@ fn get_by_source_returns_empty_for_unknown_path() {
     let dir = TempDir::new().unwrap();
     let db = StateDB::open(dir.path().join("state.db")).unwrap();
 
-    let result = db.get_by_source("nonexistent/path.md");
+    let result = db.get_by_source("nonexistent/path.md").unwrap();
     assert!(result.is_empty());
 }
 
@@ -182,10 +182,10 @@ fn get_by_source_returns_sorted_by_slug() {
     let mut s2 = make_state("alpha", "h2");
     s2.source_path = "src.md".to_string();
 
-    db.upsert(&s1);
-    db.upsert(&s2);
+    db.upsert(&s1).unwrap();
+    db.upsert(&s2).unwrap();
 
-    let results = db.get_by_source("src.md");
+    let results = db.get_by_source("src.md").unwrap();
     assert_eq!(results[0].slug, "alpha");
     assert_eq!(results[1].slug, "zulu");
 }

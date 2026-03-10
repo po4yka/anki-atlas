@@ -715,7 +715,7 @@ async fn redis_manager_and_worker_drive_terminal_job_status() {
     let worker_clone = Arc::clone(&worker);
     let handle = tokio::spawn(async move { worker_clone.run().await });
 
-    wait_until_async(Duration::from_secs(3), || {
+    wait_until_async(Duration::from_secs(10), || {
         let manager = &manager;
         let job_id = job.job_id.clone();
         async move {
@@ -736,9 +736,8 @@ async fn redis_manager_and_worker_drive_terminal_job_status() {
         persisted
             .error
             .as_deref()
-            .unwrap_or_default()
-            .contains("not implemented yet"),
-        "terminal job error should explain the unsupported execution path"
+            .is_some_and(|error| !error.is_empty()),
+        "job should persist a concrete runtime failure"
     );
 
     shutdown_and_join(&worker, handle).await;

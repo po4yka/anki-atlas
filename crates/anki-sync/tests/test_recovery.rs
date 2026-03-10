@@ -118,11 +118,11 @@ fn find_stale_returns_states_older_than_cutoff() {
     // 1 day ago
     let recent_time = now - 1.0 * 86400.0;
 
-    db.upsert(&make_state("old-card", old_time));
-    db.upsert(&make_state("recent-card", recent_time));
+    db.upsert(&make_state("old-card", old_time)).unwrap();
+    db.upsert(&make_state("recent-card", recent_time)).unwrap();
 
     let recovery = CardRecovery::new(&db);
-    let stale = recovery.find_stale(30); // 30 days max age
+    let stale = recovery.find_stale(30).unwrap(); // 30 days max age
 
     assert_eq!(stale.len(), 1);
     assert_eq!(stale[0].slug, "old-card");
@@ -139,12 +139,13 @@ fn find_stale_excludes_never_synced() {
         .as_secs_f64();
 
     // synced_at = 0 means never synced
-    db.upsert(&make_state("never-synced", 0.0));
+    db.upsert(&make_state("never-synced", 0.0)).unwrap();
     // Very old but synced
-    db.upsert(&make_state("old-synced", now - 365.0 * 86400.0));
+    db.upsert(&make_state("old-synced", now - 365.0 * 86400.0))
+        .unwrap();
 
     let recovery = CardRecovery::new(&db);
-    let stale = recovery.find_stale(30);
+    let stale = recovery.find_stale(30).unwrap();
 
     assert_eq!(stale.len(), 1);
     assert_eq!(stale[0].slug, "old-synced");
@@ -160,11 +161,13 @@ fn find_stale_returns_empty_when_all_recent() {
         .unwrap()
         .as_secs_f64();
 
-    db.upsert(&make_state("card-1", now - 1.0 * 86400.0));
-    db.upsert(&make_state("card-2", now - 5.0 * 86400.0));
+    db.upsert(&make_state("card-1", now - 1.0 * 86400.0))
+        .unwrap();
+    db.upsert(&make_state("card-2", now - 5.0 * 86400.0))
+        .unwrap();
 
     let recovery = CardRecovery::new(&db);
-    let stale = recovery.find_stale(30);
+    let stale = recovery.find_stale(30).unwrap();
 
     assert!(stale.is_empty());
 }

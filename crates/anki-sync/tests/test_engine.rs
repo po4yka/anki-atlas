@@ -21,7 +21,8 @@ fn seed_states(db: &StateDB, count: usize) {
             note_type: "basic".to_string(),
             source_path: "notes/test.md".to_string(),
             synced_at: 1000.0 + i as f64,
-        });
+        })
+        .unwrap();
     }
 }
 
@@ -59,11 +60,12 @@ fn state_db_accessor_returns_reference() {
         note_type: "basic".to_string(),
         source_path: "test.md".to_string(),
         synced_at: 0.0,
-    });
+    })
+    .unwrap();
 
     let engine = SyncEngine::new(db, None);
     // Should be able to query via the accessor
-    let state = engine.state_db().get("accessor-test");
+    let state = engine.state_db().get("accessor-test").unwrap();
     assert!(state.is_some());
     assert_eq!(state.unwrap().slug, "accessor-test");
 }

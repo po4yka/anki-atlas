@@ -3,6 +3,7 @@ use std::env;
 pub mod config;
 pub mod dispatcher;
 pub mod envelope;
+pub mod tasks;
 pub mod worker;
 
 use config::WorkerConfig;
