@@ -276,7 +276,7 @@ pub async fn search_lexical(
          {group_by} ORDER BY n.note_id LIMIT $2",
     );
 
-    let prefix_pattern = format!("{}%", query);
+    let prefix_pattern = format!("{query}%");
     let base = sqlx::query_as::<_, FtsRow>(&auto_sql)
         .bind(&prefix_pattern)
         .bind(limit);

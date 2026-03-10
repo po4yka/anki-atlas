@@ -156,6 +156,12 @@ impl CardGenerator for PreviewCardGenerator {
 
 pub struct GeneratePreviewService;
 
+impl Default for GeneratePreviewService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GeneratePreviewService {
     pub fn new() -> Self {
         Self
@@ -213,6 +219,12 @@ impl GeneratePreviewService {
 
 pub struct ValidationService {
     pipeline: ValidationPipeline,
+}
+
+impl Default for ValidationService {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ValidationService {
@@ -289,6 +301,12 @@ fn parse_validation_input(content: &str) -> Result<(String, String, Vec<String>)
 
 pub struct ObsidianScanService;
 
+impl Default for ObsidianScanService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ObsidianScanService {
     pub fn new() -> Self {
         Self
@@ -346,6 +364,12 @@ impl ObsidianScanService {
 }
 
 pub struct TagAuditService;
+
+impl Default for TagAuditService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl TagAuditService {
     pub fn new() -> Self {

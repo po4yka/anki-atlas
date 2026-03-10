@@ -38,7 +38,7 @@ fn build_manifest(spec: &CardSpec) -> String {
             None => spec.slug.clone(),
         });
 
-    let tags_json: Vec<String> = spec.tags.iter().map(|t| format!("\"{}\"", t)).collect();
+    let tags_json: Vec<String> = spec.tags.iter().map(|t| format!("\"{t}\"")).collect();
 
     let mut parts = vec![
         format!("\"slug\":\"{}\"", spec.slug),
@@ -49,10 +49,10 @@ fn build_manifest(spec: &CardSpec) -> String {
     ];
 
     if let Some(ref path) = spec.source_path {
-        parts.push(format!("\"source_path\":\"{}\"", path));
+        parts.push(format!("\"source_path\":\"{path}\""));
     }
     if let Some(ref anchor) = spec.source_anchor {
-        parts.push(format!("\"source_anchor\":\"{}\"", anchor));
+        parts.push(format!("\"source_anchor\":\"{anchor}\""));
     }
 
     format!("{{{}}}", parts.join(","))
@@ -64,7 +64,7 @@ pub fn render(spec: &CardSpec) -> String {
     let mut out = String::new();
 
     // Header sentinels
-    out.push_str(&format!("<!-- PROMPT_VERSION: {} -->\n", PROMPT_VERSION));
+    out.push_str(&format!("<!-- PROMPT_VERSION: {PROMPT_VERSION} -->\n"));
     out.push_str("<!-- BEGIN_CARDS -->\n");
     out.push_str(&format!(
         "<!-- Card {} | slug: {} | CardType: {} | Tags: {} -->\n",
@@ -92,7 +92,7 @@ pub fn render(spec: &CardSpec) -> String {
     } else {
         out.push_str("<ul>");
         for note in &spec.key_point_notes {
-            out.push_str(&format!("<li>{}</li>", note));
+            out.push_str(&format!("<li>{note}</li>"));
         }
         out.push_str("</ul>\n");
     }
@@ -100,13 +100,13 @@ pub fn render(spec: &CardSpec) -> String {
     // Other notes
     out.push_str("<!-- Other notes -->\n");
     if let Some(ref notes) = spec.other_notes {
-        out.push_str(&format!("{}\n", notes));
+        out.push_str(&format!("{notes}\n"));
     }
 
     // Extra
     out.push_str("<!-- Extra -->\n");
     if let Some(ref extra) = spec.extra {
-        out.push_str(&format!("{}\n", extra));
+        out.push_str(&format!("{extra}\n"));
     }
 
     // Manifest

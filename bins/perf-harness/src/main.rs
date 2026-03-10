@@ -663,15 +663,13 @@ fn build_report(metrics: &GooseMetrics) -> PerfReport {
     let read = summarize_requests(
         metrics
             .requests
-            .iter()
-            .map(|(_, request)| request)
+            .values()
             .filter(|request| request.path.starts_with("read_")),
     );
     let jobs = summarize_requests(
         metrics
             .requests
-            .iter()
-            .map(|(_, request)| request)
+            .values()
             .filter(|request| request.path.starts_with("job_")),
     );
 

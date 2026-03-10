@@ -279,7 +279,7 @@ async fn seed_postgres_internal(pool: &PgPool, profile: DatasetProfile) -> Resul
 
     let deck_count = 12_i64;
     for deck_id in 0..deck_count {
-        let name = format!("Deck {:02}", deck_id);
+        let name = format!("Deck {deck_id:02}");
         sqlx::query("INSERT INTO decks (deck_id, name, parent_name, config) VALUES ($1, $2, NULL, '{}'::jsonb)")
             .bind(100_i64 + deck_id)
             .bind(&name)
