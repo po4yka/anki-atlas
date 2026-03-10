@@ -1,0 +1,30 @@
+[package]
+name = "surface-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+analytics = { path = "../analytics" }
+anki-sync = { path = "../anki-sync" }
+common = { path = "../common" }
+database = { path = "../database" }
+generator = { path = "../generator" }
+indexer = { path = "../indexer" }
+jobs = { path = "../jobs" }
+obsidian = { path = "../obsidian" }
+search = { path = "../search" }
+taxonomy = { path = "../taxonomy" }
+validation = { path = "../validation" }
+
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+qdrant-client = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }

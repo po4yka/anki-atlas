@@ -1,6 +1,14 @@
+pub mod coverage;
+pub mod duplicates;
+pub mod gaps;
 pub mod generate;
+pub mod index;
 pub mod migrate;
 pub mod obsidian_sync;
+pub mod search;
+pub mod sync;
 pub mod tag_audit;
+pub mod topics;
 pub mod validate;
 pub mod version;
+pub mod weak_notes;

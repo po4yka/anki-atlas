@@ -1,10 +1,8 @@
 use crate::args::TagAuditArgs;
-use crate::output::ensure_path_exists;
+use crate::output;
 
-/// Audit tags for convention violations.
 pub async fn run(args: &TagAuditArgs) -> anyhow::Result<()> {
-    ensure_path_exists(&args.file, "file")?;
-
-    println!("Tag audit: {}", args.file.display());
+    let summary = surface_runtime::TagAuditService::new().audit_file(&args.file, args.fix)?;
+    output::print_tag_audit(&summary);
     Ok(())
 }

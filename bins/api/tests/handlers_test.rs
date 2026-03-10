@@ -1,6 +1,8 @@
 use analytics::AnalyticsError;
 use analytics::coverage::{GapType, TopicCoverage, TopicGap, WeakNote};
 use analytics::duplicates::{DuplicateCluster, DuplicateDetail, DuplicateStats};
+use analytics::labeling::LabelingStats;
+use analytics::taxonomy::Taxonomy;
 use anki_atlas_api::router::build_router;
 use anki_atlas_api::schemas::SearchRequest;
 use anki_atlas_api::services::{AnalyticsFacade, ApiServices, SearchFacade, build_app_state};
@@ -20,6 +22,7 @@ use search::fusion::{FusionStats, SearchResult};
 use search::service::{HybridSearchResult, SearchParams};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -65,6 +68,17 @@ mock! {
 
     #[async_trait]
     impl AnalyticsFacade for Analytics {
+        async fn load_taxonomy(
+            &self,
+            yaml_path: Option<PathBuf>,
+        ) -> Result<Taxonomy, AnalyticsError>;
+
+        async fn label_notes(
+            &self,
+            yaml_path: Option<PathBuf>,
+            min_confidence: f32,
+        ) -> Result<LabelingStats, AnalyticsError>;
+
         async fn get_taxonomy_tree(
             &self,
             root_path: Option<String>,

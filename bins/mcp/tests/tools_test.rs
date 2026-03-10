@@ -1,59 +1,35 @@
-use anki_atlas_mcp::tools::*;
-
-// --- Constants ---
-
-#[test]
-fn tool_timeout_is_30_seconds() {
-    assert_eq!(TOOL_TIMEOUT_SECS, 30);
-}
-
-// --- GenerateInput ---
+use anki_atlas_mcp::tools::{
+    GenerateToolInput, ObsidianSyncToolInput, OutputMode, SearchToolInput, TagAuditToolInput,
+};
 
 #[test]
-fn generate_input_minimal() {
-    let json = r##"{"text": "# My Note"}"##;
-    let input: GenerateInput = serde_json::from_str(json).unwrap();
-    assert_eq!(input.text, "# My Note");
-    assert!(input.deck.is_none());
+fn search_input_defaults_to_markdown() {
+    let input: SearchToolInput =
+        serde_json::from_str(r#"{"query":"ownership"}"#).expect("valid search input");
+    assert!(matches!(input.output_mode, OutputMode::Markdown));
+    assert_eq!(input.limit, 10);
 }
 
 #[test]
-fn generate_input_with_deck() {
-    let json = r#"{"text": "content", "deck": "CS::Algorithms"}"#;
-    let input: GenerateInput = serde_json::from_str(json).unwrap();
-    assert_eq!(input.deck.as_deref(), Some("CS::Algorithms"));
-}
-
-// --- ObsidianSyncInput ---
-
-#[test]
-fn obsidian_sync_input_defaults() {
-    let json = r#"{"vault_path": "/home/user/vault"}"#;
-    let input: ObsidianSyncInput = serde_json::from_str(json).unwrap();
-    assert_eq!(input.vault_path, "/home/user/vault");
-    assert!(input.dry_run); // default true
+fn generate_input_parses_file_path() {
+    let input: GenerateToolInput =
+        serde_json::from_str(r#"{"file_path":"/tmp/note.md","output_mode":"json"}"#)
+            .expect("valid generate input");
+    assert_eq!(input.file_path, "/tmp/note.md");
+    assert!(matches!(input.output_mode, OutputMode::Json));
 }
 
 #[test]
-fn obsidian_sync_input_wet_run() {
-    let json = r#"{"vault_path": "/vault", "dry_run": false}"#;
-    let input: ObsidianSyncInput = serde_json::from_str(json).unwrap();
-    assert!(!input.dry_run);
-}
-
-// --- TagAuditInput ---
-
-#[test]
-fn tag_audit_input_defaults() {
-    let json = r#"{"tags": ["cs::algo", "math"]}"#;
-    let input: TagAuditInput = serde_json::from_str(json).unwrap();
-    assert_eq!(input.tags, vec!["cs::algo", "math"]);
-    assert!(!input.fix); // default false
+fn obsidian_sync_defaults_to_dry_run() {
+    let input: ObsidianSyncToolInput =
+        serde_json::from_str(r#"{"vault_path":"/vault"}"#).expect("valid obsidian input");
+    assert_eq!(input.vault_path, "/vault");
+    assert!(input.dry_run);
 }
 
 #[test]
-fn tag_audit_input_with_fix() {
-    let json = r#"{"tags": ["Bad_Tag"], "fix": true}"#;
-    let input: TagAuditInput = serde_json::from_str(json).unwrap();
-    assert!(input.fix);
+fn tag_audit_defaults_to_no_fix() {
+    let input: TagAuditToolInput =
+        serde_json::from_str(r#"{"file_path":"/tmp/tags.txt"}"#).expect("valid tag-audit input");
+    assert!(!input.fix);
 }

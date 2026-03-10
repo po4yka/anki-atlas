@@ -1,6 +1,6 @@
 # Anki Atlas MCP Tools
 
-MCP (Model Context Protocol) support in `main` is intentionally narrow. The server should advertise only tools that have real handler implementations and do not depend on unwired search or analytics surfaces.
+The MCP server on `main` is now service-aligned rather than intentionally narrow. It shares the same runtime wiring as the HTTP API and CLI through `crates/surface-runtime`.
 
 ## Running the Server
 
@@ -16,91 +16,62 @@ npx @anthropic-ai/mcp-inspector cargo run --bin anki-atlas-mcp
 
 ## Configuration
 
-### Claude Desktop
-
-Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
-
-```json
-{
-  "mcpServers": {
-    "anki-atlas": {
-      "command": "cargo",
-      "args": ["run", "--bin", "anki-atlas-mcp"],
-      "env": {
-        "ANKIATLAS_POSTGRES_URL": "postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas",
-        "ANKIATLAS_QDRANT_URL": "http://localhost:6333",
-        "ANKIATLAS_EMBEDDING_PROVIDER": "openai",
-        "OPENAI_API_KEY": "sk-..."
-      }
-    }
-  }
-}
-```
-
-### Claude Code
-
-Add to your project's `.mcp.json`:
-
-```json
-{
-  "servers": {
-    "anki-atlas": {
-      "command": "cargo",
-      "args": ["run", "--bin", "anki-atlas-mcp"],
-      "cwd": "/path/to/anki-atlas",
-      "env": {
-        "ANKIATLAS_POSTGRES_URL": "postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas",
-        "ANKIATLAS_QDRANT_URL": "http://localhost:6333"
-      }
-    }
-  }
-}
-```
-
-## Available Tools
-
-### ankiatlas_generate
-
-Parse markdown text and return a generation preview.
-
-### ankiatlas_obsidian_sync
-
-Scan an Obsidian vault directory and summarize discovered markdown notes.
-
-### ankiatlas_tag_audit
-
-Inspect tags for normalization issues such as uppercase characters or `/` separators.
-
-## Example Agent Workflows
-
-### Local Note Review
-
-```
-1. Preview cards from this markdown note
-2. Scan this Obsidian vault for candidate notes
-3. Audit these tags before importing them
-```
-
-## Output Format
-
-Current tools return markdown-formatted responses optimized for LLM readability:
-
-- **Tables** for search results and gap lists
-- **Headings** for section organization
-- **Bold** for key metrics
-- **Code blocks** for paths and technical identifiers
-- **Truncated previews** to keep responses concise
-
-## Error Handling
-
-Tools return user-friendly error messages prefixed with `**Error**:` instead of raising exceptions. Common errors:
-
-- Vault path not found
-- Invalid parameters
-
-## Environment Variables
+The server reads the same environment variables as the API and CLI:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ANKIATLAS_POSTGRES_URL` | No | Reserved for future data-backed MCP tools |
-| `ANKIATLAS_QDRANT_URL` | No | Reserved for future data-backed MCP tools |
+| `ANKIATLAS_POSTGRES_URL` | Yes | PostgreSQL connection used by search and analytics |
+| `ANKIATLAS_QDRANT_URL` | Yes | Qdrant connection used by semantic search and duplicates |
+| `ANKIATLAS_REDIS_URL` | Yes | Redis connection for async job tools |
+| `ANKIATLAS_EMBEDDING_PROVIDER` | Yes | `mock`, `openai`, or `google` |
+| `ANKIATLAS_EMBEDDING_MODEL` | Yes | embedding model name |
+| `OPENAI_API_KEY` / `GOOGLE_API_KEY` | Sometimes | provider-specific embedding credentials |
+| `ANKIATLAS_RERANK_ENABLED` | No | enable reranking for search |
+| `ANKIATLAS_RERANK_ENDPOINT` | When reranking | endpoint for the reranker |
+
+## Output Modes
+
+Every tool accepts:
+
+```json
+{ "output_mode": "markdown" }
+```
+
+Supported values:
+
+- `markdown`: human-readable default
+- `json`: structured output for programmatic consumers
+
+Both modes are backed by the same canonical result object. Markdown changes only the text rendering.
+
+## Tool Catalog
+
+### Read tools
+
+- `ankiatlas_search`
+- `ankiatlas_topics`
+- `ankiatlas_topic_coverage`
+- `ankiatlas_topic_gaps`
+- `ankiatlas_topic_weak_notes`
+- `ankiatlas_duplicates`
+
+### Async job tools
+
+- `ankiatlas_sync_job`
+- `ankiatlas_index_job`
+- `ankiatlas_job_status`
+- `ankiatlas_job_cancel`
+
+### Local workflow tools
+
+- `ankiatlas_generate`
+- `ankiatlas_validate`
+- `ankiatlas_obsidian_sync`
+- `ankiatlas_tag_audit`
+
+## Behavioral Rules
+
+- Read tools call the same shared search and analytics services as the API and CLI.
+- MCP does not run sync or index directly. Those flows are exposed only as async job tools.
+- Local workflow tools are real wrappers over Obsidian parsing, validation, and taxonomy logic.
+- Unsupported paths fail explicitly. For example, `ankiatlas_obsidian_sync` rejects non-dry-run execution until a persistence sink exists.

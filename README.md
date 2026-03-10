@@ -35,6 +35,8 @@ cargo build --release
 
 # Run the CLI
 cargo run --bin anki-atlas -- --help
+cargo run --bin anki-atlas -- search "ownership" -n 5
+cargo run --bin anki-atlas -- topics tree --root-path rust
 
 # Run the API server
 cargo run --bin anki-atlas-api
@@ -43,7 +45,7 @@ cargo run --bin anki-atlas-api
 cargo run --bin anki-atlas-mcp
 
 # Run the background worker
-cargo run --bin anki-atlas-worker
+ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1 cargo run --bin anki-atlas-worker
 ```
 
 ## Configuration
@@ -55,7 +57,7 @@ Set environment variables or use a config file:
 | `ANKIATLAS_POSTGRES_URL` | PostgreSQL connection URL | `postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas` |
 | `ANKIATLAS_QDRANT_URL` | Qdrant server URL | `http://localhost:6333` |
 | `ANKIATLAS_REDIS_URL` | Redis URL for async jobs | `redis://localhost:6379/0` |
-| `ANKIATLAS_EMBEDDING_PROVIDER` | `openai`, `google`, or `local` | `openai` |
+| `ANKIATLAS_EMBEDDING_PROVIDER` | `openai`, `google`, or `mock` | `openai` |
 | `ANKIATLAS_EMBEDDING_MODEL` | Embedding model name | `text-embedding-3-small` |
 | `ANKIATLAS_RERANK_ENABLED` | Enable CrossEncoder reranking | `false` |
 

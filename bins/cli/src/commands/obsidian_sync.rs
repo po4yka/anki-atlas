@@ -1,10 +1,12 @@
 use crate::args::ObsidianSyncArgs;
-use crate::output::ensure_path_exists;
+use crate::output;
 
-/// Scan an Obsidian vault and preview or sync cards.
 pub async fn run(args: &ObsidianSyncArgs) -> anyhow::Result<()> {
-    ensure_path_exists(&args.vault, "vault")?;
-
-    println!("Scanning vault: {}", args.vault.display());
+    let preview = surface_runtime::ObsidianScanService::new().scan(
+        &args.vault,
+        &args.source_dirs,
+        args.dry_run,
+    )?;
+    output::print_obsidian_scan(&preview);
     Ok(())
 }

@@ -4,7 +4,7 @@
 
 Anki Atlas is a Rust workspace for ingesting Anki and Obsidian content, generating cards, building searchable indexes, and exposing a small set of stable machine-facing surfaces.
 
-The important architecture rule on `main` is simple: public interfaces must match wired domain services. If a flow is not backed by a shared service with tests, it should stay out of the exposed API and CLI.
+The important architecture rule on `main` is simple: public interfaces must match wired domain services. The API, CLI, and MCP surfaces now share one runtime composition layer in `crates/surface-runtime`, so transport-specific code stays thin while the domain wiring stays consistent.
 
 ## Current Stack
 
@@ -37,6 +37,7 @@ crates/
   generator/   # card generation agents
   llm/         # LLM provider contracts
   jobs/        # job queue contracts, persistence, manager
+  surface-runtime/ # shared runtime graph and local workflow wrappers
 ```
 
 Legacy `apps/` and `packages/` directories are historical leftovers from the earlier rewrite and are not the authoritative runtime architecture.
@@ -111,18 +112,26 @@ The API does not expose direct `/sync` or `/index` mutations. Write-side ingesti
 
 ### CLI
 
-The CLI currently exposes only commands with real local implementations:
+The CLI exposes the real service-aligned command surface:
 
 | Command | Purpose |
 |---------|---------|
 | `version` | print build version |
 | `migrate` | run database migrations |
+| `sync` | sync an Anki collection directly and optionally reindex |
+| `index` | run direct indexing against PostgreSQL notes |
+| `search` | run hybrid retrieval from the terminal |
+| `topics tree` | print the taxonomy / coverage tree |
+| `topics load` | load taxonomy YAML into PostgreSQL |
+| `topics label` | label notes against the taxonomy |
+| `coverage` | inspect topic coverage |
+| `gaps` | inspect undercovered and missing topics |
+| `weak-notes` | list weak notes for a topic |
+| `duplicates` | inspect duplicate-note clusters |
 | `generate` | parse an Obsidian note and preview card generation |
 | `validate` | validate flashcard content from a file |
-| `obsidian-sync` | scan an Obsidian vault and preview or sync cards |
-| `tag-audit` | audit tag conventions |
-
-Search, sync, topics, coverage, gaps, duplicates, and direct indexing commands are not exported on `main`.
+| `obsidian-sync` | scan an Obsidian vault in preview mode |
+| `tag-audit` | audit and optionally normalize tag conventions |
 
 ### Worker
 
@@ -130,7 +139,26 @@ Search, sync, topics, coverage, gaps, duplicates, and direct indexing commands a
 
 ### MCP
 
-The MCP package is present in the workspace, but its public tool contract must stay narrower than the internal crate graph. Only tools with real handler implementations should be advertised.
+The MCP server exposes the same read and local-preview capabilities through typed tools. Write-side work remains async-only through job tools.
+
+Registered tools:
+
+- `ankiatlas_search`
+- `ankiatlas_topics`
+- `ankiatlas_topic_coverage`
+- `ankiatlas_topic_gaps`
+- `ankiatlas_topic_weak_notes`
+- `ankiatlas_duplicates`
+- `ankiatlas_sync_job`
+- `ankiatlas_index_job`
+- `ankiatlas_job_status`
+- `ankiatlas_job_cancel`
+- `ankiatlas_generate`
+- `ankiatlas_validate`
+- `ankiatlas_obsidian_sync`
+- `ankiatlas_tag_audit`
+
+Each tool accepts `output_mode = "markdown" | "json"`. Markdown is the default, while JSON returns the same structured payload for programmatic use.
 
 ## Primary Flows
 
@@ -150,9 +178,8 @@ client
 
 ```text
 CLI or MCP
-  -> obsidian parsing crates
-  -> generator agents
-  -> validation / formatting
+  -> crates/surface-runtime workflow wrappers
+  -> obsidian / validation / taxonomy / generator crates
 ```
 
 ## Design Constraints
@@ -167,8 +194,7 @@ CLI or MCP
 These capabilities still remain intentionally constrained on `main`:
 
 - direct synchronous `/sync` and `/index` HTTP mutations
-- search, coverage, and duplicates CLI entrypoints
+- direct sync/index execution from MCP tools
 - fully stable background worker execution
-- broader MCP exposure for data-backed search and analytics flows
 
 Those flows should be expanded only when the transport surface and the underlying shared services stay aligned.

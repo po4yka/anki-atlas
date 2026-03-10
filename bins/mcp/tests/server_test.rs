@@ -1,139 +1,167 @@
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use analytics::AnalyticsError;
+use analytics::coverage::{TopicCoverage, TopicGap, WeakNote};
+use analytics::duplicates::{DuplicateCluster, DuplicateStats};
+use analytics::labeling::LabelingStats;
+use analytics::taxonomy::Taxonomy;
 use anki_atlas_mcp::server::AnkiAtlasServer;
+use jobs::{IndexJobPayload, JobError, JobManager, JobRecord, SyncJobPayload};
+use search::error::SearchError;
+use search::service::{HybridSearchResult, SearchParams};
+use surface_runtime::{AnalyticsFacade, SearchFacade, SurfaceServices};
 
-// --- Server construction ---
+struct NoopJobs;
 
-#[test]
-fn server_can_be_created() {
-    let _server = AnkiAtlasServer::new();
+#[async_trait::async_trait]
+impl JobManager for NoopJobs {
+    async fn enqueue_sync_job(
+        &self,
+        _payload: SyncJobPayload,
+        _run_at: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<JobRecord, JobError> {
+        Err(JobError::Unsupported(
+            "not used in registration tests".to_string(),
+        ))
+    }
+
+    async fn enqueue_index_job(
+        &self,
+        _payload: IndexJobPayload,
+        _run_at: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<JobRecord, JobError> {
+        Err(JobError::Unsupported(
+            "not used in registration tests".to_string(),
+        ))
+    }
+
+    async fn get_job(&self, _job_id: &str) -> Result<JobRecord, JobError> {
+        Err(JobError::Unsupported(
+            "not used in registration tests".to_string(),
+        ))
+    }
+
+    async fn cancel_job(&self, _job_id: &str) -> Result<JobRecord, JobError> {
+        Err(JobError::Unsupported(
+            "not used in registration tests".to_string(),
+        ))
+    }
+
+    async fn close(&self) -> Result<(), JobError> {
+        Ok(())
+    }
 }
 
-// --- Server info ---
+struct NoopSearch;
 
-#[test]
-fn server_name_is_anki_atlas() {
-    let server = AnkiAtlasServer::new();
+#[async_trait::async_trait]
+impl SearchFacade for NoopSearch {
+    async fn search(&self, _params: &SearchParams) -> Result<HybridSearchResult, SearchError> {
+        Err(SearchError::Database(sqlx::Error::PoolTimedOut))
+    }
+}
+
+struct NoopAnalytics;
+
+#[async_trait::async_trait]
+impl AnalyticsFacade for NoopAnalytics {
+    async fn load_taxonomy(&self, _yaml_path: Option<PathBuf>) -> Result<Taxonomy, AnalyticsError> {
+        Ok(Taxonomy::default())
+    }
+
+    async fn label_notes(
+        &self,
+        _yaml_path: Option<PathBuf>,
+        _min_confidence: f32,
+    ) -> Result<LabelingStats, AnalyticsError> {
+        Ok(LabelingStats::default())
+    }
+
+    async fn get_taxonomy_tree(
+        &self,
+        _root_path: Option<String>,
+    ) -> Result<Vec<serde_json::Value>, AnalyticsError> {
+        Ok(Vec::new())
+    }
+
+    async fn get_coverage(
+        &self,
+        _topic_path: String,
+        _include_subtree: bool,
+    ) -> Result<Option<TopicCoverage>, AnalyticsError> {
+        Ok(None)
+    }
+
+    async fn get_gaps(
+        &self,
+        _topic_path: String,
+        _min_coverage: i64,
+    ) -> Result<Vec<TopicGap>, AnalyticsError> {
+        Ok(Vec::new())
+    }
+
+    async fn get_weak_notes(
+        &self,
+        _topic_path: String,
+        _max_results: i64,
+    ) -> Result<Vec<WeakNote>, AnalyticsError> {
+        Ok(Vec::new())
+    }
+
+    async fn find_duplicates(
+        &self,
+        _threshold: f64,
+        _max_clusters: usize,
+        _deck_filter: Option<Vec<String>>,
+        _tag_filter: Option<Vec<String>>,
+    ) -> Result<(Vec<DuplicateCluster>, DuplicateStats), AnalyticsError> {
+        Ok((Vec::new(), DuplicateStats::default()))
+    }
+}
+
+fn test_server() -> AnkiAtlasServer {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .connect_lazy("postgresql://localhost:5432/test")
+        .expect("lazy pool");
+    let services = SurfaceServices::new(
+        pool,
+        Arc::new(NoopJobs),
+        Arc::new(NoopSearch),
+        Arc::new(NoopAnalytics),
+    );
+    AnkiAtlasServer::new(Arc::new(services))
+}
+
+#[tokio::test]
+async fn server_name_and_version_are_set() {
+    let server = test_server();
     assert_eq!(server.name(), "anki-atlas");
+    assert!(!server.version().is_empty());
 }
 
-#[test]
-fn server_version_is_set() {
-    let server = AnkiAtlasServer::new();
-    let version = server.version();
-    assert!(!version.is_empty(), "version should not be empty");
-    // Should be a valid semver-ish string
-    assert!(
-        version.contains('.'),
-        "version should contain a dot: got {version}"
-    );
-}
-
-// --- Tool registration ---
-
-#[test]
-fn server_registers_only_supported_tools() {
-    let server = AnkiAtlasServer::new();
+#[tokio::test]
+async fn server_registers_expected_tool_set() {
+    let server = test_server();
+    let names = server.tool_names();
+    assert_eq!(server.tool_count(), 14);
     assert_eq!(
-        server.tool_count(),
-        3,
-        "expected 3 tools registered, got {}",
-        server.tool_count()
-    );
-}
-
-#[test]
-fn server_has_generate_tool() {
-    let server = AnkiAtlasServer::new();
-    let names = server.tool_names();
-    assert!(
-        names.contains(&"ankiatlas_generate"),
-        "missing ankiatlas_generate tool, got: {names:?}"
-    );
-}
-
-#[test]
-fn server_has_obsidian_sync_tool() {
-    let server = AnkiAtlasServer::new();
-    let names = server.tool_names();
-    assert!(
-        names.contains(&"ankiatlas_obsidian_sync"),
-        "missing ankiatlas_obsidian_sync tool, got: {names:?}"
-    );
-}
-
-#[test]
-fn server_has_tag_audit_tool() {
-    let server = AnkiAtlasServer::new();
-    let names = server.tool_names();
-    assert!(
-        names.contains(&"ankiatlas_tag_audit"),
-        "missing ankiatlas_tag_audit tool, got: {names:?}"
-    );
-}
-
-// --- Tool names are sorted for deterministic output ---
-
-#[test]
-fn tool_names_are_all_prefixed() {
-    let server = AnkiAtlasServer::new();
-    let names = server.tool_names();
-    for name in names {
-        assert!(
-            name.starts_with("ankiatlas_"),
-            "tool name should start with 'ankiatlas_': got {name}"
-        );
-    }
-}
-
-// --- run_server exists and is async ---
-
-#[tokio::test]
-async fn run_server_function_exists() {
-    // Just verify the function signature compiles; we don't actually run it
-    // because it blocks on stdio. Instead, verify AnkiAtlasServer can be
-    // created and has the expected tools.
-    let server = AnkiAtlasServer::new();
-    assert_eq!(server.tool_count(), 3);
-}
-
-// --- run_server runtime behavior ---
-
-#[tokio::test]
-async fn run_server_starts_without_panic() {
-    // run_server should initialize logging and create a server without panicking.
-    // In a test environment, stdin is closed immediately so it should return
-    // (either Ok or Err) rather than blocking forever.
-    // Use a timeout so the test doesn't hang if something goes wrong.
-    let result = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
-        anki_atlas_mcp::server::run_server(),
-    )
-    .await;
-
-    // Any of these outcomes is acceptable:
-    // - Timeout: server is blocking on stdin (correct behavior)
-    // - Ok(Ok(())): server exited cleanly (stdin closed)
-    // - Ok(Err(_)): server returned an error (e.g. transport error)
-    // The only unacceptable outcome is a panic (todo!()).
-    match result {
-        Ok(Ok(())) => {}
-        Ok(Err(_)) => {}
-        Err(_elapsed) => {}
-    }
-}
-
-#[tokio::test]
-async fn run_server_returns_anyhow_result() {
-    // Verify run_server returns anyhow::Result<()>, not panicking.
-    // This is a type-level check that also exercises the startup path.
-    let result: Result<Result<(), anyhow::Error>, _> = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
-        anki_atlas_mcp::server::run_server(),
-    )
-    .await;
-
-    // Should not panic (currently does because of todo!()).
-    assert!(
-        result.is_ok() || result.is_err(),
-        "run_server should return a result, not panic"
+        names,
+        vec![
+            "ankiatlas_duplicates",
+            "ankiatlas_generate",
+            "ankiatlas_index_job",
+            "ankiatlas_job_cancel",
+            "ankiatlas_job_status",
+            "ankiatlas_obsidian_sync",
+            "ankiatlas_search",
+            "ankiatlas_sync_job",
+            "ankiatlas_tag_audit",
+            "ankiatlas_topic_coverage",
+            "ankiatlas_topic_gaps",
+            "ankiatlas_topic_weak_notes",
+            "ankiatlas_topics",
+            "ankiatlas_validate",
+        ]
     );
 }

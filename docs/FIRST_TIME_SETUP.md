@@ -128,11 +128,17 @@ curl "http://localhost:8000/topic-weak-notes?topic_path=rust&max_results=20"
 curl "http://localhost:8000/duplicates?threshold=0.92&max_clusters=10&deck_filter[]=Rust"
 ```
 
-## Step 10: Use the Wired CLI Workflows
-
-Current stable CLI commands focus on local content workflows:
+## Step 10: Use the Wired CLI Surface
 
 ```bash
+cargo run --bin anki-atlas -- sync /path/to/collection.anki2 --force-reindex
+cargo run --bin anki-atlas -- index --force
+cargo run --bin anki-atlas -- search "ownership" --deck Rust -n 5
+cargo run --bin anki-atlas -- topics tree --root-path rust
+cargo run --bin anki-atlas -- coverage rust/ownership
+cargo run --bin anki-atlas -- gaps rust --min-coverage 1
+cargo run --bin anki-atlas -- weak-notes rust/ownership -n 10
+cargo run --bin anki-atlas -- duplicates --threshold 0.92 --max 10
 cargo run --bin anki-atlas -- generate /path/to/note.md --dry-run
 cargo run --bin anki-atlas -- validate /path/to/cards.txt --quality
 cargo run --bin anki-atlas -- obsidian-sync /path/to/vault --dry-run
@@ -153,11 +159,28 @@ cargo run --bin anki-atlas -- tag-audit /path/to/tags.txt
 }
 ```
 
+The MCP server now exposes typed read tools plus async-only job tools. Examples:
+
+- `ankiatlas_search`
+- `ankiatlas_topics`
+- `ankiatlas_topic_coverage`
+- `ankiatlas_topic_gaps`
+- `ankiatlas_topic_weak_notes`
+- `ankiatlas_duplicates`
+- `ankiatlas_sync_job`
+- `ankiatlas_index_job`
+- `ankiatlas_job_status`
+- `ankiatlas_job_cancel`
+- `ankiatlas_generate`
+- `ankiatlas_validate`
+- `ankiatlas_obsidian_sync`
+- `ankiatlas_tag_audit`
+
 ## Next Steps
 
 - Use `/jobs/sync` and `/jobs/index` for data ingestion work
 - Use `/search`, `/topics`, `/topic-coverage`, `/topic-gaps`, `/topic-weak-notes`, and `/duplicates` for read-only API access
-- Use the CLI for generation, validation, and Obsidian workflows
+- Use the CLI for direct sync/index, search, analytics, and local preview workflows
 - Keep [docs/ARCHITECTURE.md](./ARCHITECTURE.md) as the source of truth for which surfaces are intentionally exposed on `main`
 
 ## Common Follow-Up

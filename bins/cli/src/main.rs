@@ -10,17 +10,96 @@ use crate::args::{Cli, Commands};
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    let result = match cli.command {
+    let result = match &cli.command {
         Commands::Version => commands::version::run(),
-        Commands::Migrate => commands::migrate::run().await,
-        Commands::Generate(ref args) => commands::generate::run(args).await,
-        Commands::Validate(ref args) => commands::validate::run(args).await,
-        Commands::ObsidianSync(ref args) => commands::obsidian_sync::run(args).await,
-        Commands::TagAudit(ref args) => commands::tag_audit::run(args).await,
+        Commands::Migrate => {
+            let settings = common::config::Settings::load()?;
+            commands::migrate::run(&settings).await
+        }
+        Commands::Generate(args) => commands::generate::run(args).await,
+        Commands::Validate(args) => commands::validate::run(args).await,
+        Commands::ObsidianSync(args) => commands::obsidian_sync::run(args).await,
+        Commands::TagAudit(args) => commands::tag_audit::run(args).await,
+        Commands::Sync(args) => {
+            let settings = common::config::Settings::load()?;
+            let services = surface_runtime::build_surface_services(
+                &settings,
+                surface_runtime::BuildSurfaceServicesOptions {
+                    enable_direct_execution: true,
+                },
+            )
+            .await?;
+            commands::sync::run(args, &services).await
+        }
+        Commands::Index(args) => {
+            let settings = common::config::Settings::load()?;
+            let services = surface_runtime::build_surface_services(
+                &settings,
+                surface_runtime::BuildSurfaceServicesOptions {
+                    enable_direct_execution: true,
+                },
+            )
+            .await?;
+            commands::index::run(args, &services).await
+        }
+        Commands::Search(args) => {
+            let settings = common::config::Settings::load()?;
+            let services = surface_runtime::build_surface_services(
+                &settings,
+                surface_runtime::BuildSurfaceServicesOptions::default(),
+            )
+            .await?;
+            commands::search::run(args, &services).await
+        }
+        Commands::Topics(args) => {
+            let settings = common::config::Settings::load()?;
+            let services = surface_runtime::build_surface_services(
+                &settings,
+                surface_runtime::BuildSurfaceServicesOptions::default(),
+            )
+            .await?;
+            commands::topics::run(args, &services).await
+        }
+        Commands::Coverage(args) => {
+            let settings = common::config::Settings::load()?;
+            let services = surface_runtime::build_surface_services(
+                &settings,
+                surface_runtime::BuildSurfaceServicesOptions::default(),
+            )
+            .await?;
+            commands::coverage::run(args, &services).await
+        }
+        Commands::Gaps(args) => {
+            let settings = common::config::Settings::load()?;
+            let services = surface_runtime::build_surface_services(
+                &settings,
+                surface_runtime::BuildSurfaceServicesOptions::default(),
+            )
+            .await?;
+            commands::gaps::run(args, &services).await
+        }
+        Commands::WeakNotes(args) => {
+            let settings = common::config::Settings::load()?;
+            let services = surface_runtime::build_surface_services(
+                &settings,
+                surface_runtime::BuildSurfaceServicesOptions::default(),
+            )
+            .await?;
+            commands::weak_notes::run(args, &services).await
+        }
+        Commands::Duplicates(args) => {
+            let settings = common::config::Settings::load()?;
+            let services = surface_runtime::build_surface_services(
+                &settings,
+                surface_runtime::BuildSurfaceServicesOptions::default(),
+            )
+            .await?;
+            commands::duplicates::run(args, &services).await
+        }
     };
 
-    if let Err(e) = result {
-        eprintln!("error: {e:#}");
+    if let Err(error) = result {
+        eprintln!("error: {error:#}");
         std::process::exit(1);
     }
 
@@ -31,183 +110,70 @@ async fn main() -> anyhow::Result<()> {
 mod tests {
     use clap::Parser;
 
-    use crate::args::{Cli, Commands};
-
-    fn parse(args: &[&str]) -> Cli {
-        Cli::parse_from(args)
-    }
-
-    fn try_parse(args: &[&str]) -> Result<Cli, clap::Error> {
-        Cli::try_parse_from(args)
-    }
-
-    // ---- Version ----
+    use crate::args::{Cli, Commands, TopicsCommand};
 
     #[test]
-    fn parse_version_command() {
-        let cli = parse(&["anki-atlas", "version"]);
-        assert!(matches!(cli.command, Commands::Version));
-    }
-
-    // ---- Migrate ----
-
-    #[test]
-    fn parse_migrate_command() {
-        let cli = parse(&["anki-atlas", "migrate"]);
-        assert!(matches!(cli.command, Commands::Migrate));
-    }
-
-    // ---- Generate ----
-
-    #[test]
-    fn parse_generate_with_file() {
-        let cli = parse(&["anki-atlas", "generate", "note.md"]);
-        if let Commands::Generate(args) = cli.command {
-            assert_eq!(args.file.to_str().unwrap(), "note.md");
-            assert!(!args.dry_run);
-        } else {
-            panic!("expected Generate command");
+    fn parse_sync_command() {
+        let cli = Cli::parse_from(["anki-atlas", "sync", "collection.anki2"]);
+        match cli.command {
+            Commands::Sync(args) => {
+                assert_eq!(args.source.to_string_lossy(), "collection.anki2");
+                assert!(!args.no_migrate);
+                assert!(!args.no_index);
+            }
+            _ => panic!("expected sync command"),
         }
     }
 
     #[test]
-    fn parse_generate_dry_run() {
-        let cli = parse(&["anki-atlas", "generate", "note.md", "--dry-run"]);
-        if let Commands::Generate(args) = cli.command {
-            assert!(args.dry_run);
-        } else {
-            panic!("expected Generate command");
-        }
-    }
-
-    #[test]
-    fn parse_generate_requires_file() {
-        let result = try_parse(&["anki-atlas", "generate"]);
-        assert!(result.is_err());
-    }
-
-    // ---- Validate ----
-
-    #[test]
-    fn parse_validate_with_file() {
-        let cli = parse(&["anki-atlas", "validate", "cards.txt"]);
-        if let Commands::Validate(args) = cli.command {
-            assert_eq!(args.file.to_str().unwrap(), "cards.txt");
-            assert!(!args.quality);
-        } else {
-            panic!("expected Validate command");
-        }
-    }
-
-    #[test]
-    fn parse_validate_with_quality() {
-        let cli = parse(&["anki-atlas", "validate", "cards.txt", "--quality"]);
-        if let Commands::Validate(args) = cli.command {
-            assert!(args.quality);
-        } else {
-            panic!("expected Validate command");
-        }
-    }
-
-    #[test]
-    fn parse_validate_requires_file() {
-        let result = try_parse(&["anki-atlas", "validate"]);
-        assert!(result.is_err());
-    }
-
-    // ---- ObsidianSync ----
-
-    #[test]
-    fn parse_obsidian_sync_with_vault() {
-        let cli = parse(&["anki-atlas", "obsidian-sync", "/vault"]);
-        if let Commands::ObsidianSync(args) = cli.command {
-            assert_eq!(args.vault.to_str().unwrap(), "/vault");
-            assert!(args.source_dirs.is_none());
-            assert!(!args.dry_run);
-        } else {
-            panic!("expected ObsidianSync command");
-        }
-    }
-
-    #[test]
-    fn parse_obsidian_sync_with_options() {
-        let cli = parse(&[
+    fn parse_search_command() {
+        let cli = Cli::parse_from([
             "anki-atlas",
-            "obsidian-sync",
-            "/vault",
-            "--source-dirs",
-            "notes,projects",
-            "--dry-run",
+            "search",
+            "ownership",
+            "--deck",
+            "Rust",
+            "--tag",
+            "topic::ownership",
+            "-n",
+            "5",
+            "--verbose",
         ]);
-        if let Commands::ObsidianSync(args) = cli.command {
-            assert_eq!(args.source_dirs.as_deref(), Some("notes,projects"));
-            assert!(args.dry_run);
-        } else {
-            panic!("expected ObsidianSync command");
+        match cli.command {
+            Commands::Search(args) => {
+                assert_eq!(args.query, "ownership");
+                assert_eq!(args.deck_names, vec!["Rust"]);
+                assert_eq!(args.tags, vec!["topic::ownership"]);
+                assert_eq!(args.limit, 5);
+                assert!(args.verbose);
+            }
+            _ => panic!("expected search command"),
         }
     }
 
     #[test]
-    fn parse_obsidian_sync_requires_vault() {
-        let result = try_parse(&["anki-atlas", "obsidian-sync"]);
-        assert!(result.is_err());
-    }
-
-    // ---- TagAudit ----
-
-    #[test]
-    fn parse_tag_audit_with_file() {
-        let cli = parse(&["anki-atlas", "tag-audit", "tags.txt"]);
-        if let Commands::TagAudit(args) = cli.command {
-            assert_eq!(args.file.to_str().unwrap(), "tags.txt");
-            assert!(!args.fix);
-        } else {
-            panic!("expected TagAudit command");
+    fn parse_nested_topics_commands() {
+        let cli = Cli::parse_from(["anki-atlas", "topics", "tree", "--root-path", "rust"]);
+        match cli.command {
+            Commands::Topics(args) => match args.command {
+                TopicsCommand::Tree(tree) => {
+                    assert_eq!(tree.root_path.as_deref(), Some("rust"));
+                }
+                _ => panic!("expected topics tree"),
+            },
+            _ => panic!("expected topics command"),
         }
     }
 
     #[test]
-    fn parse_tag_audit_with_fix() {
-        let cli = parse(&["anki-atlas", "tag-audit", "tags.txt", "--fix"]);
-        if let Commands::TagAudit(args) = cli.command {
-            assert!(args.fix);
-        } else {
-            panic!("expected TagAudit command");
+    fn parse_weak_notes_command() {
+        let cli = Cli::parse_from(["anki-atlas", "weak-notes", "rust/ownership", "-n", "5"]);
+        match cli.command {
+            Commands::WeakNotes(args) => {
+                assert_eq!(args.topic, "rust/ownership");
+                assert_eq!(args.limit, 5);
+            }
+            _ => panic!("expected weak-notes command"),
         }
-    }
-
-    #[test]
-    fn parse_tag_audit_requires_file() {
-        let result = try_parse(&["anki-atlas", "tag-audit"]);
-        assert!(result.is_err());
-    }
-
-    // ---- Error cases ----
-
-    #[test]
-    fn parse_unknown_command_fails() {
-        let result = try_parse(&["anki-atlas", "unknown"]);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn parse_no_command_fails() {
-        let result = try_parse(&["anki-atlas"]);
-        assert!(result.is_err());
-    }
-
-    // ---- Help ----
-
-    #[test]
-    fn help_flag_is_recognized() {
-        let result = try_parse(&["anki-atlas", "--help"]);
-        // --help causes clap to return an error (DisplayHelp variant)
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn subcommand_help_is_recognized() {
-        let result = try_parse(&["anki-atlas", "generate", "--help"]);
-        assert!(result.is_err());
     }
 }

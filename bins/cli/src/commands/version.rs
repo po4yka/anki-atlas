@@ -1,5 +1,4 @@
-/// Display version information.
 pub fn run() -> anyhow::Result<()> {
-    println!("anki-atlas {}", env!("CARGO_PKG_VERSION"));
+    println!("{}", env!("CARGO_PKG_VERSION"));
     Ok(())
 }

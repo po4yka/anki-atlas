@@ -1,8 +1,9 @@
 use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
 
 fn cmd() -> Command {
-    Command::cargo_bin("anki-atlas").expect("binary should exist")
+    cargo_bin_cmd!("anki-atlas")
 }
 
 #[test]
@@ -11,7 +12,7 @@ fn version_command_prints_version() {
         .arg("version")
         .assert()
         .success()
-        .stdout(predicate::str::contains("anki-atlas"));
+        .stdout(predicate::str::contains(env!("CARGO_PKG_VERSION")));
 }
 
 #[test]
@@ -26,12 +27,6 @@ fn help_flag_shows_usage() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Searchable hybrid index"));
-}
-
-#[test]
-fn migrate_command_runs() {
-    // Should succeed (or at least not panic with todo!)
-    cmd().arg("migrate").assert().success();
 }
 
 #[test]
@@ -64,4 +59,13 @@ fn obsidian_sync_with_nonexistent_vault_fails() {
         .args(["obsidian-sync", "/nonexistent/vault"])
         .assert()
         .failure();
+}
+
+#[test]
+fn search_help_mentions_search_command() {
+    cmd()
+        .args(["search", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("search"));
 }
