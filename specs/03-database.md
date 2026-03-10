@@ -1,7 +1,8 @@
 # Spec: crate `database`
 
 ## Source Reference
-Python: `packages/common/database.py` + `packages/common/migrations/*.sql`
+Current Rust implementation: `crates/database/`
+Historical rewrite input: `packages/common/database.py` + `packages/common/migrations/*.sql`
 
 ## Purpose
 Async PostgreSQL database layer providing connection pool management, migration execution, and health checks. Uses `sqlx` with compile-time query verification disabled (runtime mode) since the schema is applied via migrations. Embeds SQL migration files and applies them idempotently using a `schema_migrations` tracking table.

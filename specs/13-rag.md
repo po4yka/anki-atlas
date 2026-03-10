@@ -1,7 +1,8 @@
 # Spec: crate `rag`
 
 ## Source Reference
-Python: `packages/rag/` (chunker.py, service.py, store.py)
+Current Rust implementation: `crates/rag/`
+Historical rewrite input: `packages/rag/` (chunker.py, service.py, store.py)
 
 ## Purpose
 Retrieval-augmented generation subsystem: chunk markdown documents into typed segments for embedding, store and query vectors via an abstract trait (backed by Qdrant in production), and provide high-level RAG operations for few-shot retrieval, context enrichment, and duplicate detection. The store trait is generic so tests can use an in-memory implementation.

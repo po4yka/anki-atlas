@@ -1,7 +1,8 @@
 # Spec: crate `anki-reader`
 
 ## Source Reference
-Python: `packages/anki/` (models.py, reader.py, normalizer.py, connect.py)
+Current Rust implementation: `crates/anki-reader/`
+Historical rewrite input: `packages/anki/` (models.py, reader.py, normalizer.py, connect.py)
 
 ## Purpose
 Read and normalize Anki collections from SQLite databases and communicate with a running Anki instance via the AnkiConnect HTTP API. Provides strongly-typed models for decks, notes, cards, review logs, and card statistics. Includes HTML-to-text normalization for search indexing. The SQLite reader copies the collection file to a temp location to avoid locking conflicts with a running Anki.

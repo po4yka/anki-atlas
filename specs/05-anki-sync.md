@@ -1,7 +1,8 @@
 # Spec: crate `anki-sync`
 
 ## Source Reference
-Python: `packages/anki/sync/` (core.py, engine.py, state.py, progress.py, recovery.py)
+Current Rust implementation: `crates/anki-sync/`
+Historical rewrite input: `packages/anki/sync/` (core.py, engine.py, state.py, progress.py, recovery.py)
 
 ## Purpose
 Orchestrate syncing Anki collection data into PostgreSQL and manage local sync state via SQLite. Provides a high-level `SyncService` that reads an Anki collection, normalizes notes, and upserts everything into PostgreSQL. Also provides a lower-level `SyncEngine` for phased sync operations with progress tracking, an SQLite WAL state database for tracking per-card sync state, and recovery utilities for detecting orphaned or stale cards.

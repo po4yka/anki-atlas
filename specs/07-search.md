@@ -2,7 +2,8 @@
 
 ## Source Reference
 
-Python: `packages/search/` (fts.py, fusion.py, reranker.py, service.py)
+Current Rust implementation: `crates/search/`
+Historical rewrite input: `packages/search/` (fts.py, fusion.py, reranker.py, service.py)
 
 ## Purpose
 

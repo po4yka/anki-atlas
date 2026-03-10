@@ -1,115 +1,112 @@
 # Contributing to Anki Atlas
 
-Thank you for your interest in contributing to Anki Atlas.
+This workspace is still evolving quickly, but the contribution rule on `main` is stable: public surfaces must stay aligned with the real Rust services underneath them.
 
-## Development Workflow
+## Before You Start
 
-### 1. Fork and Clone
+- Read [docs/ARCHITECTURE.md](/Users/po4yka/GitRep/anki-atlas/docs/ARCHITECTURE.md).
+- Prefer updating the shared domain crates over adding surface-specific behavior in `bins/*`.
+- Keep API, CLI, and MCP documentation in sync with the code whenever you change a public contract.
+
+## Local Setup
 
 ```bash
 git clone https://github.com/your-username/anki-atlas.git
 cd anki-atlas
-```
 
-### 2. Set Up Development Environment
-
-```bash
-# Install Rust (if not already installed)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Start infrastructure dependencies
 docker compose -f infra/docker-compose.yml up -d
 
-# Verify build
+# Mock embeddings are fine for basic smoke tests
+export ANKIATLAS_EMBEDDING_PROVIDER=mock
+export ANKIATLAS_EMBEDDING_DIMENSION=384
+
 cargo build
-cargo test --workspace --exclude anki-sync --exclude database
+cargo run --bin anki-atlas -- migrate
 ```
 
-### 3. Create a Branch
+If you need real embeddings, switch to `ANKIATLAS_EMBEDDING_PROVIDER=openai` or `google` and supply the matching API key.
 
-Use a descriptive branch name following this convention:
+## Branching and Commits
 
-- `feat/description` - New features
-- `fix/description` - Bug fixes
-- `docs/description` - Documentation changes
-- `refactor/description` - Code refactoring
-- `test/description` - Test additions or changes
+Use descriptive branch names and Conventional Commit messages.
+
+Examples:
 
 ```bash
-git checkout -b feat/my-feature
+git checkout -b docs/update-runtime-docs
+git checkout -b refactor/search-surface-alignment
+
+git commit -m "docs: refresh runtime and public surface guides"
+git commit -m "refactor(api): align search DTOs with service contract"
+git commit -m "test(mcp): cover markdown and json tool output"
 ```
 
-### 4. Make Changes
+## Project Rules
 
-- Follow existing code patterns and conventions
-- Add tests for new functionality
-- Update documentation as needed
+- `bins/*` should translate transport concerns only.
+- Domain rules belong in `crates/*`.
+- Shared surface wiring belongs in `crates/surface-runtime`.
+- Unsupported workflows must fail explicitly instead of returning placeholder success.
+- Avoid reintroducing duplicate public entrypoints for the same behavior.
 
-### 5. Test Your Changes
+## Code Style
+
+- Rust edition `2024`
+- `thiserror` for library error types; `anyhow` only at binary/application edges
+- Trait-based boundaries for infrastructure and external services
+- Prefer typed DTOs over `serde_json::Value` at public interfaces unless the payload is intentionally schema-free
+- No `unwrap()` / `expect()` in library code
+- Keep comments sparse and useful
+
+## Testing Expectations
+
+Run the narrowest useful test set before sending a change:
 
 ```bash
-# Run linting
+# format and lint
+cargo fmt --all -- --check
 cargo clippy --workspace -- -D warnings
 
-# Check formatting
-cargo fmt --all -- --check
+# surface-focused tests
+cargo test -p anki-atlas-api
+cargo test -p anki-atlas-cli
+cargo test -p anki-atlas-mcp
 
-# Run tests (excludes Docker-dependent crates)
-cargo test --workspace --exclude anki-sync --exclude database
-
-# Run single crate tests for faster iteration
+# crate-focused tests
 cargo test -p <crate-name>
 ```
 
-### 6. Commit Your Changes
-
-Follow Conventional Commits format:
-
-```
-<type>(<scope>): <description>
-```
-
-Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
-
-Examples:
-```bash
-git commit -m "feat(search): add similarity threshold parameter"
-git commit -m "fix(sync): handle empty collections gracefully"
-git commit -m "test(indexer): add embedding provider mock tests"
-```
-
-### 7. Push and Create Pull Request
+For broader changes:
 
 ```bash
-git push origin feat/my-feature
+cargo test --workspace --exclude anki-sync --exclude database
 ```
 
-## Code Conventions
+## Documentation Expectations
 
-- Rust 1.88+ (edition 2024)
-- All types must be `Send + Sync`
-- `thiserror` for library error types, `anyhow` only in binary crates
-- Trait-based DI at every external boundary (DB, HTTP, Qdrant, Redis)
-- `#[cfg_attr(test, mockall::automock)]` on traits for test mocks
-- `#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]` as baseline
-- Newtype pattern for domain IDs: `pub struct NoteId(pub i64);`
-- `#[instrument]` on public async functions for tracing
-- `Arc<T>` for shared state, never `Rc<T>`
-- No `unwrap()` or `expect()` in library crates
+Update docs when you change:
 
-## Testing
+- API routes or schemas
+- CLI commands or flags
+- MCP tool names, parameters, or output modes
+- environment variables
+- deployment requirements
+- intentional product limitations
 
-- Unit tests in `#[cfg(test)] mod tests` within each source file
-- Integration tests in `crates/<name>/tests/` and `bins/<name>/tests/`
-- `#[tokio::test]` for async tests
-- `mockall` for auto-generated mock implementations
-- `tempfile::TempDir` for filesystem tests
+The current source-of-truth docs are:
 
-## Reporting Issues
+- [README.md](/Users/po4yka/GitRep/anki-atlas/README.md)
+- [docs/ARCHITECTURE.md](/Users/po4yka/GitRep/anki-atlas/docs/ARCHITECTURE.md)
+- [specs/16-cli.md](/Users/po4yka/GitRep/anki-atlas/specs/16-cli.md)
+- [specs/17-api.md](/Users/po4yka/GitRep/anki-atlas/specs/17-api.md)
+- [specs/18-mcp.md](/Users/po4yka/GitRep/anki-atlas/specs/18-mcp.md)
 
-When reporting bugs, include:
-- Steps to reproduce
-- Expected behavior
-- Actual behavior
-- Environment details (OS, Rust version)
-- Relevant logs or error messages
+## Reporting Problems
+
+When filing an issue or review note, include:
+
+- the command or route you ran
+- the environment variables or provider mode in use
+- the exact error text
+- whether the failure is in CLI, API, MCP, or worker
+- reproduction steps

@@ -1,7 +1,8 @@
 # Spec: crate `worker`
 
 ## Source Reference
-Python: `apps/worker.py`
+Current Rust implementation: `bins/worker/`
+Historical rewrite input: `apps/worker.py`
 
 ## Purpose
 Tokio-based background worker that polls Redis for queued jobs and executes them. Replaces the Python arq worker. Runs `job_sync` and `job_index` task functions from the `jobs` crate. Implements a simple Redis-based job queue consumer with configurable concurrency, retry handling, and graceful shutdown.

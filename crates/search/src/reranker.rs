@@ -1,4 +1,5 @@
 use crate::error::{RerankError, SearchError};
+use std::sync::Arc;
 
 /// Trait for second-stage reranking implementations.
 #[async_trait::async_trait]
@@ -14,6 +15,42 @@ pub trait Reranker: Send + Sync {
         query: &str,
         documents: &[(i64, String)],
     ) -> Result<Vec<(i64, f64)>, SearchError>;
+}
+
+#[async_trait::async_trait]
+impl<T> Reranker for Box<T>
+where
+    T: Reranker + ?Sized,
+{
+    fn model_name(&self) -> &str {
+        (**self).model_name()
+    }
+
+    async fn rerank(
+        &self,
+        query: &str,
+        documents: &[(i64, String)],
+    ) -> Result<Vec<(i64, f64)>, SearchError> {
+        (**self).rerank(query, documents).await
+    }
+}
+
+#[async_trait::async_trait]
+impl<T> Reranker for Arc<T>
+where
+    T: Reranker + ?Sized,
+{
+    fn model_name(&self) -> &str {
+        (**self).model_name()
+    }
+
+    async fn rerank(
+        &self,
+        query: &str,
+        documents: &[(i64, String)],
+    ) -> Result<Vec<(i64, f64)>, SearchError> {
+        (**self).rerank(query, documents).await
+    }
 }
 
 /// Cross-encoder reranker that calls an external inference endpoint.

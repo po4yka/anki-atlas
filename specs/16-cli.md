@@ -1,340 +1,152 @@
-# Spec: crate `cli`
+# Spec: crate `anki-atlas-cli`
 
 ## Source Reference
-Python: `apps/cli/__init__.py` + `apps/cli/generate.py`, `apps/cli/validate.py`, `apps/cli/obsidian.py`, `apps/cli/tags.py`
+
+Current Rust source:
+
+- [main.rs](/Users/po4yka/GitRep/anki-atlas/bins/cli/src/main.rs)
+- [args.rs](/Users/po4yka/GitRep/anki-atlas/bins/cli/src/args.rs)
+- [commands/mod.rs](/Users/po4yka/GitRep/anki-atlas/bins/cli/src/commands/mod.rs)
+- [output.rs](/Users/po4yka/GitRep/anki-atlas/bins/cli/src/output.rs)
 
 ## Purpose
-Command-line interface for anki-atlas providing all user-facing operations: sync, migrate, index, search, topics, coverage, gaps, duplicates, generate, validate, obsidian-sync, and tag-audit. Uses clap derive for argument parsing, `anyhow` for error handling, and `tokio` for async runtime. Output is formatted for terminal using `comfy-table` or plain text with ANSI colors via `console`.
+
+Provide the operator-facing command surface for Anki Atlas. The CLI is the only public surface that may execute sync and index directly. It also exposes search, analytics, taxonomy operations, and local preview workflows.
 
 ## Dependencies
+
 ```toml
 [dependencies]
-common = { path = "../common" }
-llm = { path = "../llm" }
-obsidian = { path = "../obsidian" }
-rag = { path = "../rag" }
-generator = { path = "../generator" }
-jobs = { path = "../jobs" }
-# Additional workspace crates as needed:
-# anki-sync, indexer, search, analytics, taxonomy, validation, card
+analytics = { path = "../../crates/analytics" }
+common = { path = "../../crates/common" }
+database = { path = "../../crates/database" }
+search = { path = "../../crates/search" }
+surface-runtime = { path = "../../crates/surface-runtime" }
 
-anyhow = "1"
-clap = { version = "4", features = ["derive", "env"] }
-comfy-table = "7"
-console = "0.15"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
 ```
 
 ## Public API
 
-### CLI Entry Point (`src/main.rs`)
+### Binary
 
-```rust
-use clap::Parser;
+- binary name: `anki-atlas`
 
-#[derive(Parser)]
-#[command(name = "anki-atlas", about = "Searchable hybrid index for Anki collections")]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-}
+### Command Set
 
-#[derive(clap::Subcommand)]
-enum Commands {
-    /// Show version information.
-    Version,
-
-    /// Sync Anki collection to the index.
-    Sync(SyncArgs),
-
-    /// Run database migrations.
-    Migrate,
-
-    /// Index notes from PostgreSQL to vector database.
-    Index(IndexArgs),
-
-    /// Search the Anki index.
-    Search(SearchArgs),
-
-    /// Manage topic taxonomy.
-    Topics(TopicsArgs),
-
-    /// Show topic coverage metrics.
-    Coverage(CoverageArgs),
-
-    /// Detect gaps in topic coverage.
-    Gaps(GapsArgs),
-
-    /// Find near-duplicate notes.
-    Duplicates(DuplicatesArgs),
-
-    /// Parse an Obsidian note and preview card generation.
-    Generate(GenerateArgs),
-
-    /// Validate flashcard content from a file.
-    Validate(ValidateArgs),
-
-    /// Scan an Obsidian vault and preview or sync cards.
-    ObsidianSync(ObsidianSyncArgs),
-
-    /// Audit tags for convention violations.
-    TagAudit(TagAuditArgs),
-}
+```text
+anki-atlas version
+anki-atlas migrate
+anki-atlas sync <source> [--no-migrate] [--no-index] [--force-reindex]
+anki-atlas index [--force]
+anki-atlas search <query> [--deck <name>]... [--tag <tag>]... [-n <limit>] [--semantic] [--fts] [--verbose]
+anki-atlas topics tree [--root-path <path>]
+anki-atlas topics load --file <path>
+anki-atlas topics label [--file <path>] [--min-confidence <float>]
+anki-atlas coverage <topic> [--no-subtree]
+anki-atlas gaps <topic> [--min-coverage <n>]
+anki-atlas weak-notes <topic> [-n <limit>]
+anki-atlas duplicates [--threshold <float>] [--max <n>] [--deck <name>]... [--tag <tag>]... [--verbose]
+anki-atlas generate <file> [--dry-run]
+anki-atlas validate <file> [--quality]
+anki-atlas obsidian-sync <vault> [--source-dirs a,b,c] [--dry-run]
+anki-atlas tag-audit <file> [--fix]
 ```
 
-### Subcommand Args (`src/args.rs`)
+### Command Semantics
 
-```rust
-use std::path::PathBuf;
+- `sync`
+  - may run migrations first
+  - runs direct sync execution
+  - may run direct indexing afterward
+- `index`
+  - runs direct indexing over PostgreSQL notes
+- `search`
+  - maps onto `search::service::SearchParams`
+- `topics tree`
+  - prints taxonomy tree data
+- `topics load`
+  - loads taxonomy YAML into PostgreSQL
+- `topics label`
+  - labels notes against the taxonomy
+- `coverage`, `gaps`, `weak-notes`, `duplicates`
+  - call shared analytics facades
+- `generate`
+  - previews parsed-note generation only
+- `validate`
+  - runs `ValidationPipeline` and optional quality scoring
+- `obsidian-sync`
+  - scans a vault and previews work
+  - currently requires dry-run behavior
+- `tag-audit`
+  - validates tags, applies normalization when requested, and prints suggestions
 
-#[derive(clap::Args)]
-pub struct SyncArgs {
-    /// Path to collection.anki2 file.
-    #[arg(short, long)]
-    pub source: String,
+## Runtime Wiring
 
-    /// Run database migrations before sync.
-    #[arg(long, default_value_t = true)]
-    pub migrate: bool,
+The CLI uses [surface-runtime](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) with direct execution enabled.
 
-    /// Index notes to vector database after sync.
-    #[arg(long, default_value_t = true)]
-    pub index: bool,
+That shared runtime provides:
 
-    /// Force re-embedding all notes.
-    #[arg(long, default_value_t = false)]
-    pub force_reindex: bool,
-}
+- PostgreSQL pool
+- embedding provider
+- Qdrant-backed vector repository
+- optional reranker
+- search facade
+- analytics facade
+- direct sync executor
+- direct index executor
+- preview workflow wrappers
 
-#[derive(clap::Args)]
-pub struct IndexArgs {
-    /// Force re-embedding all notes.
-    #[arg(short, long, default_value_t = false)]
-    pub force: bool,
-}
+## Output Contract
 
-#[derive(clap::Args)]
-pub struct SearchArgs {
-    /// Search query.
-    pub query: String,
+The CLI is human-readable only. It does not promise a stable JSON schema.
 
-    /// Filter by deck name.
-    #[arg(short, long)]
-    pub deck: Option<String>,
+Current output categories:
 
-    /// Filter by tag.
-    #[arg(short, long)]
-    pub tag: Option<String>,
+- tabular search and duplicate listings
+- topic and coverage summaries
+- sync and index summaries
+- validation issue reports
+- preview output for generation and Obsidian scans
 
-    /// Number of results.
-    #[arg(short = 'n', long, default_value_t = 10)]
-    pub top: usize,
+## Constraints
 
-    /// Use only semantic search.
-    #[arg(long, default_value_t = false)]
-    pub semantic: bool,
+- `generate` does not persist cards
+- `obsidian-sync` does not persist non-preview results yet
+- CLI direct sync/index require PostgreSQL and Qdrant availability
+- the CLI should reuse shared runtime services rather than rewire dependencies ad hoc inside commands
 
-    /// Use only full-text search.
-    #[arg(long, default_value_t = false)]
-    pub fts: bool,
+## Module Layout
 
-    /// Show detailed scores.
-    #[arg(short, long, default_value_t = false)]
-    pub verbose: bool,
-}
-
-#[derive(clap::Args)]
-pub struct TopicsArgs {
-    /// Path to topics.yml file to load.
-    #[arg(short, long)]
-    pub file: Option<PathBuf>,
-
-    /// Label notes with topics after loading.
-    #[arg(short, long, default_value_t = false)]
-    pub label: bool,
-
-    /// Minimum confidence for labeling.
-    #[arg(long, default_value_t = 0.3)]
-    pub min_confidence: f64,
-}
-
-#[derive(clap::Args)]
-pub struct CoverageArgs {
-    /// Topic path (e.g., programming/python).
-    pub topic: String,
-
-    /// Include child topics.
-    #[arg(long, default_value_t = true)]
-    pub subtree: bool,
-}
-
-#[derive(clap::Args)]
-pub struct GapsArgs {
-    /// Topic path.
-    pub topic: String,
-
-    /// Minimum notes for coverage.
-    #[arg(short, long, default_value_t = 1)]
-    pub min_coverage: usize,
-}
-
-#[derive(clap::Args)]
-pub struct DuplicatesArgs {
-    /// Similarity threshold (0-1).
-    #[arg(short, long, default_value_t = 0.92)]
-    pub threshold: f64,
-
-    /// Maximum clusters to show.
-    #[arg(short = 'n', long, default_value_t = 50)]
-    pub max: usize,
-
-    /// Filter by deck name.
-    #[arg(short, long)]
-    pub deck: Option<String>,
-
-    /// Filter by tag.
-    #[arg(long)]
-    pub tag: Option<String>,
-
-    /// Show all duplicates in clusters.
-    #[arg(short, long, default_value_t = false)]
-    pub verbose: bool,
-}
-
-#[derive(clap::Args)]
-pub struct GenerateArgs {
-    /// Path to an Obsidian markdown note.
-    pub file: PathBuf,
-
-    /// Preview without generating.
-    #[arg(long, default_value_t = false)]
-    pub dry_run: bool,
-}
-
-#[derive(clap::Args)]
-pub struct ValidateArgs {
-    /// File with card front/back (--- separated).
-    pub file: PathBuf,
-
-    /// Run quality assessment.
-    #[arg(short, long, default_value_t = false)]
-    pub quality: bool,
-}
-
-#[derive(clap::Args)]
-pub struct ObsidianSyncArgs {
-    /// Path to Obsidian vault.
-    pub vault: PathBuf,
-
-    /// Comma-separated subdirectories to scan.
-    #[arg(short, long)]
-    pub source_dirs: Option<String>,
-
-    /// Scan only, do not generate/sync.
-    #[arg(long, default_value_t = false)]
-    pub dry_run: bool,
-}
-
-#[derive(clap::Args)]
-pub struct TagAuditArgs {
-    /// File with tags, one per line.
-    pub file: PathBuf,
-
-    /// Show normalized tags.
-    #[arg(short, long, default_value_t = false)]
-    pub fix: bool,
-}
-```
-
-### Command Handlers (`src/commands/*.rs`)
-
-Each command is implemented as an async function that:
-1. Parses/validates arguments.
-2. Constructs service dependencies.
-3. Calls the appropriate package API.
-4. Formats and prints results as tables or structured text.
-5. Returns `anyhow::Result<()>`, printing errors via `eprintln!`.
-
-```rust
-// Example: src/commands/sync.rs
-pub async fn run(args: &SyncArgs) -> anyhow::Result<()>;
-
-// Example: src/commands/search.rs
-pub async fn run(args: &SearchArgs) -> anyhow::Result<()>;
-```
-
-### Module structure
-
-```
-src/
-  main.rs          -- CLI entry, clap parse, dispatch
-  args.rs          -- All arg structs
+```text
+bins/cli/src/
+  main.rs
+  args.rs
+  output.rs
   commands/
-    mod.rs
-    sync.rs
-    migrate.rs
-    index.rs
-    search.rs
-    topics.rs
     coverage.rs
-    gaps.rs
     duplicates.rs
+    gaps.rs
     generate.rs
-    validate.rs
+    index.rs
+    migrate.rs
     obsidian_sync.rs
+    search.rs
+    sync.rs
     tag_audit.rs
-  output.rs        -- Table formatting helpers
+    topics.rs
+    validate.rs
+    version.rs
+    weak_notes.rs
 ```
-
-## Internal Details
-
-### Error Handling Pattern
-- Each command handler wraps operations in a closure-style error handler.
-- On error: log with tracing, print user-friendly message to stderr, exit with code 1.
-- Uses `anyhow::Context` for adding context to errors.
-
-### Output Formatting
-- Tables use `comfy-table` crate with columns for structured data (search results, sync stats, coverage).
-- Colors via `console` crate: green for success, red for errors, yellow for warnings, cyan for labels.
-- Verbose mode in search shows detailed per-result scores.
-
-### Async Runtime
-- `main` uses `#[tokio::main]` with multi-threaded runtime.
-- All command handlers are async.
-- Tracing subscriber configured at startup with env-filter.
-
-### Search Command
-- Builds `SearchFilters` from deck/tag options.
-- Calls `SearchService::search` with limit, semantic_only, fts_only flags.
-- Fetches note details for result enrichment.
-- Displays table with rank, note ID, score, sources, preview, tags.
-
-### Duplicates Command
-- Constructs `DuplicateDetector`, calls `find_duplicates`.
-- Shows summary stats then cluster details.
-- In verbose mode shows all duplicates; otherwise top match + count.
 
 ## Acceptance Criteria
-- [ ] `clap` parses all 12 subcommands correctly
-- [ ] `version` command prints version string
-- [ ] `sync` command validates source path exists before proceeding
-- [ ] `sync` command runs migrations, sync, and index in sequence
-- [ ] `migrate` command calls migration function and reports results
-- [ ] `index` command respects `--force` flag
-- [ ] `search` command accepts query, deck, tag, top, semantic, fts, verbose flags
-- [ ] `search` command displays results in table format
-- [ ] `topics` command loads taxonomy from file or database
-- [ ] `coverage` command displays metrics table with coverage data
-- [ ] `gaps` command separates missing and undercovered topics
-- [ ] `duplicates` command respects threshold, max, deck, tag, verbose options
-- [ ] `generate` command parses Obsidian note and shows preview
-- [ ] `validate` command runs validation pipeline and optionally quality scoring
-- [ ] `obsidian-sync` command discovers and parses vault notes
-- [ ] `tag-audit` command validates tags and shows normalized versions with `--fix`
-- [ ] Error handling prints user-friendly messages and exits with code 1
-- [ ] `--help` works for all commands and subcommands
-- [ ] `make check` equivalent passes (clippy, fmt, test)
+
+- CLI command tree matches the clap definitions in `args.rs`
+- search and analytics commands call shared facades
+- sync and index execute directly only in CLI
+- preview workflows fail explicitly for unsupported persistence behavior
+- docs and examples do not mention removed or unwired CLI commands

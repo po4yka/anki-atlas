@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
 
 /// Errors from embedding operations.
 #[derive(Debug, thiserror::Error)]
@@ -51,6 +52,42 @@ where
 
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
         (*self).embed(texts).await
+    }
+}
+
+#[async_trait]
+impl<T> EmbeddingProvider for Box<T>
+where
+    T: EmbeddingProvider + ?Sized,
+{
+    fn model_name(&self) -> &str {
+        (**self).model_name()
+    }
+
+    fn dimension(&self) -> usize {
+        (**self).dimension()
+    }
+
+    async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        (**self).embed(texts).await
+    }
+}
+
+#[async_trait]
+impl<T> EmbeddingProvider for Arc<T>
+where
+    T: EmbeddingProvider + ?Sized,
+{
+    fn model_name(&self) -> &str {
+        (**self).model_name()
+    }
+
+    fn dimension(&self) -> usize {
+        (**self).dimension()
+    }
+
+    async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        (**self).embed(texts).await
     }
 }
 

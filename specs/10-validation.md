@@ -2,7 +2,8 @@
 
 ## Source Reference
 
-Python: `packages/validation/` (pipeline.py, validators.py, quality.py)
+Current Rust implementation: `crates/validation/`
+Historical rewrite input: `packages/validation/` (pipeline.py, validators.py, quality.py)
 
 ## Purpose
 

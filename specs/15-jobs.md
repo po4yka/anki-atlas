@@ -1,7 +1,8 @@
 # Spec: crate `jobs`
 
 ## Source Reference
-Python: `packages/jobs/` (service.py, tasks.py)
+Current Rust implementation: `crates/jobs/`
+Historical rewrite input: `packages/jobs/` (service.py, tasks.py)
 
 ## Purpose
 Async background job management backed by Redis. Provides job enqueueing, status tracking, progress updates, cancellation, and retry logic. Jobs are persisted as JSON in Redis with TTL-based expiration. The task functions (`job_sync`, `job_index`) execute the actual work, updating job status at each phase. Uses `rustis` (async Redis client) instead of arq.

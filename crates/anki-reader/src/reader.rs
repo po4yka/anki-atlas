@@ -43,8 +43,8 @@ impl AnkiReader {
 
     /// Open the database (copy to temp, connect).
     pub fn open(&mut self) -> Result<()> {
-        let temp_file =
-            NamedTempFile::new().map_err(|e| reader_err(format!("failed to create temp file: {e}")))?;
+        let temp_file = NamedTempFile::new()
+            .map_err(|e| reader_err(format!("failed to create temp file: {e}")))?;
 
         std::fs::copy(&self.collection_path, temp_file.path())
             .map_err(|e| reader_err(format!("failed to copy collection: {e}")))?;

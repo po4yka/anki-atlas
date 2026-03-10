@@ -2,21 +2,25 @@
 
 ## Mission
 
-Anki Atlas is a Rust workspace for ingesting Anki and Obsidian content, generating cards, building searchable indexes, and exposing a small set of stable machine-facing surfaces.
+Anki Atlas is a Rust workspace for syncing Anki collections, indexing note content for hybrid retrieval, analyzing topic coverage, previewing Obsidian-driven workflows, and exposing those capabilities consistently through API, CLI, MCP, and worker processes.
 
-The important architecture rule on `main` is simple: public interfaces must match wired domain services. The API, CLI, and MCP surfaces now share one runtime composition layer in `crates/surface-runtime`, so transport-specific code stays thin while the domain wiring stays consistent.
+The core architecture rule on `main` is simple:
+
+- public interfaces must match wired domain services
+- unsupported workflows must fail explicitly
+- shared runtime composition belongs in `crates/surface-runtime`
 
 ## Current Stack
 
 | Layer | Technology |
-|-------|------------|
+|---|---|
 | Language | Rust 2024 |
 | API | Axum |
 | CLI | Clap |
 | MCP | rmcp |
 | Jobs | Tokio + Redis |
-| Relational store | PostgreSQL |
-| Vector store | Qdrant |
+| Relational storage | PostgreSQL |
+| Vector storage | Qdrant |
 
 ## Workspace Layout
 
@@ -24,124 +28,147 @@ The important architecture rule on `main` is simple: public interfaces must matc
 bins/
   api/       # HTTP surface
   cli/       # command-line surface
-  mcp/       # MCP server
-  worker/    # background job executor
+  mcp/       # stdio MCP server
+  worker/    # async job execution process
 crates/
-  common/      # config, errors, logging, shared types
-  anki-reader/ # Anki SQLite + AnkiConnect access
-  anki-sync/   # sync orchestration
-  indexer/     # embeddings + Qdrant persistence
-  search/      # hybrid retrieval and reranking
-  analytics/   # taxonomy, coverage, gaps, duplicates
-  obsidian/    # vault discovery and parsing
-  generator/   # card generation agents
-  llm/         # LLM provider contracts
-  jobs/        # job queue contracts, persistence, manager
-  surface-runtime/ # shared runtime graph and local workflow wrappers
+  common/           # config, logging, shared errors and types
+  database/         # PostgreSQL pool and migrations
+  anki-reader/      # Anki SQLite + AnkiConnect access
+  anki-sync/        # sync orchestration
+  indexer/          # embeddings and vector persistence
+  search/           # hybrid search and reranking
+  analytics/        # taxonomy, coverage, gaps, duplicates
+  obsidian/         # note parsing and vault analysis
+  validation/       # validation pipeline and quality scoring
+  generator/        # generation models and agents
+  jobs/             # job types, persistence, queue manager
+  surface-runtime/  # shared runtime graph and local workflow wrappers
 ```
 
-Legacy `apps/` and `packages/` directories are historical leftovers from the earlier rewrite and are not the authoritative runtime architecture.
+Older Python-oriented specs and migration notes still exist under `specs/` and `docs/plans/`, but they are historical design artifacts unless they have been explicitly rewritten for the current Rust runtime.
 
 ## Layer Boundaries
 
 ```text
-Interfaces
+Surfaces
   bins/api
   bins/cli
   bins/mcp
   bins/worker
         |
         v
-Application and domain crates
+Shared runtime composition
+  crates/surface-runtime
+        |
+        v
+Domain services
   anki-sync
   indexer
   search
   analytics
   obsidian
+  validation
   generator
   jobs
         |
         v
-Infrastructure and shared contracts
-  common
-  anki-reader
-  llm
+Infrastructure
   PostgreSQL
   Qdrant
   Redis
+  embedding providers
 ```
 
 ### Ownership rules
 
-- `bins/*` should translate transport concerns only.
-- Business rules belong in `crates/*`.
-- Shared domain behavior should be reused across surfaces, not reimplemented in each binary.
-- Unsupported workflows should fail explicitly or stay unexposed.
+- `bins/*` should extract input, call facades, and translate output.
+- `crates/*` should contain business logic and reusable workflows.
+- Shared runtime wiring should not be duplicated across API, CLI, and MCP.
+- Write-side transport differences are allowed only when intentional:
+  - CLI may execute sync/index directly.
+  - API and MCP must keep sync/index behind jobs.
+
+## Shared Runtime
+
+[services.rs](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) builds the runtime graph once from [config.rs](/Users/po4yka/GitRep/anki-atlas/crates/common/src/config.rs):
+
+- PostgreSQL pool
+- embedding provider
+- Qdrant-backed vector repository
+- optional reranker
+- Redis-backed `JobManager`
+- `SearchFacade`
+- `AnalyticsFacade`
+- direct sync/index executors for CLI-only use
+- local workflow wrappers for generation preview, validation, Obsidian scan, and tag audit
+
+This lets the surfaces share the same domain contracts while keeping their transport code thin.
 
 ## Stable Public Surfaces
 
 ### HTTP API
 
-The API exposes health checks, async job orchestration, and service-aligned read operations:
+The API exposes:
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/health` | `GET` | liveness |
-| `/ready` | `GET` | dependency readiness |
-| `/jobs/sync` | `POST` | enqueue sync job |
-| `/jobs/index` | `POST` | enqueue index job |
-| `/jobs/{job_id}` | `GET` | poll job status |
-| `/jobs/{job_id}/cancel` | `POST` | request cancellation |
-| `/search` | `POST` | hybrid retrieval via `search::service::SearchService` |
-| `/topics` | `GET` | taxonomy / coverage tree |
-| `/topic-coverage` | `GET` | topic coverage metrics |
-| `/topic-gaps` | `GET` | undercovered and missing topic list |
-| `/topic-weak-notes` | `GET` | weak notes within a topic subtree |
-| `/duplicates` | `GET` | near-duplicate note clusters |
+- `GET /health`
+- `GET /ready`
+- `POST /jobs/sync`
+- `POST /jobs/index`
+- `GET /jobs/{job_id}`
+- `POST /jobs/{job_id}/cancel`
+- `POST /search`
+- `GET /topics`
+- `GET /topic-coverage`
+- `GET /topic-gaps`
+- `GET /topic-weak-notes`
+- `GET /duplicates`
 
-The API does not expose direct `/sync` or `/index` mutations. Write-side ingestion stays behind `/jobs/*`.
+Important behavior:
 
-#### Route semantics
+- Direct `/sync` and `/index` mutations are intentionally absent.
+- If `ANKIATLAS_API_KEY` is set, all routes except `/health` and `/ready` require `X-API-Key`.
+- `X-Request-ID` is added to every response.
+- `/ready` currently signals process readiness only. It is not a deep dependency check.
+- Error responses use one JSON envelope:
 
-- `/search` accepts a typed JSON body that mirrors `search::service::SearchParams`.
-- `/topics` accepts optional `root_path`.
-- `/topic-coverage` requires `topic_path` and accepts optional `include_subtree`.
-- `/topic-gaps` requires `topic_path` and accepts optional `min_coverage`.
-- `/topic-weak-notes` requires `topic_path` and accepts optional `max_results`.
-- `/duplicates` accepts optional `threshold`, `max_clusters`, `deck_filter[]`, and `tag_filter[]`.
+```json
+{
+  "error": "BadRequest",
+  "message": "limit must be greater than 0",
+  "details": {}
+}
+```
 
 ### CLI
 
-The CLI exposes the real service-aligned command surface:
+The CLI exposes:
 
-| Command | Purpose |
-|---------|---------|
-| `version` | print build version |
-| `migrate` | run database migrations |
-| `sync` | sync an Anki collection directly and optionally reindex |
-| `index` | run direct indexing against PostgreSQL notes |
-| `search` | run hybrid retrieval from the terminal |
-| `topics tree` | print the taxonomy / coverage tree |
-| `topics load` | load taxonomy YAML into PostgreSQL |
-| `topics label` | label notes against the taxonomy |
-| `coverage` | inspect topic coverage |
-| `gaps` | inspect undercovered and missing topics |
-| `weak-notes` | list weak notes for a topic |
-| `duplicates` | inspect duplicate-note clusters |
-| `generate` | parse an Obsidian note and preview card generation |
-| `validate` | validate flashcard content from a file |
-| `obsidian-sync` | scan an Obsidian vault in preview mode |
-| `tag-audit` | audit and optionally normalize tag conventions |
+- `version`
+- `migrate`
+- `sync`
+- `index`
+- `search`
+- `topics tree`
+- `topics load`
+- `topics label`
+- `coverage`
+- `gaps`
+- `weak-notes`
+- `duplicates`
+- `generate`
+- `validate`
+- `obsidian-sync`
+- `tag-audit`
 
-### Worker
+Important behavior:
 
-`anki-atlas-worker` is the only process allowed to execute background job bodies. It is intentionally gated behind `ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1` until task execution is fully implemented end to end.
+- `sync` and `index` execute directly through the shared runtime.
+- `generate` is preview-only.
+- `obsidian-sync` requires `--dry-run` today because persistence is not implemented.
 
 ### MCP
 
-The MCP server exposes the same read and local-preview capabilities through typed tools. Write-side work remains async-only through job tools.
-
-Registered tools:
+The MCP server exposes:
 
 - `ankiatlas_search`
 - `ankiatlas_topics`
@@ -158,43 +185,55 @@ Registered tools:
 - `ankiatlas_obsidian_sync`
 - `ankiatlas_tag_audit`
 
-Each tool accepts `output_mode = "markdown" | "json"`. Markdown is the default, while JSON returns the same structured payload for programmatic use.
+Important behavior:
+
+- Every tool supports `output_mode = "markdown" | "json"`.
+- Markdown is the default.
+- JSON returns the same canonical structured payload as markdown mode.
+- Sync and index are async job tools only.
+
+### Worker
+
+`anki-atlas-worker` consumes the Redis queue and executes job bodies. It is currently gated by `ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1` while worker execution continues to harden.
 
 ## Primary Flows
 
-### Async sync and indexing
+### Async sync and index flow
 
 ```text
 client
-  -> bins/api
-  -> crates/jobs::JobManager
+  -> API or MCP job tool
+  -> jobs::JobManager
   -> Redis queue
-  -> bins/worker
-  -> crates/jobs::tasks
-  -> domain crates and storage backends
+  -> worker
+  -> jobs::tasks
+  -> anki-sync / indexer / storage backends
 ```
 
-### Obsidian generation flow
+### Direct CLI execution flow
+
+```text
+CLI
+  -> surface-runtime direct executor
+  -> anki-sync / indexer
+  -> PostgreSQL + Qdrant
+```
+
+### Local preview flow
 
 ```text
 CLI or MCP
-  -> crates/surface-runtime workflow wrappers
-  -> obsidian / validation / taxonomy / generator crates
+  -> surface-runtime workflow wrapper
+  -> obsidian / validation / taxonomy crates
 ```
 
-## Design Constraints
+## Operational Constraints
 
-- Keep interface contracts honest. Do not ship placeholder success responses.
-- Prefer one translation layer per surface, mapped from shared domain types.
-- Avoid parallel public entrypoints for the same domain behavior unless they share one underlying service.
-- Treat docs as part of the architecture contract. They must describe the compiled runtime, not the intended future state.
+These are intentional today, not accidental omissions:
 
-## Near-Term Gaps
+- no direct synchronous HTTP `/sync` or `/index`
+- no direct sync/index execution from MCP
+- no Obsidian persistence path outside preview mode
+- no worker execution unless explicitly enabled
 
-These capabilities still remain intentionally constrained on `main`:
-
-- direct synchronous `/sync` and `/index` HTTP mutations
-- direct sync/index execution from MCP tools
-- fully stable background worker execution
-
-Those flows should be expanded only when the transport surface and the underlying shared services stay aligned.
+If any of those constraints change, the code, tests, and docs should change together.

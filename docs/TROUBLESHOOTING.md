@@ -1,291 +1,256 @@
-# Troubleshooting Guide
+# Troubleshooting
 
-Common issues and their solutions when running Anki Atlas.
+This guide covers the current Rust runtime behavior on `main`.
 
-## Connection Issues
+## Configuration Errors
 
-### "Cannot connect to PostgreSQL"
+### `postgres_url must start with postgresql:// or postgres://`
 
-**Symptoms:**
-- `DatabaseConnectionError` on startup
-- `/ready` endpoint shows postgres: failed
+`Settings::load()` validates connection strings up front.
 
-**Solutions:**
+Fix:
 
-1. **Check PostgreSQL is running:**
-   ```bash
-   # Docker
-   docker ps | grep postgres
+```bash
+export ANKIATLAS_POSTGRES_URL=postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas
+```
 
-   # Systemd
-   sudo systemctl status postgresql
-   ```
+### `qdrant_url must start with http:// or https://`
 
-2. **Verify connection URL:**
-   ```bash
-   echo $ANKIATLAS_POSTGRES_URL
-   # Should be: postgresql://user:pass@host:5432/database
-   ```
+Fix:
 
-3. **Test connection manually:**
-   ```bash
-   psql $ANKIATLAS_POSTGRES_URL -c "SELECT 1"
-   ```
+```bash
+export ANKIATLAS_QDRANT_URL=http://localhost:6333
+```
 
-4. **Check network connectivity:**
-   ```bash
-   nc -zv localhost 5432
-   ```
+### `redis_url must start with redis:// or rediss://`
 
-### "Cannot connect to Qdrant"
+Fix:
 
-**Symptoms:**
-- `VectorStoreConnectionError` during indexing
-- `/ready` endpoint shows qdrant: failed
+```bash
+export ANKIATLAS_REDIS_URL=redis://localhost:6379/0
+```
 
-**Solutions:**
+### Invalid embedding dimension
 
-1. **Check Qdrant is running:**
-   ```bash
-   docker ps | grep qdrant
-   ```
+Non-mock providers only accept a fixed dimension set. If you want a lightweight local setup, switch to mock embeddings:
 
-2. **Verify URL:**
-   ```bash
-   echo $ANKIATLAS_QDRANT_URL
-   # Should be: http://localhost:6333
-   ```
+```bash
+export ANKIATLAS_EMBEDDING_PROVIDER=mock
+export ANKIATLAS_EMBEDDING_DIMENSION=384
+```
 
-3. **Check health endpoint:**
-   ```bash
-   curl http://localhost:6333/healthz
-   ```
+## Provider and Search Issues
 
-4. **Check container logs:**
-   ```bash
-   docker logs qdrant 2>&1 | tail -20
-   ```
+### `OPENAI_API_KEY must be set for the OpenAI embedding provider`
 
-### "Port already in use"
+Fix either the credential or the provider mode:
 
-**Symptoms:**
-- `OSError: [Errno 98] Address already in use` on API startup
+```bash
+export ANKIATLAS_EMBEDDING_PROVIDER=openai
+export OPENAI_API_KEY=sk-...
+```
 
-**Solutions:**
+Or:
 
-1. **Find what's using the port:**
-   ```bash
-   lsof -i :8000
-   # or
-   ss -tlnp | grep 8000
-   ```
+```bash
+export ANKIATLAS_EMBEDDING_PROVIDER=mock
+export ANKIATLAS_EMBEDDING_DIMENSION=384
+```
 
-2. **Kill the process or use different port:**
-   ```bash
-   # Kill by PID
-   kill <pid>
+### Reranking never applies
 
-   # Or use different port
-   ANKIATLAS_API_PORT=8001 cargo run --bin anki-atlas-api
-   ```
+If `ANKIATLAS_RERANK_ENABLED=true` but `ANKIATLAS_RERANK_ENDPOINT` is missing, reranking is disabled with a warning.
 
-## Embedding Issues
+Fix:
 
-### "Embedding API timeout"
+```bash
+export ANKIATLAS_RERANK_ENABLED=true
+export ANKIATLAS_RERANK_ENDPOINT=http://localhost:8080/rerank
+```
 
-**Symptoms:**
-- Indexing hangs or fails with timeout
-- `EmbeddingTimeoutError` in logs
+## API Issues
 
-**Solutions:**
+### Protected routes return `401 unauthorized`
 
-1. **Check API rate limits:**
-   - OpenAI has rate limits; reduce batch size
-   - Wait and retry after rate limit window
+If `ANKIATLAS_API_KEY` is set, every route except `/health` and `/ready` requires `X-API-Key`.
 
-2. **Check network connectivity:**
-   ```bash
-   curl -v https://api.openai.com/v1/embeddings
-   ```
+Fix:
 
-3. **Verify API key:**
-   ```bash
-   echo $OPENAI_API_KEY | head -c 10
-   ```
+```bash
+curl -H "X-API-Key: $ANKIATLAS_API_KEY" http://localhost:8000/topics
+```
 
-4. **Retry with a smaller operational scope:**
-   Reduce the data set you are reprocessing or enqueue indexing after a narrower sync.
+### `/ready` says `ready` even when dependencies are broken
 
-### "Collection dimension mismatch"
+That is current behavior. `/ready` is not a deep dependency check.
 
-**Symptoms:**
-- Error: `Collection has dimension X, but provider requires Y`
-- Happens when changing embedding models
+Check dependencies directly instead:
 
-**Solutions:**
+```bash
+psql "$ANKIATLAS_POSTGRES_URL" -c "SELECT 1"
+curl "$ANKIATLAS_QDRANT_URL/healthz"
+redis-cli -u "$ANKIATLAS_REDIS_URL" ping
+```
 
-1. **Enqueue a fresh sync followed by index work:**
-   ```bash
-   curl -X POST http://localhost:8000/jobs/sync \
-     -H "Content-Type: application/json" \
-     -d '{"source":"/path/to/collection.anki2","force_reindex":true}'
-   ```
+### API startup fails with `address already in use`
 
-2. **Manually delete collection:**
-   ```bash
-   curl -X DELETE http://localhost:6333/collections/anki_notes
-   ```
+Fix:
 
-## Sync Issues
+```bash
+lsof -i :8000
+ANKIATLAS_API_PORT=8001 cargo run --bin anki-atlas-api
+```
 
-### "Collection file not found"
+## Worker and Job Issues
 
-**Symptoms:**
-- `CollectionNotFoundError` when syncing
+### Worker exits immediately with a message about being disabled
 
-**Solutions:**
+That is intentional until worker execution is fully stabilized.
 
-1. **Verify path exists:**
-   ```bash
-   ls -la /path/to/collection.anki2
-   ```
+Enable it explicitly:
 
-2. **Find Anki collection location:**
-   ```bash
-   # macOS
-   ls ~/Library/Application\ Support/Anki2/*/collection.anki2
+```bash
+ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1 cargo run --bin anki-atlas-worker
+```
 
-   # Linux
-   ls ~/.local/share/Anki2/*/collection.anki2
+### Jobs enqueue but never complete
 
-   # Windows (PowerShell)
-   ls "$env:APPDATA\Anki2\*\collection.anki2"
-   ```
+Check all of the following:
 
-3. **Ensure Anki is closed:**
-   Anki locks the database while running. Close Anki before syncing.
+- Redis is reachable
+- the worker is actually running
+- the worker was started with `ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1`
 
-### "Database migration failed"
+Useful checks:
 
-**Symptoms:**
-- `MigrationError` on startup or sync
-- Schema version mismatch
+```bash
+redis-cli -u "$ANKIATLAS_REDIS_URL" ping
+curl http://localhost:8000/jobs/<job-id>
+```
 
-**Solutions:**
+## Sync and Index Issues
 
-1. **Run migrations manually:**
-   ```bash
-   anki-atlas migrate
-   ```
+### Collection file not found
 
-2. **Check migration status:**
-   ```bash
-   # Connect to database and check
-   psql $ANKIATLAS_POSTGRES_URL -c "SELECT * FROM migrations"
-   ```
+Verify the path:
 
-3. **Reset database (last resort):**
-   ```bash
-   # WARNING: This will delete all data
-   psql $ANKIATLAS_POSTGRES_URL -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-   anki-atlas migrate
-   ```
+```bash
+ls -la /path/to/collection.anki2
+```
 
-## Indexing and Retrieval Issues
+Common locations:
 
-### "Indexed data looks incomplete"
+```bash
+# macOS
+ls ~/Library/Application\\ Support/Anki2/*/collection.anki2
 
-**Symptoms:**
-- Search or downstream analytics return empty results
-- Expected cards not appearing
+# Linux
+ls ~/.local/share/Anki2/*/collection.anki2
+```
 
-**Solutions:**
+### Collection dimension mismatch
 
-1. **Verify the service is ready:**
-   ```bash
-   curl http://localhost:8000/ready
-   ```
+This happens when your Qdrant collection was created for a different embedding dimension.
 
-2. **Check collection data exists in PostgreSQL:**
-   ```bash
-   psql $ANKIATLAS_POSTGRES_URL -c "SELECT COUNT(*) FROM notes"
-   ```
+Fix options:
 
-3. **Check vectors exist in Qdrant:**
-   ```bash
-   curl http://localhost:6333/collections/anki_notes | jq .result.points_count
-   ```
+```bash
+curl -X POST http://localhost:8000/jobs/sync \
+  -H "Content-Type: application/json" \
+  -d '{"source":"/path/to/collection.anki2","force_reindex":true}'
+```
 
-4. **If counts are zero, enqueue a fresh sync job:**
-   ```bash
-   curl -X POST http://localhost:8000/jobs/sync \
-     -H "Content-Type: application/json" \
-     -d '{"source":"/path/to/collection.anki2"}'
-   ```
+Or recreate the Qdrant collection:
 
-### "Retrieval is slow"
+```bash
+curl -X DELETE "$ANKIATLAS_QDRANT_URL/collections/anki_notes"
+```
 
-**Symptoms:**
-- Search takes more than 2 seconds
-- Timeout errors
+### Search, duplicates, or analytics return empty results
 
-**Solutions:**
+Verify both storage layers contain data:
 
-1. **Check Qdrant status:**
-   ```bash
-   curl http://localhost:6333/collections/anki_notes | jq .status
-   # Should be "green"
-   ```
+```bash
+psql "$ANKIATLAS_POSTGRES_URL" -c "SELECT COUNT(*) FROM notes"
+curl "$ANKIATLAS_QDRANT_URL/collections/anki_notes" | jq .result.points_count
+```
 
-2. **Check system resources:**
-   ```bash
-   htop
-   # Look for high CPU/memory usage
-   ```
+If they are empty, rerun sync/index work through CLI or jobs.
 
-## Performance Issues
+## CLI and MCP Workflow Issues
 
-### "High memory usage"
+### `generate` completed but nothing was written
 
-**Symptoms:**
-- Qdrant consuming excessive RAM
-- OOM errors
+That is current behavior. `generate` is a preview workflow.
 
-**Solutions:**
+### `obsidian-sync` fails unless `--dry-run` is set
 
-1. **Enable quantization (already default):**
-   Check `ANKIATLAS_QDRANT_QUANTIZATION=scalar` is set.
+That is current behavior too. Obsidian persistence is not implemented yet.
 
-2. **Enable on-disk storage:**
-   ```bash
-   export ANKIATLAS_QDRANT_ON_DISK=true
-   curl -X POST http://localhost:8000/jobs/index \
-     -H "Content-Type: application/json" \
-     -d '{"force_reindex":true}'
-   ```
+Use:
 
-3. **Increase Qdrant memory limit:**
-   ```yaml
-   # docker-compose.yml
-   services:
-     qdrant:
-       deploy:
-         resources:
-           limits:
-             memory: 2G
-   ```
+```bash
+cargo run --bin anki-atlas -- obsidian-sync /path/to/vault --dry-run
+```
 
-## Getting Help
+or MCP:
 
-If these solutions don't resolve your issue:
+```json
+{
+  "vault_path": "/path/to/vault",
+  "dry_run": true
+}
+```
 
-1. Check the logs with debug mode:
-   ```bash
-   ANKIATLAS_DEBUG=true anki-atlas <command>
-   ```
+### Validation fails on your input file
 
-2. Open an issue with:
-   - Full error message
-   - Steps to reproduce
-   - Environment details
-   - Relevant logs
+The validation workflow expects:
+
+```text
+front
+---
+back
+---
+optional-tag-list
+```
+
+If the second section is missing, validation fails with an explicit input error.
+
+## Connectivity Checks
+
+### PostgreSQL
+
+```bash
+psql "$ANKIATLAS_POSTGRES_URL" -c "SELECT 1"
+```
+
+### Qdrant
+
+```bash
+curl "$ANKIATLAS_QDRANT_URL/healthz"
+```
+
+### Redis
+
+```bash
+redis-cli -u "$ANKIATLAS_REDIS_URL" ping
+```
+
+## When in Doubt
+
+Start from a minimal local config:
+
+```bash
+export ANKIATLAS_EMBEDDING_PROVIDER=mock
+export ANKIATLAS_EMBEDDING_DIMENSION=384
+export ANKIATLAS_POSTGRES_URL=postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas
+export ANKIATLAS_QDRANT_URL=http://localhost:6333
+export ANKIATLAS_REDIS_URL=redis://localhost:6379/0
+```
+
+Then run:
+
+```bash
+cargo run --bin anki-atlas -- migrate
+cargo run --bin anki-atlas-api
+```

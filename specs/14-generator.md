@@ -1,7 +1,8 @@
 # Spec: crate `generator`
 
 ## Source Reference
-Python: `packages/generator/agents/` (models.py, generator.py, enhancer.py, validator.py) + `packages/card/apf/` (generator.py, converter.py, validator.py, linter.py, renderer.py)
+Current Rust implementation: `crates/generator/`
+Historical rewrite input: `packages/generator/agents/` (models.py, generator.py, enhancer.py, validator.py) + `packages/card/apf/` (generator.py, converter.py, validator.py, linter.py, renderer.py)
 
 ## Purpose
 Card generation pipeline: LLM-driven agents for generating, enhancing, splitting, and validating flashcards from structured content, plus APF (Anki Prompt Format) v2.1 HTML rendering, conversion, linting, and validation. The generator agent takes Q/A pairs and produces structured cards via LLM structured output. The enhancer improves cards and suggests splits. Pre/post validators check content quality. The APF submodule handles deterministic HTML rendering from card specs, markdown-to-HTML conversion, HTML sanitization, and format linting.

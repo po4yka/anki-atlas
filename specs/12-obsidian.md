@@ -1,7 +1,8 @@
 # Spec: crate `obsidian`
 
 ## Source Reference
-Python: `packages/obsidian/` (parser.py, analyzer.py, frontmatter.py, sync.py)
+Current Rust implementation: `crates/obsidian/`
+Historical rewrite input: `packages/obsidian/` (parser.py, analyzer.py, frontmatter.py, sync.py)
 
 ## Purpose
 Parse Obsidian vault markdown notes into structured representations. Handles frontmatter extraction (YAML), section splitting by headings, title detection, vault discovery with ignore patterns, wikilink extraction, and vault-level statistics (orphaned notes, broken links). The sync workflow orchestrates discovery, card generation, validation, and Anki sync. All operations are synchronous filesystem reads wrapped in `tokio::task::spawn_blocking` where needed.

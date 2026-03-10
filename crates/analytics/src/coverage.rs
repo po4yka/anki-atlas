@@ -129,12 +129,11 @@ pub async fn get_topic_coverage(
     .await?;
 
     // Subtree count
-    let (subtree_count,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM topics WHERE path LIKE $1 || '/%'",
-    )
-    .bind(topic_path)
-    .fetch_one(pool)
-    .await?;
+    let (subtree_count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM topics WHERE path LIKE $1 || '/%'")
+            .bind(topic_path)
+            .fetch_one(pool)
+            .await?;
 
     // Weak notes count (fail_rate > 0.1)
     let (weak_count,): (i64,) = sqlx::query_as(
@@ -185,16 +184,18 @@ pub async fn get_topic_gaps(
 
     let gaps = rows
         .into_iter()
-        .map(|(topic_id, path, label, description, note_count)| TopicGap {
-            topic_id: i64::from(topic_id),
-            path,
-            label,
-            description,
-            gap_type: classify_gap(note_count),
-            note_count,
-            threshold: min_coverage,
-            nearest_notes: vec![],
-        })
+        .map(
+            |(topic_id, path, label, description, note_count)| TopicGap {
+                topic_id: i64::from(topic_id),
+                path,
+                label,
+                description,
+                gap_type: classify_gap(note_count),
+                note_count,
+                threshold: min_coverage,
+                nearest_notes: vec![],
+            },
+        )
         .collect();
 
     Ok(gaps)
@@ -264,11 +265,9 @@ pub async fn get_coverage_tree(
             .await?
         }
         None => {
-            sqlx::query_as(
-                "SELECT topic_id, path, label, description FROM topics ORDER BY path",
-            )
-            .fetch_all(pool)
-            .await?
+            sqlx::query_as("SELECT topic_id, path, label, description FROM topics ORDER BY path")
+                .fetch_all(pool)
+                .await?
         }
     };
 
@@ -277,14 +276,12 @@ pub async fn get_coverage_tree(
     }
 
     // Load note counts per topic
-    let note_counts: Vec<(i32, i64)> = sqlx::query_as(
-        "SELECT topic_id, COUNT(note_id) FROM note_topics GROUP BY topic_id",
-    )
-    .fetch_all(pool)
-    .await?;
+    let note_counts: Vec<(i32, i64)> =
+        sqlx::query_as("SELECT topic_id, COUNT(note_id) FROM note_topics GROUP BY topic_id")
+            .fetch_all(pool)
+            .await?;
 
-    let count_map: std::collections::HashMap<i32, i64> =
-        note_counts.into_iter().collect();
+    let count_map: std::collections::HashMap<i32, i64> = note_counts.into_iter().collect();
 
     // Build nested JSON tree
     let mut nodes: std::collections::HashMap<String, serde_json::Value> =

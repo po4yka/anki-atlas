@@ -1,7 +1,8 @@
 # Spec: crate `taxonomy`
 
 ## Source Reference
-Python: `packages/taxonomy/` (tags.py, normalize.py)
+Current Rust implementation: `crates/taxonomy/`
+Historical rewrite input: `packages/taxonomy/` (tags.py, normalize.py)
 
 ## Purpose
 Self-contained tag taxonomy crate for normalizing, validating, and suggesting Anki tags. Contains the canonical tag mapping (500+ entries mapping variant spellings to normalized topic tags), tag prefix definitions, and topic tag sets for Kotlin, Android, CompSci, and Cognitive Bias domains. Has zero external crate dependencies beyond the standard library -- all logic is pure functions over static data.

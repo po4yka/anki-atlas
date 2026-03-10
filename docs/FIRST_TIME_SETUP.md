@@ -1,16 +1,17 @@
-# First Time Setup Guide
+# First Time Setup
 
-Step-by-step setup for the current Rust workspace on `main`.
+This guide is for the current Rust workspace on `main`.
 
 ## Prerequisites
 
-- Rust 1.88+ with Cargo
+- Rust `1.88+`
 - Docker and Docker Compose
-- PostgreSQL, Qdrant, and Redis available locally or remotely
-- An Anki collection if you plan to enqueue sync jobs
-- Optional: `OPENAI_API_KEY` if your embedding provider requires it
+- PostgreSQL, Qdrant, and Redis
+- Optional:
+  - An Anki collection if you want to run sync
+  - `OPENAI_API_KEY` or `GOOGLE_API_KEY` for real embedding providers
 
-## Step 1: Clone and Build
+## 1. Clone and Build
 
 ```bash
 git clone https://github.com/po4yka/anki-atlas.git
@@ -20,85 +21,110 @@ cargo build
 cargo run --bin anki-atlas -- version
 ```
 
-## Step 2: Start Infrastructure
-
-Use the workspace Compose file:
+## 2. Start Infrastructure
 
 ```bash
 docker compose -f infra/docker-compose.yml up -d
+docker compose -f infra/docker-compose.yml ps
 ```
 
-Verify the dependencies:
+Basic dependency checks:
 
 ```bash
-docker compose -f infra/docker-compose.yml ps
 psql postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas -c "SELECT 1"
 curl http://localhost:6333/healthz
+redis-cli -u redis://localhost:6379/0 ping
 ```
 
-## Step 3: Configure Environment
+## 3. Pick an Embedding Mode
 
-Create a `.env` file or export the required variables:
+### Fast local smoke-test mode
+
+This avoids external API calls:
 
 ```bash
-ANKIATLAS_POSTGRES_URL=postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas
-ANKIATLAS_QDRANT_URL=http://localhost:6333
-ANKIATLAS_REDIS_URL=redis://localhost:6379/0
-OPENAI_API_KEY=sk-your-api-key-here
-ANKIATLAS_DEBUG=true
+export ANKIATLAS_EMBEDDING_PROVIDER=mock
+export ANKIATLAS_EMBEDDING_DIMENSION=384
 ```
 
-## Step 4: Initialize PostgreSQL
+### Real embedding mode
 
-Run migrations:
+```bash
+export ANKIATLAS_EMBEDDING_PROVIDER=openai
+export ANKIATLAS_EMBEDDING_MODEL=text-embedding-3-small
+export ANKIATLAS_EMBEDDING_DIMENSION=1536
+export OPENAI_API_KEY=sk-...
+```
+
+Or:
+
+```bash
+export ANKIATLAS_EMBEDDING_PROVIDER=google
+export ANKIATLAS_EMBEDDING_MODEL=text-embedding-004
+export ANKIATLAS_EMBEDDING_DIMENSION=768
+export GOOGLE_API_KEY=...
+```
+
+Shared runtime variables:
+
+```bash
+export ANKIATLAS_POSTGRES_URL=postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas
+export ANKIATLAS_QDRANT_URL=http://localhost:6333
+export ANKIATLAS_REDIS_URL=redis://localhost:6379/0
+export ANKIATLAS_DEBUG=true
+```
+
+## 4. Run Migrations
 
 ```bash
 cargo run --bin anki-atlas -- migrate
 ```
 
-Verify the schema:
-
-```bash
-psql $ANKIATLAS_POSTGRES_URL -c "\dt"
-```
-
-## Step 5: Find Your Anki Collection
+## 5. Find Your Anki Collection
 
 ```bash
 # macOS
-ls ~/Library/Application\ Support/Anki2/*/collection.anki2
+ls ~/Library/Application\\ Support/Anki2/*/collection.anki2
 
 # Linux
 ls ~/.local/share/Anki2/*/collection.anki2
 
 # Windows (PowerShell)
-ls "$env:APPDATA\Anki2\*\collection.anki2"
+ls \"$env:APPDATA\\Anki2\\*\\collection.anki2\"
 ```
 
-Close Anki before using the collection file directly.
+Close Anki before using the SQLite collection file directly.
 
-## Step 6: Start the API
+## 6. Start the API
 
 ```bash
 cargo run --bin anki-atlas-api
 ```
 
-Health checks:
+Check liveness:
 
 ```bash
 curl http://localhost:8000/health
 curl http://localhost:8000/ready
 ```
 
-## Step 7: Start the Worker
+Note: `/ready` currently reports process readiness only. It does not verify PostgreSQL, Qdrant, or Redis connectivity.
 
-The worker remains gated while background job execution is still being completed:
+If you set `ANKIATLAS_API_KEY`, include it on protected routes:
+
+```bash
+curl -H "X-API-Key: $ANKIATLAS_API_KEY" http://localhost:8000/topics
+```
+
+## 7. Start the Worker
 
 ```bash
 ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1 cargo run --bin anki-atlas-worker
 ```
 
-## Step 8: Enqueue a Sync Job
+Without that env var, the worker exits intentionally.
+
+## 8. Enqueue a Sync Job
 
 ```bash
 curl -X POST http://localhost:8000/jobs/sync \
@@ -112,23 +138,23 @@ Poll the job:
 curl http://localhost:8000/jobs/<job-id>
 ```
 
-## Step 9: Verify the Read API
-
-The v2 read surface is synchronous and typed. Direct `/sync` and `/index` mutations are not exposed.
+## 9. Verify the Read API
 
 ```bash
 curl -X POST http://localhost:8000/search \
   -H "Content-Type: application/json" \
   -d '{"query":"ownership","limit":5}'
 
-curl "http://localhost:8000/topics"
+curl http://localhost:8000/topics
 curl "http://localhost:8000/topic-coverage?topic_path=rust/ownership"
 curl "http://localhost:8000/topic-gaps?topic_path=rust&min_coverage=1"
 curl "http://localhost:8000/topic-weak-notes?topic_path=rust&max_results=20"
 curl "http://localhost:8000/duplicates?threshold=0.92&max_clusters=10&deck_filter[]=Rust"
 ```
 
-## Step 10: Use the Wired CLI Surface
+Direct `/sync` and `/index` HTTP mutations are intentionally not exposed.
+
+## 10. Use the CLI
 
 ```bash
 cargo run --bin anki-atlas -- sync /path/to/collection.anki2 --force-reindex
@@ -142,10 +168,18 @@ cargo run --bin anki-atlas -- duplicates --threshold 0.92 --max 10
 cargo run --bin anki-atlas -- generate /path/to/note.md --dry-run
 cargo run --bin anki-atlas -- validate /path/to/cards.txt --quality
 cargo run --bin anki-atlas -- obsidian-sync /path/to/vault --dry-run
-cargo run --bin anki-atlas -- tag-audit /path/to/tags.txt
+cargo run --bin anki-atlas -- tag-audit /path/to/tags.txt --fix
 ```
 
-## Step 11: Set Up MCP
+Behavioral notes:
+
+- `generate` previews parsed cards; it does not persist them.
+- `obsidian-sync` requires `--dry-run` today.
+- CLI sync/index need PostgreSQL and Qdrant available.
+
+## 11. Set Up MCP
+
+Example MCP configuration:
 
 ```json
 {
@@ -159,7 +193,7 @@ cargo run --bin anki-atlas -- tag-audit /path/to/tags.txt
 }
 ```
 
-The MCP server now exposes typed read tools plus async-only job tools. Examples:
+Current tool set:
 
 - `ankiatlas_search`
 - `ankiatlas_topics`
@@ -176,23 +210,11 @@ The MCP server now exposes typed read tools plus async-only job tools. Examples:
 - `ankiatlas_obsidian_sync`
 - `ankiatlas_tag_audit`
 
+Every tool supports `output_mode = "markdown" | "json"`.
+
 ## Next Steps
 
-- Use `/jobs/sync` and `/jobs/index` for data ingestion work
-- Use `/search`, `/topics`, `/topic-coverage`, `/topic-gaps`, `/topic-weak-notes`, and `/duplicates` for read-only API access
-- Use the CLI for direct sync/index, search, analytics, and local preview workflows
-- Keep [docs/ARCHITECTURE.md](./ARCHITECTURE.md) as the source of truth for which surfaces are intentionally exposed on `main`
-
-## Common Follow-Up
-
-### "Collection dimension mismatch"
-
-If you changed embedding models or dimensions, rerun sync/index work after updating configuration:
-
-```bash
-curl -X POST http://localhost:8000/jobs/sync \
-  -H "Content-Type: application/json" \
-  -d '{"source":"/path/to/collection.anki2","force_reindex":true}'
-```
-
-For more troubleshooting, see [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
+- Use API or MCP job tools for async sync/index orchestration.
+- Use the CLI for direct sync/index execution and local preview workflows.
+- Use [docs/ARCHITECTURE.md](/Users/po4yka/GitRep/anki-atlas/docs/ARCHITECTURE.md) as the source of truth for exposed surfaces.
+- Use [docs/TROUBLESHOOTING.md](/Users/po4yka/GitRep/anki-atlas/docs/TROUBLESHOOTING.md) when setup fails.

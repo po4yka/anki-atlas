@@ -1,6 +1,6 @@
 # Anki Atlas MCP Tools
 
-The MCP server on `main` is now service-aligned rather than intentionally narrow. It shares the same runtime wiring as the HTTP API and CLI through `crates/surface-runtime`.
+The MCP server shares the same runtime graph as the API and CLI through [surface-runtime](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs). That means its tools should describe real service behavior, not synthetic agent-only wrappers.
 
 ## Running the Server
 
@@ -8,7 +8,7 @@ The MCP server on `main` is now service-aligned rather than intentionally narrow
 cargo run --bin anki-atlas-mcp
 ```
 
-### With MCP Inspector
+With MCP Inspector:
 
 ```bash
 npx @anthropic-ai/mcp-inspector cargo run --bin anki-atlas-mcp
@@ -16,18 +16,17 @@ npx @anthropic-ai/mcp-inspector cargo run --bin anki-atlas-mcp
 
 ## Configuration
 
-The server reads the same environment variables as the API and CLI:
+The server reads the same environment variables as the rest of the workspace:
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ANKIATLAS_POSTGRES_URL` | Yes | PostgreSQL connection used by search and analytics |
-| `ANKIATLAS_QDRANT_URL` | Yes | Qdrant connection used by semantic search and duplicates |
-| `ANKIATLAS_REDIS_URL` | Yes | Redis connection for async job tools |
-| `ANKIATLAS_EMBEDDING_PROVIDER` | Yes | `mock`, `openai`, or `google` |
-| `ANKIATLAS_EMBEDDING_MODEL` | Yes | embedding model name |
-| `OPENAI_API_KEY` / `GOOGLE_API_KEY` | Sometimes | provider-specific embedding credentials |
-| `ANKIATLAS_RERANK_ENABLED` | No | enable reranking for search |
-| `ANKIATLAS_RERANK_ENDPOINT` | When reranking | endpoint for the reranker |
+- `ANKIATLAS_POSTGRES_URL`
+- `ANKIATLAS_QDRANT_URL`
+- `ANKIATLAS_REDIS_URL`
+- `ANKIATLAS_EMBEDDING_PROVIDER`
+- `ANKIATLAS_EMBEDDING_MODEL`
+- `ANKIATLAS_EMBEDDING_DIMENSION`
+- `OPENAI_API_KEY` or `GOOGLE_API_KEY` when using those providers
+- `ANKIATLAS_RERANK_ENABLED`
+- `ANKIATLAS_RERANK_ENDPOINT` when reranking is enabled
 
 ## Output Modes
 
@@ -39,39 +38,101 @@ Every tool accepts:
 
 Supported values:
 
-- `markdown`: human-readable default
-- `json`: structured output for programmatic consumers
+- `markdown`: default, optimized for human or agent reading
+- `json`: machine-readable payload using the same canonical result object
 
-Both modes are backed by the same canonical result object. Markdown changes only the text rendering.
+Markdown does not invent a different schema. It is only a rendering of the same result data.
 
 ## Tool Catalog
 
 ### Read tools
 
-- `ankiatlas_search`
-- `ankiatlas_topics`
-- `ankiatlas_topic_coverage`
-- `ankiatlas_topic_gaps`
-- `ankiatlas_topic_weak_notes`
-- `ankiatlas_duplicates`
+| Tool | Purpose | Key inputs |
+|---|---|---|
+| `ankiatlas_search` | Hybrid note retrieval | `query`, `deck_names[]`, `tags[]`, `limit`, `semantic_only`, `fts_only` |
+| `ankiatlas_topics` | Taxonomy tree inspection | `root_path` |
+| `ankiatlas_topic_coverage` | Topic coverage metrics | `topic_path`, `include_subtree` |
+| `ankiatlas_topic_gaps` | Missing or undercovered topics | `topic_path`, `min_coverage` |
+| `ankiatlas_topic_weak_notes` | Weak-note listing | `topic_path`, `max_results` |
+| `ankiatlas_duplicates` | Duplicate-note clustering | `threshold`, `max_clusters`, `deck_filter[]`, `tag_filter[]` |
 
 ### Async job tools
 
-- `ankiatlas_sync_job`
-- `ankiatlas_index_job`
-- `ankiatlas_job_status`
-- `ankiatlas_job_cancel`
+| Tool | Purpose | Key inputs |
+|---|---|---|
+| `ankiatlas_sync_job` | Enqueue sync work | `source`, `run_migrations`, `index`, `force_reindex` |
+| `ankiatlas_index_job` | Enqueue indexing work | `force_reindex` |
+| `ankiatlas_job_status` | Poll queued work | `job_id` |
+| `ankiatlas_job_cancel` | Request cancellation | `job_id` |
+
+Write-side behavior is async-only here. MCP does not run sync or index directly.
 
 ### Local workflow tools
 
-- `ankiatlas_generate`
-- `ankiatlas_validate`
-- `ankiatlas_obsidian_sync`
-- `ankiatlas_tag_audit`
+| Tool | Purpose | Key inputs |
+|---|---|---|
+| `ankiatlas_generate` | Parse a note and preview card generation | `file_path` |
+| `ankiatlas_validate` | Run validation pipeline on a file | `file_path`, `quality` |
+| `ankiatlas_obsidian_sync` | Scan an Obsidian vault in preview mode | `vault_path`, `source_dirs[]`, `dry_run` |
+| `ankiatlas_tag_audit` | Validate and normalize tags | `file_path`, `fix` |
 
 ## Behavioral Rules
 
-- Read tools call the same shared search and analytics services as the API and CLI.
-- MCP does not run sync or index directly. Those flows are exposed only as async job tools.
-- Local workflow tools are real wrappers over Obsidian parsing, validation, and taxonomy logic.
-- Unsupported paths fail explicitly. For example, `ankiatlas_obsidian_sync` rejects non-dry-run execution until a persistence sink exists.
+- Read tools use the same search and analytics facades as the API and CLI.
+- Job tools enqueue Redis-backed work and return job-oriented results with poll and cancel hints.
+- `ankiatlas_generate` is preview-only.
+- `ankiatlas_obsidian_sync` rejects non-dry-run requests until a persistence sink exists.
+- Tool errors are explicit and typed; unsupported paths should not masquerade as success.
+
+## Example Calls
+
+### Search in markdown mode
+
+```json
+{
+  "query": "ownership",
+  "limit": 5,
+  "output_mode": "markdown"
+}
+```
+
+### Search in json mode
+
+```json
+{
+  "query": "ownership",
+  "deck_names": ["Rust"],
+  "limit": 5,
+  "output_mode": "json"
+}
+```
+
+### Enqueue a sync job
+
+```json
+{
+  "source": "/path/to/collection.anki2",
+  "run_migrations": true,
+  "index": true,
+  "force_reindex": false,
+  "output_mode": "markdown"
+}
+```
+
+### Scan an Obsidian vault
+
+```json
+{
+  "vault_path": "/path/to/vault",
+  "source_dirs": ["notes", "cards"],
+  "dry_run": true,
+  "output_mode": "json"
+}
+```
+
+## Source Files
+
+- [server.rs](/Users/po4yka/GitRep/anki-atlas/bins/mcp/src/server.rs)
+- [tools.rs](/Users/po4yka/GitRep/anki-atlas/bins/mcp/src/tools.rs)
+- [formatters.rs](/Users/po4yka/GitRep/anki-atlas/bins/mcp/src/formatters.rs)
+- [handlers.rs](/Users/po4yka/GitRep/anki-atlas/bins/mcp/src/handlers.rs)

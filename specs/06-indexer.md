@@ -2,7 +2,8 @@
 
 ## Source Reference
 
-Python: `packages/indexer/` (embeddings.py, qdrant.py, service.py, service_base.py)
+Current Rust implementation: `crates/indexer/`
+Historical rewrite input: `packages/indexer/` (embeddings.py, qdrant.py, service.py, service_base.py)
 
 ## Purpose
 

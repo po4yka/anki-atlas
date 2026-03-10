@@ -1,7 +1,8 @@
 # Spec: crate `llm`
 
 ## Source Reference
-Python: `packages/llm/` (base.py, factory.py, openrouter.py, ollama.py)
+Current Rust implementation: `crates/llm/`
+Historical rewrite input: `packages/llm/` (base.py, factory.py, openrouter.py, ollama.py)
 
 ## Purpose
 Async LLM provider abstraction with trait-based dispatch, retry logic, and JSON-mode support. Provides a unified interface for calling OpenRouter (cloud) and Ollama (local) LLM APIs via reqwest. The factory selects a provider by enum variant. All types are `Send + Sync` so providers can be shared across Tokio tasks behind `Arc`.

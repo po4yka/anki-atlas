@@ -2,7 +2,8 @@
 
 ## Source Reference
 
-Python: `packages/analytics/` (taxonomy.py, coverage.py, labeling.py, duplicates.py, service.py)
+Current Rust implementation: `crates/analytics/`
+Historical rewrite input: `packages/analytics/` (taxonomy.py, coverage.py, labeling.py, duplicates.py, service.py)
 
 ## Purpose
 

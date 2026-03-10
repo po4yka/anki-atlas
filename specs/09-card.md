@@ -2,7 +2,8 @@
 
 ## Source Reference
 
-Python: `packages/card/` (models.py, slug.py, mapping.py, registry.py)
+Current Rust implementation: `crates/card/`
+Historical rewrite input: `packages/card/` (models.py, slug.py, mapping.py, registry.py)
 
 ## Purpose
 

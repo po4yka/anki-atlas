@@ -1,7 +1,8 @@
 # Spec: crate `common`
 
 ## Source Reference
-Python: `packages/common/` (config.py, types.py, exceptions.py, logging.py)
+Current Rust implementation: `crates/common/`
+Historical rewrite input: `packages/common/` (config.py, types.py, exceptions.py, logging.py)
 
 ## Purpose
 Foundation crate providing configuration loading from environment variables, shared domain types (newtypes, enums), a structured error hierarchy, and correlation-ID-aware structured logging. This crate has zero database or network dependencies -- it is pure logic and types.

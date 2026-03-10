@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -170,6 +171,128 @@ where
 
     async fn close(&self) -> Result<(), VectorStoreError> {
         (*self).close().await
+    }
+}
+
+#[async_trait]
+impl<T> VectorRepository for Box<T>
+where
+    T: VectorRepository + ?Sized,
+{
+    async fn ensure_collection(&self, dimension: usize) -> Result<bool, VectorStoreError> {
+        (**self).ensure_collection(dimension).await
+    }
+
+    async fn upsert_vectors(
+        &self,
+        vectors: &[Vec<f32>],
+        payloads: &[NotePayload],
+        sparse_vectors: Option<&[SparseVector]>,
+    ) -> Result<usize, VectorStoreError> {
+        (**self)
+            .upsert_vectors(vectors, payloads, sparse_vectors)
+            .await
+    }
+
+    async fn delete_vectors(&self, note_ids: &[i64]) -> Result<usize, VectorStoreError> {
+        (**self).delete_vectors(note_ids).await
+    }
+
+    async fn get_existing_hashes(
+        &self,
+        note_ids: &[i64],
+    ) -> Result<HashMap<i64, String>, VectorStoreError> {
+        (**self).get_existing_hashes(note_ids).await
+    }
+
+    async fn search(
+        &self,
+        query_vector: &[f32],
+        query_sparse: Option<&SparseVector>,
+        limit: usize,
+        filters: &SearchFilters,
+    ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+        (**self)
+            .search(query_vector, query_sparse, limit, filters)
+            .await
+    }
+
+    async fn find_similar_to_note(
+        &self,
+        note_id: i64,
+        limit: usize,
+        min_score: f32,
+        deck_names: Option<&[String]>,
+        tags: Option<&[String]>,
+    ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+        (**self)
+            .find_similar_to_note(note_id, limit, min_score, deck_names, tags)
+            .await
+    }
+
+    async fn close(&self) -> Result<(), VectorStoreError> {
+        (**self).close().await
+    }
+}
+
+#[async_trait]
+impl<T> VectorRepository for Arc<T>
+where
+    T: VectorRepository + ?Sized,
+{
+    async fn ensure_collection(&self, dimension: usize) -> Result<bool, VectorStoreError> {
+        (**self).ensure_collection(dimension).await
+    }
+
+    async fn upsert_vectors(
+        &self,
+        vectors: &[Vec<f32>],
+        payloads: &[NotePayload],
+        sparse_vectors: Option<&[SparseVector]>,
+    ) -> Result<usize, VectorStoreError> {
+        (**self)
+            .upsert_vectors(vectors, payloads, sparse_vectors)
+            .await
+    }
+
+    async fn delete_vectors(&self, note_ids: &[i64]) -> Result<usize, VectorStoreError> {
+        (**self).delete_vectors(note_ids).await
+    }
+
+    async fn get_existing_hashes(
+        &self,
+        note_ids: &[i64],
+    ) -> Result<HashMap<i64, String>, VectorStoreError> {
+        (**self).get_existing_hashes(note_ids).await
+    }
+
+    async fn search(
+        &self,
+        query_vector: &[f32],
+        query_sparse: Option<&SparseVector>,
+        limit: usize,
+        filters: &SearchFilters,
+    ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+        (**self)
+            .search(query_vector, query_sparse, limit, filters)
+            .await
+    }
+
+    async fn find_similar_to_note(
+        &self,
+        note_id: i64,
+        limit: usize,
+        min_score: f32,
+        deck_names: Option<&[String]>,
+        tags: Option<&[String]>,
+    ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+        (**self)
+            .find_similar_to_note(note_id, limit, min_score, deck_names, tags)
+            .await
+    }
+
+    async fn close(&self) -> Result<(), VectorStoreError> {
+        (**self).close().await
     }
 }
 

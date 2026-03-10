@@ -1,57 +1,101 @@
 # Deployment Guide
 
-Guide for deploying Anki Atlas in production environments.
+This guide documents the current deployable runtime on `main`.
 
-## Quick Start
+## Scope
 
-### Docker Compose (Recommended)
+Today:
+
+- the root [Dockerfile](/Users/po4yka/GitRep/anki-atlas/Dockerfile) builds `anki-atlas-api`
+- the API can serve read traffic and enqueue jobs
+- full async execution also requires a worker process with `ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1`
+- CLI and MCP are usually run as host processes or from custom images
+
+If you need containerized worker or MCP deployment, build custom images that include those binaries. The root Dockerfile does not currently publish them.
+
+## Required Services
+
+- PostgreSQL
+- Qdrant
+- Redis
+- `anki-atlas-api`
+- optional `anki-atlas-worker` for executing queued jobs
+
+## Build the API Image
+
+```bash
+docker build -t anki-atlas-api:latest .
+```
+
+## Runtime Configuration
+
+Settings are loaded from [config.rs](/Users/po4yka/GitRep/anki-atlas/crates/common/src/config.rs).
+
+### Core variables
+
+| Variable | Default | Notes |
+|---|---|---|
+| `ANKIATLAS_POSTGRES_URL` | `postgresql://localhost:5432/ankiatlas` | PostgreSQL DSN |
+| `ANKIATLAS_QDRANT_URL` | `http://localhost:6333` | Qdrant HTTP endpoint |
+| `ANKIATLAS_REDIS_URL` | `redis://localhost:6379/0` | Redis queue backend |
+| `ANKIATLAS_JOB_QUEUE_NAME` | `ankiatlas_jobs` | Queue key |
+| `ANKIATLAS_JOB_RESULT_TTL_SECONDS` | `86400` | Job retention |
+| `ANKIATLAS_JOB_MAX_RETRIES` | `3` | Retry limit |
+| `ANKIATLAS_API_HOST` | `0.0.0.0` | API bind host |
+| `ANKIATLAS_API_PORT` | `8000` | API bind port |
+| `ANKIATLAS_API_KEY` | unset | Optional API auth |
+| `ANKIATLAS_DEBUG` | `false` | Logging verbosity |
+
+### Search and model variables
+
+| Variable | Default | Notes |
+|---|---|---|
+| `ANKIATLAS_EMBEDDING_PROVIDER` | `openai` | `openai`, `google`, or `mock` |
+| `ANKIATLAS_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
+| `ANKIATLAS_EMBEDDING_DIMENSION` | `1536` | Must match provider |
+| `OPENAI_API_KEY` | unset | Required for OpenAI embeddings |
+| `GOOGLE_API_KEY` | unset | Required for Google embeddings |
+| `ANKIATLAS_RERANK_ENABLED` | `false` | Enables reranking |
+| `ANKIATLAS_RERANK_ENDPOINT` | unset | Required when reranking is enabled |
+| `ANKIATLAS_RERANK_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Reranker label |
+| `ANKIATLAS_RERANK_TOP_N` | `50` | Candidate count |
+| `ANKIATLAS_RERANK_BATCH_SIZE` | `32` | Batch size |
+
+## Example Compose Stack
+
+This example deploys the API and its backing stores. It does not include the worker image because the root Dockerfile does not currently build it.
 
 ```yaml
-# docker-compose.yml
 services:
   api:
-    image: anki-atlas:latest
+    image: anki-atlas-api:latest
     ports:
       - "8000:8000"
     environment:
-      - ANKIATLAS_POSTGRES_URL=postgresql://ankiatlas:secret@postgres:5432/ankiatlas
-      - ANKIATLAS_QDRANT_URL=http://qdrant:6333
-      - ANKIATLAS_REDIS_URL=redis://redis:6379/0
-      - ANKIATLAS_DEBUG=false
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      ANKIATLAS_POSTGRES_URL: postgresql://ankiatlas:secret@postgres:5432/ankiatlas
+      ANKIATLAS_QDRANT_URL: http://qdrant:6333
+      ANKIATLAS_REDIS_URL: redis://redis:6379/0
+      ANKIATLAS_EMBEDDING_PROVIDER: mock
+      ANKIATLAS_EMBEDDING_DIMENSION: "384"
+      ANKIATLAS_DEBUG: "false"
     depends_on:
-      postgres:
-        condition: service_healthy
-      qdrant:
-        condition: service_started
-      redis:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - postgres
+      - qdrant
+      - redis
 
   postgres:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_USER=ankiatlas
-      - POSTGRES_PASSWORD=secret
-      - POSTGRES_DB=ankiatlas
+      POSTGRES_USER: ankiatlas
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: ankiatlas
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ankiatlas"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   qdrant:
     image: qdrant/qdrant:latest
     volumes:
       - qdrant_data:/qdrant/storage
-    environment:
-      - QDRANT__SERVICE__HTTP_PORT=6333
 
   redis:
     image: redis:7-alpine
@@ -61,250 +105,93 @@ volumes:
   qdrant_data:
 ```
 
-### Start Services
+## Running the API
 
 ```bash
-docker compose up -d
+docker run --rm \
+  -p 8000:8000 \
+  -e ANKIATLAS_POSTGRES_URL=postgresql://ankiatlas:secret@postgres:5432/ankiatlas \
+  -e ANKIATLAS_QDRANT_URL=http://qdrant:6333 \
+  -e ANKIATLAS_REDIS_URL=redis://redis:6379/0 \
+  anki-atlas-api:latest
 ```
 
-## Environment Variables
+## Running the Worker
 
-### Required
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `ANKIATLAS_POSTGRES_URL` | PostgreSQL connection string | `postgresql://user:pass@host:5432/db` |
-| `ANKIATLAS_QDRANT_URL` | Qdrant server URL | `http://localhost:6333` |
-| `ANKIATLAS_REDIS_URL` | Redis URL used by the job manager and worker | `redis://localhost:6379/0` |
-| `OPENAI_API_KEY` | OpenAI API key for embeddings | `sk-...` |
-
-### Optional
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ANKIATLAS_API_HOST` | `0.0.0.0` | API bind address |
-| `ANKIATLAS_API_PORT` | `8000` | API port |
-| `ANKIATLAS_DEBUG` | `false` | Enable debug logging |
-| `ANKIATLAS_EMBEDDING_MODEL` | `text-embedding-3-small` | OpenAI embedding model |
-| `ANKIATLAS_EMBEDDING_DIMENSION` | `1536` | Embedding vector dimension |
-| `ANKIATLAS_QDRANT_QUANTIZATION` | `scalar` | Quantization: none, scalar, binary |
-| `ANKIATLAS_QDRANT_ON_DISK` | `false` | Store vectors on disk |
-| `ANKIATLAS_JOB_QUEUE_NAME` | `ankiatlas_jobs` | Redis list name used for jobs |
-| `ANKIATLAS_JOB_MAX_RETRIES` | `3` | Max retries for failed jobs |
-| `ANKIATLAS_JOB_RESULT_TTL_SECONDS` | `86400` | Job metadata retention |
-
-## Health Checks
-
-### Endpoints
-
-- `/health` - Basic health (always returns 200)
-- `/ready` - Readiness check (verifies dependencies)
-
-### Monitoring with curl
+There is no published worker container recipe in-repo yet. For now, the supported path is running the worker from a source checkout or from your own custom image:
 
 ```bash
-# Basic health
-curl http://localhost:8000/health
+ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1 cargo run --bin anki-atlas-worker
+```
 
-# Readiness with dependencies
+Treat that worker runtime as development or controlled-use only until the worker contract is fully stabilized.
+
+## Health and Monitoring
+
+### API endpoints
+
+- `GET /health` returns liveness and version
+- `GET /ready` returns local process readiness only
+
+Example:
+
+```bash
+curl http://localhost:8000/health
 curl http://localhost:8000/ready
 ```
 
-### Response Format
+Do not use `/ready` as a deep dependency probe. Monitor PostgreSQL, Qdrant, and Redis separately.
 
-```json
-{
-  "status": "ready",
-  "checks": {
-    "postgres": "ok",
-    "qdrant": "ok"
-  }
-}
-```
-
-## Initial Setup
-
-### 1. Run Migrations
+### Dependency checks
 
 ```bash
-docker compose exec api anki-atlas migrate
+psql "$ANKIATLAS_POSTGRES_URL" -c "SELECT 1"
+curl "$ANKIATLAS_QDRANT_URL/healthz"
+redis-cli -u "$ANKIATLAS_REDIS_URL" ping
 ```
 
-### 2. Queue an Anki Sync Job
+## Migrations and Bootstrap
+
+Run migrations before serving production traffic:
 
 ```bash
-# Copy collection to container or mount volume, then enqueue sync via HTTP
+cargo run --bin anki-atlas -- migrate
+```
+
+Then bootstrap data via CLI direct execution or by enqueuing jobs:
+
+```bash
 curl -X POST http://localhost:8000/jobs/sync \
   -H "Content-Type: application/json" \
-  -d '{"source":"/data/collection.anki2"}'
+  -d '{"source":"/data/collection.anki2","force_reindex":true}'
 ```
 
-### 3. Verify Job API
+## Security Notes
 
-```bash
-curl http://localhost:8000/ready
-curl -X POST http://localhost:8000/search \
-  -H "Content-Type: application/json" \
-  -d '{"query":"ownership","limit":3}'
-curl "http://localhost:8000/topics"
-```
+- Set `ANKIATLAS_API_KEY` if the API is reachable outside a trusted network.
+- Put the API behind TLS termination.
+- Keep PostgreSQL, Qdrant, and Redis on private networks.
+- Use provider-specific secrets only for the embedding mode you actually run.
 
-## Production Configuration
+## Operational Caveats
 
-### Security
+- API write-side work is job-based only.
+- MCP is not covered by the root Dockerfile.
+- Worker execution is intentionally gated.
+- Reranking silently disables itself if `ANKIATLAS_RERANK_ENABLED=true` but `ANKIATLAS_RERANK_ENDPOINT` is missing; watch logs for that warning.
 
-1. **Use strong database password:**
-   ```yaml
-   environment:
-     - POSTGRES_PASSWORD=${DB_PASSWORD}  # From secrets manager
-   ```
-
-2. **Restrict network access:**
-   ```yaml
-   services:
-     postgres:
-       networks:
-         - internal
-       # No ports exposed externally
-   ```
-
-3. **Enable TLS for API:**
-   Use a reverse proxy (nginx, traefik) with TLS termination.
-
-### Resource Limits
-
-```yaml
-services:
-  api:
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
-        reservations:
-          memory: 512M
-
-  postgres:
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-
-  qdrant:
-    deploy:
-      resources:
-        limits:
-          memory: 4G  # Adjust based on collection size
-```
-
-### Memory Optimization for Qdrant
-
-For large collections (>100k notes):
-
-```yaml
-environment:
-  - ANKIATLAS_QDRANT_QUANTIZATION=scalar  # 75% memory reduction
-  - ANKIATLAS_QDRANT_ON_DISK=true  # Use disk storage
-```
-
-### Logging
-
-```yaml
-services:
-  api:
-    environment:
-      - ANKIATLAS_DEBUG=false  # JSON output for structured logging
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-```
-
-## Backup and Restore
+## Backups
 
 ### PostgreSQL
 
 ```bash
-# Backup
-docker compose exec postgres pg_dump -U ankiatlas ankiatlas > backup.sql
-
-# Restore
-cat backup.sql | docker compose exec -T postgres psql -U ankiatlas ankiatlas
+pg_dump "$ANKIATLAS_POSTGRES_URL" > backup.sql
+psql "$ANKIATLAS_POSTGRES_URL" < backup.sql
 ```
 
 ### Qdrant
 
 ```bash
-# Backup (snapshot API)
-curl -X POST http://localhost:6333/collections/anki_notes/snapshots
-
-# List snapshots
-curl http://localhost:6333/collections/anki_notes/snapshots
-
-# Restore from snapshot
-curl -X PUT http://localhost:6333/collections/anki_notes/snapshots/recover \
-  -H "Content-Type: application/json" \
-  -d '{"location": "file:///qdrant/snapshots/<snapshot-name>"}'
+curl -X POST "$ANKIATLAS_QDRANT_URL/collections/anki_notes/snapshots"
+curl "$ANKIATLAS_QDRANT_URL/collections/anki_notes/snapshots"
 ```
-
-## Scaling Considerations
-
-### Single Node
-
-- PostgreSQL: Use connection pooling (pgbouncer)
-- Qdrant: Enable quantization, tune memory
-- API: Run multiple `anki-atlas-api` instances behind a reverse proxy
-
-```bash
-ANKIATLAS_API_PORT=8000 cargo run --bin anki-atlas-api
-```
-
-### Multi-Node (Future)
-
-- PostgreSQL: Use managed service (RDS, Cloud SQL)
-- Qdrant: Use Qdrant Cloud or distributed mode
-- API: Load balance across multiple instances
-
-## Monitoring
-
-### Prometheus Metrics (Planned)
-
-```yaml
-services:
-  api:
-    ports:
-      - "9090:9090"  # Metrics endpoint
-```
-
-### Example Grafana Dashboard
-
-1. Request rate and latency
-2. Error rate by endpoint
-3. Database connection pool status
-4. Qdrant collection size and query latency
-
-## Troubleshooting
-
-See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for common issues.
-
-### Common Production Issues
-
-1. **Connection pool exhaustion:** Increase pool size or add connection limits
-2. **Slow queries:** Check Qdrant index status, ensure filters use indexed fields
-3. **Memory pressure:** Enable quantization, increase container memory
-  worker:
-    image: anki-atlas:latest
-    command: ["sh", "-lc", "ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1 anki-atlas-worker"]
-    environment:
-      - ANKIATLAS_POSTGRES_URL=postgresql://ankiatlas:secret@postgres:5432/ankiatlas
-      - ANKIATLAS_QDRANT_URL=http://qdrant:6333
-      - ANKIATLAS_REDIS_URL=redis://redis:6379/0
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      qdrant:
-        condition: service_started
-      redis:
-        condition: service_started
