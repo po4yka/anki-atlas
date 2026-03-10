@@ -20,8 +20,12 @@ use rusqlite::Connection;
 use serde_json::Value;
 use sqlx::PgPool;
 use tempfile::TempDir;
-use testcontainers::{ContainerAsync, GenericImage, core::IntoContainerPort, runners::AsyncRunner};
-use testcontainers_modules::{postgres::Postgres, redis::Redis};
+use testcontainers::{
+    ContainerAsync, GenericImage,
+    core::{IntoContainerPort, WaitFor},
+    runners::AsyncRunner,
+};
+use testcontainers_modules::postgres::Postgres;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -68,7 +72,7 @@ impl Drop for WorkerProcess {
 
 pub struct TestStack {
     _postgres: ContainerAsync<Postgres>,
-    _redis: ContainerAsync<Redis>,
+    _redis: ContainerAsync<GenericImage>,
     _qdrant: ContainerAsync<GenericImage>,
     pub fixture_dir: TempDir,
     pub pool: PgPool,
@@ -83,7 +87,9 @@ impl TestStack {
             .start()
             .await
             .context("start postgres container")?;
-        let redis = Redis::default()
+        let redis = GenericImage::new("redis", "7-alpine")
+            .with_exposed_port(6379.tcp())
+            .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
             .start()
             .await
             .context("start redis container")?;

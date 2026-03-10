@@ -9,8 +9,11 @@ use std::future::Future;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use testcontainers::runners::AsyncRunner;
-use testcontainers_modules::redis::{REDIS_PORT, Redis};
+use testcontainers::{
+    GenericImage,
+    core::{IntoContainerPort, WaitFor},
+    runners::AsyncRunner,
+};
 
 fn test_config() -> WorkerConfig {
     WorkerConfig {
@@ -672,11 +675,16 @@ async fn brpop_uses_configured_queue_name_and_timeout() {
 
 #[tokio::test]
 async fn redis_manager_and_worker_drive_terminal_job_status() {
-    let (redis_url, _container) = match Redis::default().start().await {
+    let (redis_url, _container) = match GenericImage::new("redis", "7-alpine")
+        .with_exposed_port(6379.tcp())
+        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
+        .start()
+        .await
+    {
         Ok(container) => {
             let host = container.get_host().await.expect("redis host");
             let port = container
-                .get_host_port_ipv4(REDIS_PORT)
+                .get_host_port_ipv4(6379)
                 .await
                 .expect("redis port");
             (format!("redis://{host}:{port}/0"), container)
