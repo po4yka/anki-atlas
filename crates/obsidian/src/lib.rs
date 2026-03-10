@@ -1,6 +1,8 @@
 pub mod analyzer;
 pub mod error;
 pub mod frontmatter;
+#[cfg(feature = "fuzzing")]
+pub mod fuzzing;
 pub mod parser;
 pub mod sync;
 

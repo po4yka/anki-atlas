@@ -60,12 +60,22 @@ fn slugify_components(topic: &str, keyword: &str) -> (String, String) {
     let topic_slug = if topic.is_empty() {
         "untitled".to_string()
     } else {
-        SlugService::slugify(topic)
+        let slug = SlugService::slugify(topic);
+        if slug.is_empty() {
+            "untitled".to_string()
+        } else {
+            slug
+        }
     };
     let keyword_slug = if keyword.is_empty() {
         "card".to_string()
     } else {
-        SlugService::slugify(keyword)
+        let slug = SlugService::slugify(keyword);
+        if slug.is_empty() {
+            "card".to_string()
+        } else {
+            slug
+        }
     };
     (topic_slug, keyword_slug)
 }
@@ -476,6 +486,18 @@ mod tests {
     fn generate_slug_empty_keyword_becomes_card() {
         let slug = SlugService::generate_slug("topic", "", 0, "en").unwrap();
         assert!(slug.contains("-card-"));
+    }
+
+    #[test]
+    fn generate_slug_non_ascii_only_topic_becomes_untitled() {
+        let slug = SlugService::generate_slug("日本語", "keyword", 0, "en").unwrap();
+        assert_eq!(slug, "untitled-keyword-0-en");
+    }
+
+    #[test]
+    fn generate_slug_non_ascii_only_keyword_becomes_card() {
+        let slug = SlugService::generate_slug("topic", "декораторы", 0, "en").unwrap();
+        assert_eq!(slug, "topic-card-0-en");
     }
 
     #[test]

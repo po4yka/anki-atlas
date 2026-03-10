@@ -1,0 +1,37 @@
+[package]
+name = "anki-atlas-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+arbitrary = { version = "1", features = ["derive"] }
+libfuzzer-sys = "0.4"
+anki-reader = { path = "../crates/anki-reader" }
+card = { path = "../crates/card" }
+obsidian = { path = "../crates/obsidian", features = ["fuzzing"] }
+serde_yaml = "0.9"
+
+[[bin]]
+name = "anki_reader_normalizer"
+path = "fuzz_targets/anki_reader_normalizer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "card_slug"
+path = "fuzz_targets/card_slug.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "obsidian_frontmatter"
+path = "fuzz_targets/obsidian_frontmatter.rs"
+test = false
+doc = false
+bench = false

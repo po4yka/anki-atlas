@@ -46,6 +46,12 @@ pub(crate) fn split_frontmatter(content: &str) -> (Option<&str>, &str) {
     let Some(rest) = content.strip_prefix("---\n") else {
         return (None, content);
     };
+    if let Some(body) = rest.strip_prefix("---\n") {
+        return (Some(""), body);
+    }
+    if rest == "---" {
+        return (Some(""), "");
+    }
     let Some(end) = rest.find("\n---") else {
         return (None, content);
     };

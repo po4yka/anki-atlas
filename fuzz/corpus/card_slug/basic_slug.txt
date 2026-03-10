@@ -1,0 +1,7 @@
+lang=en index=1 hash_len=12
+Rust Ownership
+Borrow Checker
+notes/rust/ownership.md
+Basic
+rust,ownership,borrowing
+front|back

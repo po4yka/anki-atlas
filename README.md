@@ -195,11 +195,14 @@ cargo test -p anki-atlas-api -p anki-atlas-cli -p anki-atlas-mcp
 cargo test --workspace --exclude anki-sync --exclude database
 ```
 
+Fuzzing instructions live in [docs/FUZZING.md](/Users/po4yka/GitRep/anki-atlas/docs/FUZZING.md).
+
 ## Documentation Map
 
 - [Architecture](/Users/po4yka/GitRep/anki-atlas/docs/ARCHITECTURE.md)
 - [First Time Setup](/Users/po4yka/GitRep/anki-atlas/docs/FIRST_TIME_SETUP.md)
 - [Deployment](/Users/po4yka/GitRep/anki-atlas/docs/DEPLOYMENT.md)
+- [Fuzzing](/Users/po4yka/GitRep/anki-atlas/docs/FUZZING.md)
 - [MCP Tools](/Users/po4yka/GitRep/anki-atlas/docs/MCP_TOOLS.md)
 - [Troubleshooting](/Users/po4yka/GitRep/anki-atlas/docs/TROUBLESHOOTING.md)
 - [CLI Spec](/Users/po4yka/GitRep/anki-atlas/specs/16-cli.md)

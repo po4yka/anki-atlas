@@ -138,3 +138,19 @@ fn write_empty_data_produces_empty_frontmatter() {
     assert!(result.starts_with("---\n"));
     assert!(result.contains("Body only"));
 }
+
+#[test]
+fn split_accepts_empty_frontmatter_block() {
+    let (yaml, body) = super::split_frontmatter("---\n---\nBody only");
+    assert_eq!(yaml, Some(""));
+    assert_eq!(body, "Body only");
+}
+
+#[test]
+fn write_empty_frontmatter_roundtrips_through_parse() {
+    let content = "Body only";
+    let data = HashMap::new();
+    let rewritten = write_frontmatter(&data, content).unwrap();
+    let reparsed = parse_frontmatter(&rewritten).unwrap();
+    assert!(reparsed.is_empty());
+}
