@@ -4,6 +4,7 @@ members = [
   "crates/common",
   "crates/taxonomy",
   "crates/database",
+  "crates/perf-support",
   "crates/anki-reader",
   "crates/anki-sync",
   "crates/indexer",
@@ -20,6 +21,7 @@ members = [
   "bins/cli",
   "bins/api",
   "bins/mcp",
+  "bins/perf-harness",
   "bins/worker",
 ]
 exclude = ["fuzz"]
@@ -91,3 +93,5 @@ pulldown-cmark = "0.12"
 # Testing
 mockall = "0.13"
 assert_matches = "1.5"
+criterion = { version = "0.8.2", features = ["async_tokio", "html_reports"] }
+goose = "0.18.1"

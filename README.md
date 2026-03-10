@@ -204,6 +204,7 @@ Fuzzing instructions live in [docs/FUZZING.md](/Users/po4yka/GitRep/anki-atlas/d
 - [Deployment](/Users/po4yka/GitRep/anki-atlas/docs/DEPLOYMENT.md)
 - [Fuzzing](/Users/po4yka/GitRep/anki-atlas/docs/FUZZING.md)
 - [MCP Tools](/Users/po4yka/GitRep/anki-atlas/docs/MCP_TOOLS.md)
+- [Performance](/Users/po4yka/GitRep/anki-atlas/docs/PERFORMANCE.md)
 - [Troubleshooting](/Users/po4yka/GitRep/anki-atlas/docs/TROUBLESHOOTING.md)
 - [CLI Spec](/Users/po4yka/GitRep/anki-atlas/specs/16-cli.md)
 - [API Spec](/Users/po4yka/GitRep/anki-atlas/specs/17-api.md)

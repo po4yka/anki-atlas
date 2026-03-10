@@ -1,0 +1,174 @@
+name: Performance
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  ANKIATLAS_POSTGRES_URL: postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas
+  ANKIATLAS_QDRANT_URL: http://localhost:6333
+  ANKIATLAS_REDIS_URL: redis://localhost:6379/0
+  ANKIATLAS_EMBEDDING_PROVIDER: mock
+  ANKIATLAS_EMBEDDING_DIMENSION: "384"
+  ANKIATLAS_RERANK_ENABLED: "false"
+  ANKIATLAS_PERF_BASE_URL: http://127.0.0.1:8000
+
+jobs:
+  perf-smoke:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ankiatlas
+          POSTGRES_PASSWORD: ankiatlas
+          POSTGRES_DB: ankiatlas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ankiatlas -d ankiatlas"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:6333/readyz || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Prepare perf dataset
+        run: cargo run -p perf-harness -- --profile pr --prepare-only
+      - name: Start API
+        run: |
+          mkdir -p target
+          cargo run --bin anki-atlas-api > target/perf-api.log 2>&1 &
+          echo $! > target/perf-api.pid
+      - name: Start worker
+        env:
+          ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER: "1"
+        run: |
+          mkdir -p target
+          cargo run --bin anki-atlas-worker > target/perf-worker.log 2>&1 &
+          echo $! > target/perf-worker.pid
+      - name: Wait for API readiness
+        run: |
+          for _ in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8000/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not become ready in time" >&2
+          exit 1
+      - name: Run perf smoke
+        run: cargo run -p perf-harness -- --profile pr --scenario full
+      - name: Upload perf smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-smoke-artifacts
+          path: |
+            target/perf
+            target/perf-api.log
+            target/perf-worker.log
+
+  perf-nightly:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ankiatlas
+          POSTGRES_PASSWORD: ankiatlas
+          POSTGRES_DB: ankiatlas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ankiatlas -d ankiatlas"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:6333/readyz || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Prepare nightly dataset
+        run: cargo run -p perf-harness -- --profile nightly --prepare-only
+      - name: Start API
+        run: |
+          mkdir -p target
+          cargo run --bin anki-atlas-api > target/perf-api.log 2>&1 &
+          echo $! > target/perf-api.pid
+      - name: Start worker
+        env:
+          ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER: "1"
+        run: |
+          mkdir -p target
+          cargo run --bin anki-atlas-worker > target/perf-worker.log 2>&1 &
+          echo $! > target/perf-worker.pid
+      - name: Wait for API readiness
+        run: |
+          for _ in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8000/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not become ready in time" >&2
+          exit 1
+      - name: Run nightly load
+        run: cargo run -p perf-harness -- --profile nightly --scenario full
+      - name: Run search benchmarks
+        run: cargo bench -p search --bench search_hot_paths
+      - name: Run analytics benchmarks
+        run: cargo bench -p analytics --bench analytics_hot_paths
+      - name: Upload nightly perf artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-nightly-artifacts
+          path: |
+            target/perf
+            target/criterion
+            target/perf-api.log
+            target/perf-worker.log

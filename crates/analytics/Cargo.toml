@@ -17,6 +17,15 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+async-trait = { workspace = true }
+criterion = { workspace = true }
+perf-support = { path = "../perf-support" }
 tokio = { workspace = true }
 mockall = { workspace = true }
 tempfile = { workspace = true }
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }
+
+[[bench]]
+name = "analytics_hot_paths"
+harness = false
