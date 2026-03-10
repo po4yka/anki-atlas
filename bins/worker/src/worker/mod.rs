@@ -47,7 +47,18 @@ impl JobDispatcher for RuntimeDispatcher {
         ctx: &TaskContext,
         envelope: &JobEnvelope,
     ) -> Result<JobResultData, JobError> {
-        crate::dispatcher::dispatch(ctx, envelope).await
+        let ctx = *ctx;
+        let envelope = envelope.clone();
+
+        tokio::task::spawn_blocking(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| JobError::TaskExecution(error.to_string()))?
+                .block_on(crate::dispatcher::dispatch(&ctx, &envelope))
+        })
+        .await
+        .map_err(|error| JobError::TaskExecution(error.to_string()))?
     }
 }
 

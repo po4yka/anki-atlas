@@ -2,6 +2,7 @@ use crate::error::JobError;
 use crate::types::{IndexJobPayload, IndexJobResult, SyncJobPayload, SyncJobResult};
 
 /// Task execution context for one job attempt.
+#[derive(Debug, Clone, Copy)]
 pub struct TaskContext {
     pub attempt: u32,
 }
