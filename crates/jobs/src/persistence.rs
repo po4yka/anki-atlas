@@ -15,14 +15,8 @@ pub async fn save_job_record(
 ) -> Result<(), JobError> {
     let key = job_key(&record.job_id);
     let json = serde_json::to_string(record).map_err(|e| JobError::Serialization(e.to_string()))?;
-    let _: bool = client
-        .set_with_options(
-            &key,
-            &json,
-            rustis::commands::SetCondition::None,
-            rustis::commands::SetExpiration::Ex(ttl_seconds),
-            false,
-        )
+    client
+        .setex(&key, ttl_seconds, &json)
         .await
         .map_err(|e| JobError::Redis(e.to_string()))?;
     Ok(())

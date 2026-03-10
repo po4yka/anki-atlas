@@ -51,19 +51,19 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres",
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 # HTTP client
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.13", features = ["json", "rustls"], default-features = false }
 
 # Vector DB
 qdrant-client = "1"
 
 # Redis
-rustis = { version = "0.13", features = ["tokio-runtime"] }
+rustis = { version = "0.19", features = ["tokio-runtime"] }
 
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
 
 # MCP
-rmcp = { version = "1.1", features = ["transport-io"] }
+rmcp = { version = "1.1.1", features = ["transport-io"] }
 
 # Error handling
 thiserror = "2"
@@ -79,19 +79,19 @@ chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 sha2 = "0.10"
 url = "2"
-strum = { version = "0.27", features = ["derive"] }
+strum = { version = "0.28", features = ["derive"] }
 async-trait = "0.1"
 futures = "0.3"
 tempfile = "3"
 walkdir = "2"
-phf = { version = "0.11", features = ["macros"] }
+phf = { version = "0.13", features = ["macros"] }
 
 # HTML / Markdown
 ammonia = "4"
-pulldown-cmark = "0.12"
+pulldown-cmark = "0.13"
 
 # Testing
-mockall = "0.13"
+mockall = "0.14"
 assert_matches = "1.5"
 criterion = { version = "0.8.2", features = ["async_tokio", "html_reports"] }
 goose = "0.18.1"

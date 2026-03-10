@@ -23,8 +23,8 @@ perf-support = { path = "../perf-support" }
 tokio = { workspace = true }
 mockall = { workspace = true }
 tempfile = { workspace = true }
-testcontainers = "0.23"
-testcontainers-modules = { version = "0.11", features = ["postgres"] }
+testcontainers = "0.27"
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
 
 [[bench]]
 name = "analytics_hot_paths"
