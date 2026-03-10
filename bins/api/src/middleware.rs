@@ -1,6 +1,7 @@
 use axum::body::Body;
 use axum::http::{HeaderValue, Request, StatusCode};
 use axum::response::Response;
+use serde_json::json;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -111,9 +112,12 @@ where
 
             if provided != Some(expected.as_str()) {
                 return Box::pin(async {
+                    let body = serde_json::to_vec(&json!({ "error": "unauthorized" }))
+                        .expect("serialize unauthorized response");
                     Ok(Response::builder()
                         .status(StatusCode::UNAUTHORIZED)
-                        .body(Body::from("unauthorized"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(body))
                         .unwrap())
                 });
             }

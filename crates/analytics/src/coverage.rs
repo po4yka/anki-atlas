@@ -303,9 +303,9 @@ pub async fn get_coverage_tree(
         );
     }
 
-    // Wire children (process longest paths first so children exist)
+    // Wire children in ascending path order so sibling order is deterministic.
     let paths: Vec<String> = topics.iter().map(|(_, p, _, _)| p.clone()).collect();
-    for path in paths.iter().rev() {
+    for path in &paths {
         if let Some(slash_pos) = path.rfind('/') {
             let parent_path = &path[..slash_pos];
             if let Some(child_node) = nodes.get(path).cloned() {
