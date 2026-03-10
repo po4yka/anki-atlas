@@ -41,6 +41,14 @@ impl ScenarioMode {
             Self::Full => "full",
         }
     }
+
+    fn includes_read(self) -> bool {
+        matches!(self, Self::Read | Self::Full)
+    }
+
+    fn includes_jobs(self) -> bool {
+        matches!(self, Self::Jobs | Self::Full)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -134,10 +142,13 @@ struct RequestGroupSummary {
 
 #[derive(Debug, Serialize)]
 struct ThresholdReport {
+    read_evaluated: bool,
     read_error_rate_ok: bool,
     read_p95_ok: bool,
+    job_evaluated: bool,
     job_error_rate_ok: bool,
     job_p95_ok: bool,
+    worker_terminal_evaluated: bool,
     worker_terminal_ok: bool,
 }
 
@@ -291,7 +302,9 @@ fn register_scenarios(
     let read_scenario = scenario!("read")
         .set_weight(2)?
         .set_wait_time(Duration::from_millis(25), Duration::from_millis(125))?
-        .register_transaction(transaction!(search_request).set_weight(40)?)
+        .register_transaction(transaction!(search_request).set_weight(25)?)
+        .register_transaction(transaction!(search_filtered_request).set_weight(10)?)
+        .register_transaction(transaction!(search_rerank_request).set_weight(5)?)
         .register_transaction(transaction!(topics_request).set_weight(15)?)
         .register_transaction(transaction!(topic_coverage_request).set_weight(15)?)
         .register_transaction(transaction!(topic_gaps_request).set_weight(10)?)
@@ -327,6 +340,39 @@ async fn search_request(user: &mut GooseUser) -> TransactionResult {
         "limit": 10,
     });
     let response = post_json_named(user, "/search", "read_search", &payload).await?;
+    ensure_success_response(response)?;
+    Ok(())
+}
+
+async fn search_filtered_request(user: &mut GooseUser) -> TransactionResult {
+    let ctx = context();
+    let index =
+        ctx.search_counter.fetch_add(1, Ordering::Relaxed) % ctx.manifest.search_queries.len();
+    let payload = serde_json::json!({
+        "query": ctx.manifest.search_queries[index],
+        "limit": 10,
+        "filters": {
+            "deck_names": [ctx.manifest.duplicate_deck],
+            "tags": [ctx.manifest.search_queries[index]],
+            "min_reps": 8,
+        }
+    });
+    let response = post_json_named(user, "/search", "read_search_filtered", &payload).await?;
+    ensure_success_response(response)?;
+    Ok(())
+}
+
+async fn search_rerank_request(user: &mut GooseUser) -> TransactionResult {
+    let ctx = context();
+    let index =
+        ctx.search_counter.fetch_add(1, Ordering::Relaxed) % ctx.manifest.search_queries.len();
+    let payload = serde_json::json!({
+        "query": ctx.manifest.search_queries[index],
+        "limit": 10,
+        "rerank_override": true,
+        "rerank_top_n_override": 5,
+    });
+    let response = post_json_named(user, "/search", "read_search_rerank", &payload).await?;
     ensure_success_response(response)?;
     Ok(())
 }
@@ -376,11 +422,7 @@ async fn topic_weak_notes_request(user: &mut GooseUser) -> TransactionResult {
 }
 
 async fn duplicates_request(user: &mut GooseUser) -> TransactionResult {
-    let ctx = context();
-    let path = format!(
-        "/duplicates?threshold=0.95&max_clusters=20&deck_filter={}&tag_filter={}",
-        ctx.manifest.duplicate_deck, ctx.manifest.duplicate_tag
-    );
+    let path = build_duplicates_path(&context().manifest);
     let response = user.get_named(&path, "read_duplicates").await?;
     ensure_success_response(response)?;
     Ok(())
@@ -469,11 +511,7 @@ async fn job_status_request(user: &mut GooseUser) -> TransactionResult {
     };
 
     let terminal = poll_until_terminal(user, &job_id).await?;
-    let ctx = context();
-    ctx.terminal_attempts.fetch_add(1, Ordering::Relaxed);
-    if terminal {
-        ctx.terminal_within_sla.fetch_add(1, Ordering::Relaxed);
-    }
+    record_terminal_observation(terminal);
 
     user.get_session_data_mut::<JobSession>()
         .expect("job session")
@@ -497,10 +535,29 @@ async fn job_cancel_request(user: &mut GooseUser) -> TransactionResult {
     let path = format!("/jobs/{}/cancel", accepted.job_id);
     let response = post_empty_named(user, &path, "job_cancel").await?;
     ensure_success_response(response)?;
+    let terminal = poll_until_terminal(user, &accepted.job_id).await?;
+    record_terminal_observation(terminal);
     user.get_session_data_mut::<JobSession>()
         .expect("job session")
         .last_job_id = None;
     Ok(())
+}
+
+fn record_terminal_observation(terminal: bool) {
+    let ctx = context();
+    ctx.terminal_attempts.fetch_add(1, Ordering::Relaxed);
+    if terminal {
+        ctx.terminal_within_sla.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+fn build_duplicates_path(manifest: &SeedManifest) -> String {
+    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+    serializer.append_pair("threshold", "0.95");
+    serializer.append_pair("max_clusters", "20");
+    serializer.append_pair("deck_filter[]", &manifest.duplicate_deck);
+    serializer.append_pair("tag_filter[]", &manifest.duplicate_tag);
+    format!("/duplicates?{}", serializer.finish())
 }
 
 async fn enqueue_job(
@@ -627,11 +684,15 @@ fn build_report(metrics: &GooseMetrics) -> PerfReport {
     };
 
     let thresholds = ThresholdReport {
-        read_error_rate_ok: read.error_rate <= 0.01,
-        read_p95_ok: read.p95_ms <= ctx.profile.read_p95_ms,
-        job_error_rate_ok: jobs.error_rate <= 0.01,
-        job_p95_ok: jobs.p95_ms <= ctx.profile.job_p95_ms,
-        worker_terminal_ok: worker_terminal_ratio >= ctx.profile.terminal_ratio_min,
+        read_evaluated: ctx.cli.scenario.includes_read(),
+        read_error_rate_ok: !ctx.cli.scenario.includes_read() || read.error_rate <= 0.01,
+        read_p95_ok: !ctx.cli.scenario.includes_read() || read.p95_ms <= ctx.profile.read_p95_ms,
+        job_evaluated: ctx.cli.scenario.includes_jobs(),
+        job_error_rate_ok: !ctx.cli.scenario.includes_jobs() || jobs.error_rate <= 0.01,
+        job_p95_ok: !ctx.cli.scenario.includes_jobs() || jobs.p95_ms <= ctx.profile.job_p95_ms,
+        worker_terminal_evaluated: ctx.cli.scenario.includes_jobs(),
+        worker_terminal_ok: !ctx.cli.scenario.includes_jobs()
+            || worker_terminal_ratio >= ctx.profile.terminal_ratio_min,
     };
 
     PerfReport {
@@ -719,11 +780,45 @@ fn enforce_thresholds(report: &PerfReport) -> Result<()> {
     }
 
     anyhow::bail!(
-        "performance smoke thresholds failed: read_error_rate_ok={} read_p95_ok={} job_error_rate_ok={} job_p95_ok={} worker_terminal_ok={}",
+        "performance smoke thresholds failed: read_evaluated={} read_error_rate_ok={} read_p95_ok={} job_evaluated={} job_error_rate_ok={} job_p95_ok={} worker_terminal_evaluated={} worker_terminal_ok={}",
+        thresholds.read_evaluated,
         thresholds.read_error_rate_ok,
         thresholds.read_p95_ok,
+        thresholds.job_evaluated,
         thresholds.job_error_rate_ok,
         thresholds.job_p95_ok,
+        thresholds.worker_terminal_evaluated,
         thresholds.worker_terminal_ok
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scenario_mode_flags_are_stable() {
+        assert!(ScenarioMode::Read.includes_read());
+        assert!(!ScenarioMode::Read.includes_jobs());
+        assert!(!ScenarioMode::Jobs.includes_read());
+        assert!(ScenarioMode::Jobs.includes_jobs());
+        assert!(ScenarioMode::Full.includes_read());
+        assert!(ScenarioMode::Full.includes_jobs());
+    }
+
+    #[test]
+    fn percentile_uses_merged_histogram() {
+        let histogram = BTreeMap::from([(10, 1), (25, 3), (50, 1)]);
+        assert_eq!(percentile(&histogram, 0.95), 50);
+        assert_eq!(percentile(&histogram, 0.50), 25);
+    }
+
+    #[test]
+    fn duplicates_path_uses_repeated_filter_params() {
+        let manifest = profile_manifest(DatasetProfile::Pr);
+        let path = build_duplicates_path(&manifest);
+        assert!(path.starts_with("/duplicates?"));
+        assert!(path.contains("deck_filter%5B%5D=Deck+00"));
+        assert!(path.contains("tag_filter%5B%5D=dup-cluster-000"));
+    }
 }

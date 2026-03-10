@@ -2847,6 +2847,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "url",
 ]
 
 [[package]]
@@ -2864,6 +2865,9 @@ dependencies = [
  "serde_json",
  "sqlx",
  "surface-runtime",
+ "testcontainers",
+ "testcontainers-modules",
+ "tokio",
  "tracing",
 ]
 

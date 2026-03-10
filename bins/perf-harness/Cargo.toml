@@ -19,3 +19,4 @@ gumdrop = "0.8.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+url = { workspace = true }

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use analytics::coverage::{get_topic_coverage, get_topic_gaps, get_weak_notes};
+use analytics::coverage::{get_coverage_tree, get_topic_coverage, get_topic_gaps, get_weak_notes};
 use analytics::duplicates::DuplicateDetector;
 use criterion::{Criterion, criterion_group, criterion_main};
 use perf_support::{DatasetProfile, SeedManifest, seed_postgres_only};
@@ -142,6 +142,14 @@ fn bench_analytics_hot_paths(c: &mut Criterion) {
             get_weak_notes(&fixture.pool, &root, 25, 0.1)
                 .await
                 .expect("weak notes");
+        });
+    });
+
+    group.bench_function("taxonomy_tree", |b| {
+        b.to_async(&runtime).iter(|| async {
+            get_coverage_tree(&fixture.pool, Some(&root))
+                .await
+                .expect("taxonomy tree");
         });
     });
 

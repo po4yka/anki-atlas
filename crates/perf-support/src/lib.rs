@@ -557,6 +557,9 @@ pub fn summarize_requests(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sqlx::postgres::PgPoolOptions;
+    use testcontainers::runners::AsyncRunner;
+    use testcontainers_modules::postgres::Postgres;
 
     #[test]
     fn dataset_profiles_match_planned_sizes() {
@@ -593,5 +596,64 @@ mod tests {
             DatasetProfile::from_str("nightly").unwrap(),
             DatasetProfile::Nightly
         );
+    }
+
+    #[tokio::test]
+    async fn postgres_seed_is_idempotent() {
+        let container = match Postgres::default().start().await {
+            Ok(container) => container,
+            Err(error) => {
+                eprintln!("skipping perf-support idempotence test: {error}");
+                return;
+            }
+        };
+        let host = container.get_host().await.expect("postgres host");
+        let port = container
+            .get_host_port_ipv4(5432)
+            .await
+            .expect("postgres port");
+        let url = format!("postgresql://postgres:postgres@{host}:{port}/postgres");
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&url)
+            .await
+            .expect("connect Postgres");
+
+        let first = seed_postgres_only(&pool, DatasetProfile::Pr)
+            .await
+            .expect("seed once");
+        let first_counts = load_runtime_counts(&pool).await;
+
+        let second = seed_postgres_only(&pool, DatasetProfile::Pr)
+            .await
+            .expect("seed twice");
+        let second_counts = load_runtime_counts(&pool).await;
+
+        assert_eq!(first.notes, second.notes);
+        assert_eq!(first.topics, second.topics);
+        assert_eq!(first.duplicate_clusters, second.duplicate_clusters);
+        assert_eq!(first_counts, second_counts);
+        assert_eq!(first_counts.0, DatasetProfile::Pr.spec().notes as i64 + 3);
+        assert_eq!(first_counts.1, DatasetProfile::Pr.spec().topics as i64);
+    }
+
+    async fn load_runtime_counts(pool: &PgPool) -> (i64, i64, i64, i64) {
+        let (notes,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes")
+            .fetch_one(pool)
+            .await
+            .expect("count notes");
+        let (topics,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM topics")
+            .fetch_one(pool)
+            .await
+            .expect("count topics");
+        let (cards,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM cards")
+            .fetch_one(pool)
+            .await
+            .expect("count cards");
+        let (note_topics,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM note_topics")
+            .fetch_one(pool)
+            .await
+            .expect("count note_topics");
+        (notes, topics, cards, note_topics)
     }
 }

@@ -190,6 +190,20 @@ fn bench_search_hot_paths(c: &mut Criterion) {
         });
     });
 
+    group.bench_function("semantic_only", |b| {
+        let params = SearchParams {
+            query: query.clone(),
+            semantic_only: true,
+            ..Default::default()
+        };
+        b.to_async(&runtime).iter(|| async {
+            hybrid_service
+                .search(&params)
+                .await
+                .expect("semantic-only search");
+        });
+    });
+
     group.bench_function("filtered", |b| {
         let params = SearchParams {
             query: fixture.manifest.search_queries[1].clone(),

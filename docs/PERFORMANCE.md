@@ -48,6 +48,13 @@ Then run the harness:
 cargo run -p perf-harness -- --profile pr --scenario full
 ```
 
+You can also run the surfaces independently:
+
+```bash
+cargo run -p perf-harness -- --profile pr --scenario read
+cargo run -p perf-harness -- --profile pr --scenario jobs
+```
+
 Optional flags:
 
 - `--base-url http://127.0.0.1:8000`
@@ -79,6 +86,8 @@ These benches use seeded Postgres fixtures plus stubbed vector/rerank dependenci
 - aggregated job-path p95 latency
 - request error rates for read and job groups
 - worker terminalization ratio inside the configured SLA window
+
+Single-scenario runs only enforce the thresholds relevant to that scenario.
 
 PR smoke runs fail when any of these thresholds are exceeded:
 
