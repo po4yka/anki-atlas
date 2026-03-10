@@ -1,0 +1,3 @@
+What is ownership?
+--BACK--
+Rust uses ownership to manage memory safely.

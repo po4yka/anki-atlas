@@ -1,0 +1,5 @@
+What are the steps?
+--BACK--
+1. Parse
+2. Validate
+3. Normalize

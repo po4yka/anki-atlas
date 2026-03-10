@@ -12,8 +12,13 @@ arbitrary = { version = "1", features = ["derive"] }
 libfuzzer-sys = "0.4"
 anki-reader = { path = "../crates/anki-reader" }
 card = { path = "../crates/card" }
+generator = { path = "../crates/generator" }
+indexer = { path = "../crates/indexer" }
+jobs = { path = "../crates/jobs" }
 obsidian = { path = "../crates/obsidian", features = ["fuzzing"] }
 serde_yaml = "0.9"
+url = "2"
+validation = { path = "../crates/validation" }
 
 [[bin]]
 name = "anki_reader_normalizer"
@@ -32,6 +37,34 @@ bench = false
 [[bin]]
 name = "obsidian_frontmatter"
 path = "fuzz_targets/obsidian_frontmatter.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "generator_apf_linter"
+path = "fuzz_targets/generator_apf_linter.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jobs_redis_url"
+path = "fuzz_targets/jobs_redis_url.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "indexer_sparse_vector"
+path = "fuzz_targets/indexer_sparse_vector.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "validation_quality"
+path = "fuzz_targets/validation_quality.rs"
 test = false
 doc = false
 bench = false

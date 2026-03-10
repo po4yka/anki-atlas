@@ -15,6 +15,10 @@ cargo install cargo-fuzz
 cargo +nightly fuzz run anki_reader_normalizer
 cargo +nightly fuzz run card_slug
 cargo +nightly fuzz run obsidian_frontmatter
+cargo +nightly fuzz run generator_apf_linter
+cargo +nightly fuzz run jobs_redis_url
+cargo +nightly fuzz run indexer_sparse_vector
+cargo +nightly fuzz run validation_quality
 ```
 
 For a quick smoke test:
