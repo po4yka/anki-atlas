@@ -79,21 +79,28 @@ dependencies = [
 name = "anki-atlas-api"
 version = "0.1.0"
 dependencies = [
+ "analytics",
  "anyhow",
  "async-trait",
  "axum 0.8.8",
  "axum-test",
  "chrono",
  "common",
+ "database",
+ "indexer",
  "jobs",
  "mockall",
+ "qdrant-client",
+ "search",
  "serde",
  "serde_json",
+ "sqlx",
  "tokio",
  "tower 0.5.3",
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "url",
  "uuid",
 ]
 

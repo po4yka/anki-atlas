@@ -81,7 +81,7 @@ Infrastructure and shared contracts
 
 ### HTTP API
 
-The API currently exposes only health checks and async job orchestration:
+The API exposes health checks, async job orchestration, and service-aligned read operations:
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
@@ -91,8 +91,23 @@ The API currently exposes only health checks and async job orchestration:
 | `/jobs/index` | `POST` | enqueue index job |
 | `/jobs/{job_id}` | `GET` | poll job status |
 | `/jobs/{job_id}/cancel` | `POST` | request cancellation |
+| `/search` | `POST` | hybrid retrieval via `search::service::SearchService` |
+| `/topics` | `GET` | taxonomy / coverage tree |
+| `/topic-coverage` | `GET` | topic coverage metrics |
+| `/topic-gaps` | `GET` | undercovered and missing topic list |
+| `/topic-weak-notes` | `GET` | weak notes within a topic subtree |
+| `/duplicates` | `GET` | near-duplicate note clusters |
 
-Direct `/sync`, `/index`, `/search`, `/topics`, `/duplicates`, and `/index/info` routes are intentionally not part of the `main` contract because they are not yet backed by one shared service layer.
+The API does not expose direct `/sync` or `/index` mutations. Write-side ingestion stays behind `/jobs/*`.
+
+#### Route semantics
+
+- `/search` accepts a typed JSON body that mirrors `search::service::SearchParams`.
+- `/topics` accepts optional `root_path`.
+- `/topic-coverage` requires `topic_path` and accepts optional `include_subtree`.
+- `/topic-gaps` requires `topic_path` and accepts optional `min_coverage`.
+- `/topic-weak-notes` requires `topic_path` and accepts optional `max_results`.
+- `/duplicates` accepts optional `threshold`, `max_clusters`, `deck_filter[]`, and `tag_filter[]`.
 
 ### CLI
 
@@ -149,12 +164,11 @@ CLI or MCP
 
 ## Near-Term Gaps
 
-These capabilities exist in crates but are not yet promoted to stable public surfaces:
+These capabilities still remain intentionally constrained on `main`:
 
-- direct hybrid search HTTP and CLI
-- taxonomy coverage and gap endpoints
-- duplicate detection endpoints
-- synchronous sync and index entrypoints
+- direct synchronous `/sync` and `/index` HTTP mutations
+- search, coverage, and duplicates CLI entrypoints
 - fully stable background worker execution
+- broader MCP exposure for data-backed search and analytics flows
 
-Those flows should be re-exposed only after wiring through shared service APIs and adding transport-level tests.
+Those flows should be expanded only when the transport surface and the underlying shared services stay aligned.

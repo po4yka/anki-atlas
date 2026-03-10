@@ -143,6 +143,10 @@ curl -X POST http://localhost:8000/jobs/sync \
 
 ```bash
 curl http://localhost:8000/ready
+curl -X POST http://localhost:8000/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"ownership","limit":3}'
+curl "http://localhost:8000/topics"
 ```
 
 ## Production Configuration

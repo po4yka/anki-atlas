@@ -24,6 +24,13 @@ pub fn build_router(state: AppState) -> Router {
         .route("/jobs/index", post(handlers::enqueue_index_job))
         .route("/jobs/{job_id}", get(handlers::get_job_status))
         .route("/jobs/{job_id}/cancel", post(handlers::cancel_job))
+        // Search and analytics
+        .route("/search", post(handlers::search))
+        .route("/topics", get(handlers::topics))
+        .route("/topic-coverage", get(handlers::topic_coverage))
+        .route("/topic-gaps", get(handlers::topic_gaps))
+        .route("/topic-weak-notes", get(handlers::topic_weak_notes))
+        .route("/duplicates", get(handlers::duplicates))
         .layer(ApiKeyLayer::new(api_key));
 
     public

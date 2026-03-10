@@ -112,7 +112,23 @@ Poll the job:
 curl http://localhost:8000/jobs/<job-id>
 ```
 
-## Step 9: Use the Wired CLI Workflows
+## Step 9: Verify the Read API
+
+The v2 read surface is synchronous and typed. Direct `/sync` and `/index` mutations are not exposed.
+
+```bash
+curl -X POST http://localhost:8000/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"ownership","limit":5}'
+
+curl "http://localhost:8000/topics"
+curl "http://localhost:8000/topic-coverage?topic_path=rust/ownership"
+curl "http://localhost:8000/topic-gaps?topic_path=rust&min_coverage=1"
+curl "http://localhost:8000/topic-weak-notes?topic_path=rust&max_results=20"
+curl "http://localhost:8000/duplicates?threshold=0.92&max_clusters=10&deck_filter[]=Rust"
+```
+
+## Step 10: Use the Wired CLI Workflows
 
 Current stable CLI commands focus on local content workflows:
 
@@ -123,7 +139,7 @@ cargo run --bin anki-atlas -- obsidian-sync /path/to/vault --dry-run
 cargo run --bin anki-atlas -- tag-audit /path/to/tags.txt
 ```
 
-## Step 10: Set Up MCP
+## Step 11: Set Up MCP
 
 ```json
 {
@@ -140,6 +156,7 @@ cargo run --bin anki-atlas -- tag-audit /path/to/tags.txt
 ## Next Steps
 
 - Use `/jobs/sync` and `/jobs/index` for data ingestion work
+- Use `/search`, `/topics`, `/topic-coverage`, `/topic-gaps`, `/topic-weak-notes`, and `/duplicates` for read-only API access
 - Use the CLI for generation, validation, and Obsidian workflows
 - Keep [docs/ARCHITECTURE.md](./ARCHITECTURE.md) as the source of truth for which surfaces are intentionally exposed on `main`
 

@@ -66,6 +66,7 @@ pub async fn enqueue_sync_job(
     let payload = jobs::SyncJobPayload::from(req);
 
     let rec = state
+        .services
         .job_manager
         .enqueue_sync_job(payload, run_at)
         .await
@@ -84,6 +85,7 @@ pub async fn enqueue_index_job(
     let payload = jobs::IndexJobPayload::from(req);
 
     let rec = state
+        .services
         .job_manager
         .enqueue_index_job(payload, run_at)
         .await
@@ -99,6 +101,7 @@ pub async fn get_job_status(
     Path(job_id): Path<String>,
 ) -> Result<Response, AppError> {
     let rec = state
+        .services
         .job_manager
         .get_job(&job_id)
         .await
@@ -114,6 +117,7 @@ pub async fn cancel_job(
     Path(job_id): Path<String>,
 ) -> Result<Response, AppError> {
     let rec = state
+        .services
         .job_manager
         .cancel_job(&job_id)
         .await
