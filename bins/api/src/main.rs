@@ -2,26 +2,31 @@ use std::sync::Arc;
 
 use anki_atlas_api::router::build_router;
 use anki_atlas_api::state::AppState;
+use common::logging::{LoggingConfig, init_global_logging};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-
     let settings = common::config::Settings::load()?;
-    let bind_addr = format!("{}:{}", settings.api_host, settings.api_port);
+    let api_settings = settings.api();
+    let job_settings = settings.jobs();
+
+    init_global_logging(&LoggingConfig {
+        debug: api_settings.debug,
+        json_output: false,
+    })?;
+
+    let bind_addr = format!("{}:{}", api_settings.host, api_settings.port);
 
     let job_manager = jobs::RedisJobManager::new(
-        &settings.redis_url,
-        &settings.job_queue_name,
-        settings.job_max_retries,
-        u64::from(settings.job_result_ttl_seconds),
+        &job_settings.redis_url,
+        &job_settings.queue_name,
+        job_settings.max_retries,
+        u64::from(job_settings.result_ttl_seconds),
     )
     .await?;
 
     let state = AppState {
-        settings: Arc::new(settings),
+        api: Arc::new(api_settings),
         job_manager: Arc::new(job_manager),
     };
 

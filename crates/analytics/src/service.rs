@@ -1,7 +1,7 @@
 use crate::AnalyticsError;
 use crate::coverage::{TopicCoverage, TopicGap, WeakNote};
-use crate::duplicates::{DuplicateCluster, DuplicateDetail, DuplicateStats};
-use crate::labeling::LabelingStats;
+use crate::duplicates::{DuplicateCluster, DuplicateDetector, DuplicateStats};
+use crate::labeling::{LabelingStats, TopicLabeler};
 use crate::taxonomy::Taxonomy;
 
 /// Facade aggregating taxonomy, coverage, labeling, and duplicate detection.
@@ -33,17 +33,7 @@ where
         &self,
         yaml_path: Option<&std::path::Path>,
     ) -> Result<Taxonomy, AnalyticsError> {
-        match yaml_path {
-            Some(path) => {
-                let mut taxonomy = crate::taxonomy::load_taxonomy_from_yaml(path)?;
-                if !taxonomy.topics.is_empty() {
-                    let id_map = crate::taxonomy::sync_taxonomy_to_db(&self.db, &taxonomy).await?;
-                    taxonomy.apply_topic_ids(&id_map);
-                }
-                Ok(taxonomy)
-            }
-            None => crate::taxonomy::load_taxonomy_from_db(&self.db).await,
-        }
+        crate::taxonomy::load_taxonomy(&self.db, yaml_path).await
     }
 
     /// Label all notes with topics.
@@ -61,83 +51,9 @@ where
             }
         };
 
-        // Embed topics
-        let paths: Vec<String> = tax.topics.keys().cloned().collect();
-        let texts: Vec<String> = paths
-            .iter()
-            .map(|p| {
-                let topic = &tax.topics[p];
-                match &topic.description {
-                    Some(desc) => format!("{}: {desc}", topic.label),
-                    None => topic.label.clone(),
-                }
-            })
-            .collect();
-        let topic_vecs = self.embedding.embed(&texts).await?;
-        let topic_emb_with_ids: std::collections::HashMap<String, (i64, Vec<f32>)> = paths
-            .into_iter()
-            .zip(topic_vecs)
-            .filter_map(|(path, emb)| {
-                tax.topics
-                    .get(&path)
-                    .and_then(|t| t.topic_id.map(|id| (path, (id, emb))))
-            })
-            .collect();
-
-        let max_topics_per_note = 5;
-        let batch_size: i64 = 100;
-        let mut stats = LabelingStats::default();
-        let mut matched_topics = std::collections::HashSet::new();
-        let mut offset: i64 = 0;
-
-        loop {
-            let notes: Vec<(i64, String)> = sqlx::query_as(
-                "SELECT note_id, normalized_text FROM notes \
-                 WHERE deleted_at IS NULL ORDER BY note_id LIMIT $1 OFFSET $2",
-            )
-            .bind(batch_size)
-            .bind(offset)
-            .fetch_all(&self.db)
-            .await?;
-
-            if notes.is_empty() {
-                break;
-            }
-
-            let note_texts: Vec<String> = notes.iter().map(|(_, t)| t.clone()).collect();
-            let note_vecs = self.embedding.embed(&note_texts).await?;
-
-            for ((note_id, _), note_emb) in notes.iter().zip(note_vecs.iter()) {
-                let assignments = crate::labeling::rank_topics_for_note(
-                    *note_id,
-                    note_emb,
-                    &topic_emb_with_ids,
-                    min_confidence,
-                    max_topics_per_note,
-                );
-                for a in &assignments {
-                    sqlx::query(
-                        "INSERT INTO note_topics (note_id, topic_id, confidence, method) \
-                         VALUES ($1, $2, $3, $4) \
-                         ON CONFLICT (note_id, topic_id) DO UPDATE SET confidence = $3, method = $4",
-                    )
-                    .bind(a.note_id)
-                    .bind(a.topic_id as i32)
-                    .bind(a.confidence as f32)
-                    .bind(a.method.as_str())
-                    .execute(&self.db)
-                    .await?;
-                    matched_topics.insert(a.topic_path.clone());
-                }
-                stats.assignments_created += assignments.len();
-                stats.notes_processed += 1;
-            }
-
-            offset += notes.len() as i64;
-        }
-
-        stats.topics_matched = matched_topics.len();
-        Ok(stats)
+        TopicLabeler::new(&self.embedding, self.db.clone())
+            .label_notes(tax, min_confidence, 5, 100)
+            .await
     }
 
     /// Get coverage metrics for a topic.
@@ -175,163 +91,9 @@ where
         deck_filter: Option<&[String]>,
         tag_filter: Option<&[String]>,
     ) -> Result<(Vec<DuplicateCluster>, DuplicateStats), AnalyticsError> {
-        // Inline: fetch notes, find similar via vector_repo, cluster with UnionFind
-        let note_ids: Vec<(i64,)> =
-            sqlx::query_as("SELECT note_id FROM notes WHERE deleted_at IS NULL ORDER BY note_id")
-                .fetch_all(&self.db)
-                .await?;
-
-        let mut uf = crate::duplicates::UnionFind::new();
-        let mut pair_scores: std::collections::HashMap<(i64, i64), f64> =
-            std::collections::HashMap::new();
-
-        for (note_id,) in &note_ids {
-            let similar = self
-                .vector_repo
-                .find_similar_to_note(*note_id, 20, threshold as f32, deck_filter, tag_filter)
-                .await?;
-            for (other_id, score) in similar {
-                if other_id == *note_id {
-                    continue;
-                }
-                let pair = if *note_id < other_id {
-                    (*note_id, other_id)
-                } else {
-                    (other_id, *note_id)
-                };
-                pair_scores.entry(pair).or_insert(f64::from(score));
-                uf.union(*note_id, other_id);
-            }
-        }
-
-        let mut cluster_members: std::collections::HashMap<i64, Vec<i64>> =
-            std::collections::HashMap::new();
-        for (note_id,) in &note_ids {
-            let root = uf.find(*note_id);
-            cluster_members.entry(root).or_default().push(*note_id);
-        }
-
-        let mut clusters = Vec::new();
-        for members in cluster_members.values() {
-            if members.len() < 2 {
-                continue;
-            }
-            let mut best_id = members[0];
-            let mut best_reviews: i64 = 0;
-            for &nid in members {
-                let (reviews,): (i64,) = sqlx::query_as(
-                    "SELECT COALESCE(SUM(c.reps), 0) FROM cards c WHERE c.note_id = $1",
-                )
-                .bind(nid)
-                .fetch_one(&self.db)
-                .await?;
-                if reviews > best_reviews {
-                    best_reviews = reviews;
-                    best_id = nid;
-                }
-            }
-
-            let (rep_text,): (String,) =
-                sqlx::query_as("SELECT LEFT(normalized_text, 200) FROM notes WHERE note_id = $1")
-                    .bind(best_id)
-                    .fetch_one(&self.db)
-                    .await?;
-
-            let mut duplicates = Vec::new();
-            let mut all_decks = Vec::new();
-            let mut all_tags = Vec::new();
-
-            for &nid in members {
-                if nid == best_id {
-                    continue;
-                }
-                let pair = if best_id < nid {
-                    (best_id, nid)
-                } else {
-                    (nid, best_id)
-                };
-                let sim = pair_scores.get(&pair).copied().unwrap_or(0.0);
-                let detail: (String, Vec<String>) = sqlx::query_as(
-                    "SELECT LEFT(n.normalized_text, 200), COALESCE(n.tags, '{}') \
-                     FROM notes n WHERE n.note_id = $1",
-                )
-                .bind(nid)
-                .fetch_one(&self.db)
-                .await?;
-                let dn: Vec<String> = sqlx::query_as::<_, (String,)>(
-                    "SELECT DISTINCT d.name FROM cards c \
-                     JOIN decks d ON d.deck_id = c.deck_id WHERE c.note_id = $1",
-                )
-                .bind(nid)
-                .fetch_all(&self.db)
-                .await?
-                .into_iter()
-                .map(|(n,)| n)
-                .collect();
-
-                all_decks.extend(dn.clone());
-                all_tags.extend(detail.1.clone());
-                duplicates.push(DuplicateDetail {
-                    note_id: nid,
-                    similarity: sim,
-                    text: detail.0,
-                    deck_names: dn,
-                    tags: detail.1,
-                });
-            }
-
-            let rep_dn: Vec<String> = sqlx::query_as::<_, (String,)>(
-                "SELECT DISTINCT d.name FROM cards c \
-                 JOIN decks d ON d.deck_id = c.deck_id WHERE c.note_id = $1",
-            )
-            .bind(best_id)
-            .fetch_all(&self.db)
-            .await?
-            .into_iter()
-            .map(|(n,)| n)
-            .collect();
-            let (rep_tags,): (Vec<String>,) =
-                sqlx::query_as("SELECT COALESCE(tags, '{}') FROM notes WHERE note_id = $1")
-                    .bind(best_id)
-                    .fetch_one(&self.db)
-                    .await?;
-
-            all_decks.extend(rep_dn);
-            all_tags.extend(rep_tags);
-            all_decks.sort();
-            all_decks.dedup();
-            all_tags.sort();
-            all_tags.dedup();
-
-            clusters.push(DuplicateCluster {
-                representative_id: best_id,
-                representative_text: rep_text,
-                duplicates,
-                deck_names: all_decks,
-                tags: all_tags,
-            });
-        }
-
-        clusters.sort_by_key(|b| std::cmp::Reverse(b.size()));
-        clusters.truncate(max_clusters);
-
-        let total_duplicates: usize = clusters.iter().map(|c| c.duplicates.len()).sum();
-        let clusters_found = clusters.len();
-        let avg_cluster_size = if clusters.is_empty() {
-            0.0
-        } else {
-            clusters.iter().map(|c| c.size()).sum::<usize>() as f64 / clusters_found as f64
-        };
-
-        Ok((
-            clusters,
-            DuplicateStats {
-                notes_scanned: note_ids.len(),
-                clusters_found,
-                total_duplicates,
-                avg_cluster_size,
-            },
-        ))
+        DuplicateDetector::new(&self.vector_repo, self.db.clone())
+            .find_duplicates(threshold, max_clusters, deck_filter, tag_filter)
+            .await
     }
 
     /// Get coverage tree for all topics (optionally filtered by root path).

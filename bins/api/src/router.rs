@@ -10,7 +10,7 @@ use crate::state::AppState;
 /// Public routes (health, ready) are not behind API key auth.
 /// All other routes require a valid API key when configured.
 pub fn build_router(state: AppState) -> Router {
-    let api_key = state.settings.api_key.clone();
+    let api_key = state.api.api_key.clone();
 
     // Public routes - no auth required
     let public = Router::new()

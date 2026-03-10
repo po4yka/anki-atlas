@@ -48,7 +48,7 @@ fn test_settings() -> Settings {
         job_queue_name: "test_jobs".into(),
         job_result_ttl_seconds: 3600,
         job_max_retries: 3,
-        embedding_provider: "mock".into(),
+        embedding_provider: common::config::EmbeddingProviderKind::Mock,
         embedding_model: "test-model".into(),
         embedding_dimension: 384,
         rerank_enabled: false,
@@ -65,7 +65,7 @@ fn test_settings() -> Settings {
 
 fn test_state(mock_jobs: MockJobs) -> AppState {
     AppState {
-        settings: Arc::new(test_settings()),
+        api: Arc::new(test_settings().api()),
         job_manager: Arc::new(mock_jobs),
     }
 }

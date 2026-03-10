@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::Serialize;
 
 use crate::AnalyticsError;
@@ -49,6 +51,200 @@ impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
         Self { vector_repo, db }
     }
 
+    async fn fetch_active_note_ids(&self) -> Result<Vec<i64>, AnalyticsError> {
+        let note_ids: Vec<(i64,)> =
+            sqlx::query_as("SELECT note_id FROM notes WHERE deleted_at IS NULL ORDER BY note_id")
+                .fetch_all(&self.db)
+                .await?;
+
+        Ok(note_ids.into_iter().map(|(note_id,)| note_id).collect())
+    }
+
+    async fn collect_similarity_pairs(
+        &self,
+        note_ids: &[i64],
+        threshold: f64,
+        deck_filter: Option<&[String]>,
+        tag_filter: Option<&[String]>,
+    ) -> Result<(UnionFind, HashMap<(i64, i64), f64>), AnalyticsError> {
+        let mut union_find = UnionFind::new();
+        let mut pair_scores = HashMap::new();
+
+        for &note_id in note_ids {
+            let similar_notes = self
+                .vector_repo
+                .find_similar_to_note(note_id, 20, threshold as f32, deck_filter, tag_filter)
+                .await?;
+
+            for (other_note_id, score) in similar_notes {
+                if other_note_id == note_id {
+                    continue;
+                }
+
+                let note_pair = if note_id < other_note_id {
+                    (note_id, other_note_id)
+                } else {
+                    (other_note_id, note_id)
+                };
+
+                pair_scores.entry(note_pair).or_insert(f64::from(score));
+                union_find.union(note_id, other_note_id);
+            }
+        }
+
+        Ok((union_find, pair_scores))
+    }
+
+    fn group_cluster_members(
+        note_ids: &[i64],
+        union_find: &mut UnionFind,
+    ) -> HashMap<i64, Vec<i64>> {
+        let mut cluster_members: HashMap<i64, Vec<i64>> = HashMap::new();
+        for &note_id in note_ids {
+            let cluster_root = union_find.find(note_id);
+            cluster_members
+                .entry(cluster_root)
+                .or_default()
+                .push(note_id);
+        }
+        cluster_members
+    }
+
+    async fn select_representative_id(
+        &self,
+        member_note_ids: &[i64],
+    ) -> Result<i64, AnalyticsError> {
+        let mut representative_id = member_note_ids[0];
+        let mut highest_review_count = 0_i64;
+
+        for &note_id in member_note_ids {
+            let (review_count,): (i64,) =
+                sqlx::query_as("SELECT COALESCE(SUM(c.reps), 0) FROM cards c WHERE c.note_id = $1")
+                    .bind(note_id)
+                    .fetch_one(&self.db)
+                    .await?;
+
+            if review_count > highest_review_count {
+                highest_review_count = review_count;
+                representative_id = note_id;
+            }
+        }
+
+        Ok(representative_id)
+    }
+
+    async fn fetch_note_excerpt_and_tags(
+        &self,
+        note_id: i64,
+    ) -> Result<(String, Vec<String>), AnalyticsError> {
+        let note_row: (String, Vec<String>) = sqlx::query_as(
+            "SELECT LEFT(n.normalized_text, 200), COALESCE(n.tags, '{}') \
+             FROM notes n WHERE n.note_id = $1",
+        )
+        .bind(note_id)
+        .fetch_one(&self.db)
+        .await?;
+
+        Ok(note_row)
+    }
+
+    async fn fetch_note_deck_names(&self, note_id: i64) -> Result<Vec<String>, AnalyticsError> {
+        let deck_rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT DISTINCT d.name FROM cards c \
+             JOIN decks d ON d.deck_id = c.deck_id \
+             WHERE c.note_id = $1",
+        )
+        .bind(note_id)
+        .fetch_all(&self.db)
+        .await?;
+
+        Ok(deck_rows
+            .into_iter()
+            .map(|(deck_name,)| deck_name)
+            .collect())
+    }
+
+    async fn build_cluster(
+        &self,
+        member_note_ids: &[i64],
+        pair_scores: &HashMap<(i64, i64), f64>,
+    ) -> Result<Option<DuplicateCluster>, AnalyticsError> {
+        if member_note_ids.len() < 2 {
+            return Ok(None);
+        }
+
+        let representative_id = self.select_representative_id(member_note_ids).await?;
+        let (representative_text, representative_tags) =
+            self.fetch_note_excerpt_and_tags(representative_id).await?;
+        let representative_deck_names = self.fetch_note_deck_names(representative_id).await?;
+
+        let mut duplicate_details = Vec::new();
+        let mut cluster_deck_names = representative_deck_names.clone();
+        let mut cluster_tags = representative_tags.clone();
+
+        for &note_id in member_note_ids {
+            if note_id == representative_id {
+                continue;
+            }
+
+            let note_pair = if representative_id < note_id {
+                (representative_id, note_id)
+            } else {
+                (note_id, representative_id)
+            };
+            let similarity = pair_scores.get(&note_pair).copied().unwrap_or(0.0);
+            let (duplicate_text, duplicate_tags) =
+                self.fetch_note_excerpt_and_tags(note_id).await?;
+            let duplicate_deck_names = self.fetch_note_deck_names(note_id).await?;
+
+            cluster_deck_names.extend(duplicate_deck_names.clone());
+            cluster_tags.extend(duplicate_tags.clone());
+            duplicate_details.push(DuplicateDetail {
+                note_id,
+                similarity,
+                text: duplicate_text,
+                deck_names: duplicate_deck_names,
+                tags: duplicate_tags,
+            });
+        }
+
+        cluster_deck_names.sort();
+        cluster_deck_names.dedup();
+        cluster_tags.sort();
+        cluster_tags.dedup();
+
+        Ok(Some(DuplicateCluster {
+            representative_id,
+            representative_text,
+            duplicates: duplicate_details,
+            deck_names: cluster_deck_names,
+            tags: cluster_tags,
+        }))
+    }
+
+    fn summarize_clusters(
+        note_ids_scanned: usize,
+        clusters: &[DuplicateCluster],
+    ) -> DuplicateStats {
+        let total_duplicates: usize = clusters
+            .iter()
+            .map(|cluster| cluster.duplicates.len())
+            .sum();
+        let avg_cluster_size = if clusters.is_empty() {
+            0.0
+        } else {
+            clusters.iter().map(DuplicateCluster::size).sum::<usize>() as f64
+                / clusters.len() as f64
+        };
+
+        DuplicateStats {
+            notes_scanned: note_ids_scanned,
+            clusters_found: clusters.len(),
+            total_duplicates,
+            avg_cluster_size,
+        }
+    }
+
     /// Find clusters of near-duplicate notes.
     pub async fn find_duplicates(
         &self,
@@ -57,180 +253,23 @@ impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
         deck_filter: Option<&[String]>,
         tag_filter: Option<&[String]>,
     ) -> Result<(Vec<DuplicateCluster>, DuplicateStats), AnalyticsError> {
-        // Fetch all active note IDs
-        let note_ids: Vec<(i64,)> = sqlx::query_as(
-            "SELECT note_id FROM notes WHERE deleted_at IS NULL ORDER BY note_id",
-        )
-        .fetch_all(&self.db)
-        .await?;
+        let note_ids = self.fetch_active_note_ids().await?;
+        let (mut union_find, pair_scores) = self
+            .collect_similarity_pairs(&note_ids, threshold, deck_filter, tag_filter)
+            .await?;
+        let cluster_members = Self::group_cluster_members(&note_ids, &mut union_find);
 
-        let mut uf = UnionFind::new();
-        // Track similarity pairs: (note_a, note_b) -> score
-        let mut pair_scores: std::collections::HashMap<(i64, i64), f64> =
-            std::collections::HashMap::new();
-
-        for (note_id,) in &note_ids {
-            let similar = self
-                .vector_repo
-                .find_similar_to_note(
-                    *note_id,
-                    20,
-                    threshold as f32,
-                    deck_filter,
-                    tag_filter,
-                )
-                .await?;
-
-            for (other_id, score) in similar {
-                if other_id == *note_id {
-                    continue;
-                }
-                let pair = if *note_id < other_id {
-                    (*note_id, other_id)
-                } else {
-                    (other_id, *note_id)
-                };
-                pair_scores
-                    .entry(pair)
-                    .or_insert(f64::from(score));
-                uf.union(*note_id, other_id);
-            }
-        }
-
-        // Group notes by cluster root
-        let mut cluster_members: std::collections::HashMap<i64, Vec<i64>> =
-            std::collections::HashMap::new();
-        for (note_id,) in &note_ids {
-            let root = uf.find(*note_id);
-            cluster_members.entry(root).or_default().push(*note_id);
-        }
-
-        // Build clusters (only groups with 2+ members)
         let mut clusters = Vec::new();
-        for members in cluster_members.values() {
-            if members.len() < 2 {
-                continue;
+        for member_note_ids in cluster_members.values() {
+            if let Some(cluster) = self.build_cluster(member_note_ids, &pair_scores).await? {
+                clusters.push(cluster);
             }
-
-            // Pick representative: note with most reviews
-            let mut best_id = members[0];
-            let mut best_reviews: i64 = 0;
-
-            for &nid in members {
-                let reviews: (i64,) = sqlx::query_as(
-                    "SELECT COALESCE(SUM(c.reps), 0) FROM cards c WHERE c.note_id = $1",
-                )
-                .bind(nid)
-                .fetch_one(&self.db)
-                .await?;
-                if reviews.0 > best_reviews {
-                    best_reviews = reviews.0;
-                    best_id = nid;
-                }
-            }
-
-            // Fetch note details
-            let (rep_text,): (String,) = sqlx::query_as(
-                "SELECT LEFT(normalized_text, 200) FROM notes WHERE note_id = $1",
-            )
-            .bind(best_id)
-            .fetch_one(&self.db)
-            .await?;
-
-            let mut duplicates = Vec::new();
-            let mut all_decks = Vec::new();
-            let mut all_tags = Vec::new();
-
-            for &nid in members {
-                if nid == best_id {
-                    continue;
-                }
-
-                let pair = if best_id < nid {
-                    (best_id, nid)
-                } else {
-                    (nid, best_id)
-                };
-                let sim = pair_scores.get(&pair).copied().unwrap_or(0.0);
-
-                let detail_row: (String, Vec<String>) = sqlx::query_as(
-                    "SELECT LEFT(n.normalized_text, 200), COALESCE(n.tags, '{}') \
-                     FROM notes n WHERE n.note_id = $1",
-                )
-                .bind(nid)
-                .fetch_one(&self.db)
-                .await?;
-
-                let deck_names: Vec<(String,)> = sqlx::query_as(
-                    "SELECT DISTINCT d.name FROM cards c \
-                     JOIN decks d ON d.deck_id = c.deck_id \
-                     WHERE c.note_id = $1",
-                )
-                .bind(nid)
-                .fetch_all(&self.db)
-                .await?;
-
-                let dn: Vec<String> = deck_names.into_iter().map(|(n,)| n).collect();
-                all_decks.extend(dn.clone());
-                all_tags.extend(detail_row.1.clone());
-
-                duplicates.push(DuplicateDetail {
-                    note_id: nid,
-                    similarity: sim,
-                    text: detail_row.0,
-                    deck_names: dn,
-                    tags: detail_row.1,
-                });
-            }
-
-            // Get representative's decks and tags
-            let rep_decks: Vec<(String,)> = sqlx::query_as(
-                "SELECT DISTINCT d.name FROM cards c \
-                 JOIN decks d ON d.deck_id = c.deck_id \
-                 WHERE c.note_id = $1",
-            )
-            .bind(best_id)
-            .fetch_all(&self.db)
-            .await?;
-            let rep_tags: (Vec<String>,) = sqlx::query_as(
-                "SELECT COALESCE(tags, '{}') FROM notes WHERE note_id = $1",
-            )
-            .bind(best_id)
-            .fetch_one(&self.db)
-            .await?;
-
-            all_decks.extend(rep_decks.iter().map(|(n,)| n.clone()));
-            all_tags.extend(rep_tags.0.clone());
-            all_decks.sort();
-            all_decks.dedup();
-            all_tags.sort();
-            all_tags.dedup();
-
-            clusters.push(DuplicateCluster {
-                representative_id: best_id,
-                representative_text: rep_text,
-                duplicates,
-                deck_names: all_decks,
-                tags: all_tags,
-            });
         }
 
-        clusters.sort_by_key(|b| std::cmp::Reverse(b.size()));
+        clusters.sort_by_key(|cluster| std::cmp::Reverse(cluster.size()));
         clusters.truncate(max_clusters);
 
-        let total_duplicates: usize = clusters.iter().map(|c| c.duplicates.len()).sum();
-        let avg_cluster_size = if clusters.is_empty() {
-            0.0
-        } else {
-            clusters.iter().map(|c| c.size()).sum::<usize>() as f64 / clusters.len() as f64
-        };
-
-        let stats = DuplicateStats {
-            notes_scanned: note_ids.len(),
-            clusters_found: clusters.len(),
-            total_duplicates,
-            avg_cluster_size,
-        };
+        let stats = Self::summarize_clusters(note_ids.len(), &clusters);
 
         Ok((clusters, stats))
     }

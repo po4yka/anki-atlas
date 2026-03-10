@@ -8,6 +8,7 @@ fn assert_send_sync<T: Send + Sync>() {}
 fn settings_and_quantization_are_send_and_sync() {
     assert_send_sync::<Settings>();
     assert_send_sync::<Quantization>();
+    assert_send_sync::<EmbeddingProviderKind>();
 }
 
 // ── Quantization enum ───────────────────────────────────────────────────
@@ -80,7 +81,7 @@ fn settings_load_returns_defaults_when_no_env_vars() {
             assert_eq!(settings.job_max_retries, 3);
 
             // Embeddings
-            assert_eq!(settings.embedding_provider, "openai");
+            assert_eq!(settings.embedding_provider, EmbeddingProviderKind::OpenAi);
             assert_eq!(settings.embedding_model, "text-embedding-3-small");
             assert_eq!(settings.embedding_dimension, 1536);
             assert!(!settings.rerank_enabled);
@@ -138,6 +139,7 @@ fn settings_load_reads_ankiatlas_prefixed_env_vars() {
                 Some("/path/to/collection.anki2".to_string())
             );
             assert_eq!(settings.embedding_dimension, 768);
+            assert_eq!(settings.embedding_provider, EmbeddingProviderKind::OpenAi);
         },
     );
 }
@@ -259,6 +261,18 @@ fn validate_mock_provider_accepts_any_positive_dimension() {
         || {
             let settings = Settings::load().expect("mock provider should accept any positive dim");
             assert_eq!(settings.embedding_dimension, 42);
+            assert_eq!(settings.embedding_provider, EmbeddingProviderKind::Mock);
+        },
+    );
+}
+
+#[test]
+fn validate_rejects_unknown_embedding_provider() {
+    temp_env::with_vars(
+        vec![("ANKIATLAS_EMBEDDING_PROVIDER", Some("mystery"))],
+        || {
+            let result = Settings::load();
+            assert!(result.is_err(), "Should reject unknown embedding provider");
         },
     );
 }
@@ -355,11 +369,9 @@ fn settings_clone() {
 // ── Crate root re-exports ───────────────────────────────────────────────
 
 #[test]
-fn crate_root_reexports_settings_and_get_settings() {
-    // Verify Settings is re-exported at crate root
+fn crate_root_reexports_settings_types() {
     let _: fn() -> std::result::Result<common::Settings, _> = common::Settings::load;
-    // Verify get_settings is re-exported at crate root
-    let _: fn() -> &'static common::Settings = common::get_settings;
+    let _: common::EmbeddingProviderKind = common::EmbeddingProviderKind::Mock;
 }
 
 // ── Quantization default ────────────────────────────────────────────────
@@ -382,6 +394,40 @@ fn settings_load_qdrant_quantization_from_env() {
         || {
             let settings = Settings::load().expect("should load with quantization override");
             assert_eq!(settings.qdrant_quantization, Quantization::Binary);
+        },
+    );
+}
+
+#[test]
+fn settings_projection_methods_return_narrow_runtime_contracts() {
+    temp_env::with_vars_unset(
+        vec![
+            "ANKIATLAS_POSTGRES_URL",
+            "ANKIATLAS_QDRANT_URL",
+            "ANKIATLAS_REDIS_URL",
+            "ANKIATLAS_API_KEY",
+        ],
+        || {
+            let settings = Settings::load().expect("defaults should work");
+
+            let database = settings.database();
+            assert!(database.postgres_url.starts_with("postgresql://"));
+
+            let jobs = settings.jobs();
+            assert!(jobs.redis_url.starts_with("redis://"));
+            assert_eq!(jobs.queue_name, "ankiatlas_jobs");
+
+            let api = settings.api();
+            assert_eq!(api.host, "0.0.0.0");
+            assert_eq!(api.port, 8000);
+
+            let embedding = settings.embedding();
+            assert_eq!(embedding.provider, EmbeddingProviderKind::OpenAi);
+            assert_eq!(embedding.dimension, 1536);
+
+            let rerank = settings.rerank();
+            assert_eq!(rerank.top_n, 50);
+            assert_eq!(rerank.batch_size, 32);
         },
     );
 }

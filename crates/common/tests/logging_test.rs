@@ -94,7 +94,13 @@ fn configure_logging_json_produces_json_lines() {
     let writer = CaptureWriter::new();
     let reader = writer.clone();
 
-    configure_logging(false, true, writer);
+    let _guard = configure_logging(
+        &LoggingConfig {
+            debug: false,
+            json_output: true,
+        },
+        writer,
+    );
 
     // Emit a tracing event
     tracing::info!(key = "value", "test message");
@@ -121,7 +127,13 @@ fn configure_logging_debug_level_emits_debug_events() {
     let writer = CaptureWriter::new();
     let reader = writer.clone();
 
-    configure_logging(true, true, writer);
+    let _guard = configure_logging(
+        &LoggingConfig {
+            debug: true,
+            json_output: true,
+        },
+        writer,
+    );
 
     tracing::debug!("debug-level-test");
 
@@ -138,7 +150,13 @@ fn configure_logging_info_level_omits_debug_events() {
     let writer = CaptureWriter::new();
     let reader = writer.clone();
 
-    configure_logging(false, true, writer);
+    let _guard = configure_logging(
+        &LoggingConfig {
+            debug: false,
+            json_output: true,
+        },
+        writer,
+    );
 
     tracing::debug!("should-not-appear");
     tracing::info!("should-appear");
@@ -162,7 +180,13 @@ fn configure_logging_human_readable_is_not_json() {
     let writer = CaptureWriter::new();
     let reader = writer.clone();
 
-    configure_logging(false, false, writer);
+    let _guard = configure_logging(
+        &LoggingConfig {
+            debug: false,
+            json_output: false,
+        },
+        writer,
+    );
 
     tracing::info!("human-readable-test");
 
@@ -189,7 +213,13 @@ fn correlation_id_appears_in_json_log_output() {
     let writer = CaptureWriter::new();
     let reader = writer.clone();
 
-    configure_logging(false, true, writer);
+    let _guard = configure_logging(
+        &LoggingConfig {
+            debug: false,
+            json_output: true,
+        },
+        writer,
+    );
 
     set_correlation_id(Some("corr-42".to_string()));
     tracing::info!("correlated-event");
@@ -212,5 +242,47 @@ fn crate_reexports_logging_functions() {
     let _ = common::logging::set_correlation_id;
     let _ = common::logging::clear_correlation_id;
     // configure_logging takes impl Write, verify it's callable with a concrete type
-    configure_logging(false, false, std::io::sink());
+    let _guard = configure_logging(
+        &LoggingConfig {
+            debug: false,
+            json_output: false,
+        },
+        std::io::sink(),
+    );
+}
+
+#[test]
+fn configure_logging_guard_does_not_leak_between_setups() {
+    let first_writer = CaptureWriter::new();
+    let first_reader = first_writer.clone();
+    {
+        let _guard = configure_logging(
+            &LoggingConfig {
+                debug: false,
+                json_output: false,
+            },
+            first_writer,
+        );
+        tracing::info!("first-subscriber");
+    }
+
+    let second_writer = CaptureWriter::new();
+    let second_reader = second_writer.clone();
+    {
+        let _guard = configure_logging(
+            &LoggingConfig {
+                debug: false,
+                json_output: false,
+            },
+            second_writer,
+        );
+        tracing::info!("second-subscriber");
+    }
+
+    assert!(first_reader.contents().contains("first-subscriber"));
+    assert!(second_reader.contents().contains("second-subscriber"));
+    assert!(
+        !second_reader.contents().contains("first-subscriber"),
+        "second logging setup should not inherit output destination from the first"
+    );
 }

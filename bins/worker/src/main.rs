@@ -6,7 +6,8 @@ pub mod worker;
 use config::WorkerConfig;
 use worker::{QueueBackend, Worker};
 
-use jobs::types::{JobRecord, JOB_KEY_PREFIX};
+use common::logging::{LoggingConfig, init_global_logging};
+use jobs::types::{JOB_KEY_PREFIX, JobRecord};
 
 /// Redis-backed queue backend for production use.
 struct RedisQueueBackend {
@@ -63,12 +64,16 @@ impl QueueBackend for RedisQueueBackend {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-
     let settings = common::config::Settings::load()?;
-    let config = WorkerConfig::from_settings(&settings);
+    let api_settings = settings.api();
+    let job_settings = settings.jobs();
+
+    init_global_logging(&LoggingConfig {
+        debug: api_settings.debug,
+        json_output: false,
+    })?;
+
+    let config = WorkerConfig::from_job_settings(&job_settings);
 
     tracing::info!(queue = %config.queue_name, concurrency = config.max_concurrency, "starting worker");
 

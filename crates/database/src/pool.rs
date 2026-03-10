@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use common::config::Settings;
+use common::config::DatabaseSettings;
 use common::error::Result;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -15,7 +15,7 @@ use crate::connection_error;
 /// - max_connections: 10
 /// - acquire_timeout: 10 seconds
 #[instrument(skip_all)]
-pub async fn create_pool(settings: &Settings) -> Result<PgPool> {
+pub async fn create_pool(settings: &DatabaseSettings) -> Result<PgPool> {
     PgPoolOptions::new()
         .min_connections(2)
         .max_connections(10)

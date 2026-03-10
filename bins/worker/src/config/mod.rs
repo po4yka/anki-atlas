@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use common::config::JobSettings;
+
 /// Worker configuration, loaded from Settings.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorkerConfig {
@@ -26,16 +28,16 @@ pub struct WorkerConfig {
 }
 
 impl WorkerConfig {
-    /// Build from common::config::Settings.
-    pub fn from_settings(settings: &common::config::Settings) -> Self {
+    /// Build from job-specific runtime settings.
+    pub fn from_job_settings(settings: &JobSettings) -> Self {
         Self {
             redis_url: settings.redis_url.clone(),
-            queue_name: settings.job_queue_name.clone(),
+            queue_name: settings.queue_name.clone(),
             max_concurrency: 4,
-            max_retries: settings.job_max_retries,
+            max_retries: settings.max_retries,
             poll_interval: Duration::from_secs(1),
             allow_abort_on_shutdown: true,
-            result_ttl_seconds: u64::from(settings.job_result_ttl_seconds),
+            result_ttl_seconds: u64::from(settings.result_ttl_seconds),
         }
     }
 }

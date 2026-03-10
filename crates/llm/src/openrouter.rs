@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use reqwest::Client;
+use serde::Deserialize;
 use serde_json::json;
 use tracing::instrument;
 
@@ -11,7 +12,8 @@ use crate::provider::{GenerateOptions, LlmProvider};
 use crate::response::LlmResponse;
 
 /// OpenRouter provider configuration.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct OpenRouterConfig {
     pub api_key: String,
     pub base_url: String,
@@ -234,6 +236,12 @@ impl LlmProvider for OpenRouterProvider {
             .await
             .map_err(|e| LlmError::Connection(e.to_string()))?;
 
+        let status = response.status().as_u16();
+        if status != 200 {
+            let body = response.text().await.unwrap_or_default();
+            return Err(LlmError::Http { status, body });
+        }
+
         let body: serde_json::Value = response.json().await.map_err(|e| LlmError::Provider {
             message: format!("failed to parse models response: {e}"),
             source: Some(Box::new(e)),
@@ -241,12 +249,21 @@ impl LlmProvider for OpenRouterProvider {
 
         let models = body["data"]
             .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|m| m["id"].as_str().map(String::from))
-                    .collect()
+            .ok_or_else(|| LlmError::Provider {
+                message: "models response missing data array".to_string(),
+                source: None,
+            })?
+            .iter()
+            .map(|model| {
+                model["id"]
+                    .as_str()
+                    .map(String::from)
+                    .ok_or_else(|| LlmError::Provider {
+                        message: "models response missing model id".to_string(),
+                        source: None,
+                    })
             })
-            .unwrap_or_default();
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(models)
     }

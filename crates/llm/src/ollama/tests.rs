@@ -444,6 +444,48 @@ async fn list_models_returns_empty_on_no_models() {
     assert!(models.is_empty());
 }
 
+#[tokio::test]
+async fn list_models_returns_http_error_on_non_success() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(ResponseTemplate::new(503).set_body_string("unavailable"))
+        .mount(&server)
+        .await;
+
+    let provider = OllamaProvider::new(OllamaConfig {
+        base_url: server.uri(),
+        ..Default::default()
+    })
+    .unwrap();
+
+    let result = provider.list_models().await;
+    assert!(matches!(result, Err(LlmError::Http { status: 503, .. })));
+}
+
+#[tokio::test]
+async fn list_models_rejects_missing_models_array() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "unexpected": []
+        })))
+        .mount(&server)
+        .await;
+
+    let provider = OllamaProvider::new(OllamaConfig {
+        base_url: server.uri(),
+        ..Default::default()
+    })
+    .unwrap();
+
+    let result = provider.list_models().await;
+    assert!(matches!(result, Err(LlmError::Provider { .. })));
+}
+
 // --- Send + Sync assertions ---
 
 #[test]

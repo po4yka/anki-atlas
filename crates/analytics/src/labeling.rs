@@ -104,11 +104,11 @@ impl<E: indexer::embeddings::EmbeddingProvider> TopicLabeler<E> {
         &self,
         taxonomy: &super::taxonomy::Taxonomy,
     ) -> Result<HashMap<String, Vec<f32>>, AnalyticsError> {
-        let paths: Vec<String> = taxonomy.topics.keys().cloned().collect();
-        let texts: Vec<String> = paths
+        let topic_paths: Vec<String> = taxonomy.topics.keys().cloned().collect();
+        let topic_texts: Vec<String> = topic_paths
             .iter()
-            .map(|p| {
-                let topic = &taxonomy.topics[p];
+            .map(|path| {
+                let topic = &taxonomy.topics[path];
                 match &topic.description {
                     Some(desc) => format!("{}: {desc}", topic.label),
                     None => topic.label.clone(),
@@ -116,14 +116,27 @@ impl<E: indexer::embeddings::EmbeddingProvider> TopicLabeler<E> {
             })
             .collect();
 
-        let embeddings = self.embedding.embed(&texts).await?;
+        let embeddings = self.embedding.embed(&topic_texts).await?;
 
-        let result: HashMap<String, Vec<f32>> = paths
-            .into_iter()
-            .zip(embeddings)
-            .collect();
+        let result: HashMap<String, Vec<f32>> = topic_paths.into_iter().zip(embeddings).collect();
 
         Ok(result)
+    }
+
+    fn build_topic_embedding_index(
+        taxonomy: &super::taxonomy::Taxonomy,
+        topic_embeddings: &HashMap<String, Vec<f32>>,
+    ) -> HashMap<String, (i64, Vec<f32>)> {
+        topic_embeddings
+            .iter()
+            .filter_map(|(topic_path, embedding)| {
+                taxonomy.topics.get(topic_path).and_then(|topic| {
+                    topic
+                        .topic_id
+                        .map(|topic_id| (topic_path.clone(), (topic_id, embedding.clone())))
+                })
+            })
+            .collect()
     }
 
     /// Label all notes in database with matching topics.
@@ -135,16 +148,7 @@ impl<E: indexer::embeddings::EmbeddingProvider> TopicLabeler<E> {
         batch_size: usize,
     ) -> Result<LabelingStats, AnalyticsError> {
         let topic_embeddings = self.embed_topics(taxonomy).await?;
-
-        // Build topic_id lookup: path -> (topic_id, embedding)
-        let topic_emb_with_ids: HashMap<String, (i64, Vec<f32>)> = topic_embeddings
-            .iter()
-            .filter_map(|(path, emb)| {
-                taxonomy.topics.get(path).and_then(|t| {
-                    t.topic_id.map(|id| (path.clone(), (id, emb.clone())))
-                })
-            })
-            .collect();
+        let topic_embedding_index = Self::build_topic_embedding_index(taxonomy, &topic_embeddings);
 
         let mut stats = LabelingStats::default();
         let mut matched_topics = std::collections::HashSet::new();
@@ -172,7 +176,7 @@ impl<E: indexer::embeddings::EmbeddingProvider> TopicLabeler<E> {
                 let assignments = rank_topics_for_note(
                     *note_id,
                     note_emb,
-                    &topic_emb_with_ids,
+                    &topic_embedding_index,
                     min_confidence,
                     max_topics_per_note,
                 );
@@ -215,41 +219,32 @@ impl<E: indexer::embeddings::EmbeddingProvider> TopicLabeler<E> {
         max_topics: usize,
     ) -> Result<Vec<TopicAssignment>, AnalyticsError> {
         // Get note text
-        let (text,): (String,) = sqlx::query_as(
-            "SELECT normalized_text FROM notes WHERE note_id = $1",
-        )
-        .bind(note_id)
-        .fetch_one(&self.db)
-        .await?;
+        let (text,): (String,) =
+            sqlx::query_as("SELECT normalized_text FROM notes WHERE note_id = $1")
+                .bind(note_id)
+                .fetch_one(&self.db)
+                .await?;
 
         // Embed the note
         let note_embeddings = self.embedding.embed(&[text]).await?;
         let note_emb = &note_embeddings[0];
 
         // Get or compute topic embeddings
-        let owned_topic_embs;
-        let topic_embs = match topic_embeddings {
-            Some(te) => te,
+        let owned_topic_embeddings;
+        let topic_embeddings = match topic_embeddings {
+            Some(existing_topic_embeddings) => existing_topic_embeddings,
             None => {
-                owned_topic_embs = self.embed_topics(taxonomy).await?;
-                &owned_topic_embs
+                owned_topic_embeddings = self.embed_topics(taxonomy).await?;
+                &owned_topic_embeddings
             }
         };
 
-        // Build topic_id lookup
-        let topic_emb_with_ids: HashMap<String, (i64, Vec<f32>)> = topic_embs
-            .iter()
-            .filter_map(|(path, emb)| {
-                taxonomy.topics.get(path).and_then(|t| {
-                    t.topic_id.map(|id| (path.clone(), (id, emb.clone())))
-                })
-            })
-            .collect();
+        let topic_embedding_index = Self::build_topic_embedding_index(taxonomy, topic_embeddings);
 
         let assignments = rank_topics_for_note(
             note_id,
             note_emb,
-            &topic_emb_with_ids,
+            &topic_embedding_index,
             min_confidence,
             max_topics,
         );

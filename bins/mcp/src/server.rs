@@ -1,8 +1,8 @@
 // MCP server setup, tool registration.
 
+use common::logging::{LoggingConfig, init_global_logging};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::{ServerHandler, ServiceExt};
-use tracing_subscriber::EnvFilter;
 
 /// All registered tool names, sorted alphabetically.
 const TOOL_NAMES: [&str; 9] = [
@@ -62,12 +62,10 @@ impl ServerHandler for AnkiAtlasServer {
 /// to stderr (to avoid polluting stdio MCP protocol), and runs
 /// until stdin closes or SIGTERM is received.
 pub async fn run_server() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_env_filter(EnvFilter::from_default_env())
-        .json()
-        .try_init()
-        .ok();
+    let _ = init_global_logging(&LoggingConfig {
+        debug: false,
+        json_output: true,
+    });
 
     let transport = rmcp::transport::stdio();
     let server = AnkiAtlasServer::new().serve(transport).await?;

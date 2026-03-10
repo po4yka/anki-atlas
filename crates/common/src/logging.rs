@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::io;
 
-use tracing::Subscriber;
+use tracing_subscriber::fmt;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Layer};
@@ -51,13 +51,16 @@ impl<W: io::Write + Send + Sync + Clone + 'static> MakeWriter<'_> for WriterMake
     }
 }
 
-/// Build a subscriber and install it as the thread-local default.
-///
-/// The guard is intentionally leaked so the subscriber remains active
-/// for the lifetime of the thread.
-fn install_subscriber(subscriber: impl Subscriber + Send + Sync + 'static) {
-    let guard = tracing::subscriber::set_default(subscriber);
-    std::mem::forget(guard);
+/// Logging bootstrap settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LoggingConfig {
+    pub debug: bool,
+    pub json_output: bool,
+}
+
+/// Explicit guard for thread-local logging configuration.
+pub struct ThreadLocalLoggingGuard {
+    _guard: tracing::subscriber::DefaultGuard,
 }
 
 /// A formatting layer that appends the correlation ID to each log line.
@@ -120,36 +123,59 @@ where
     }
 }
 
-/// Initialize the tracing subscriber for the current thread.
-///
-/// - `debug`: if true, set level to DEBUG; otherwise INFO.
-/// - `json_output`: if true, emit JSON lines; otherwise human-readable.
-/// - `writer`: output destination (defaults to stderr in production).
-pub fn configure_logging(
-    debug: bool,
-    json_output: bool,
-    writer: impl io::Write + Send + Sync + Clone + 'static,
-) {
-    let filter = if debug {
+fn env_filter(debug: bool) -> EnvFilter {
+    if debug {
         EnvFilter::new("debug")
     } else {
         EnvFilter::new("info")
-    };
+    }
+}
+
+/// Initialize a global tracing subscriber once for the process.
+pub fn init_global_logging(config: &LoggingConfig) -> io::Result<()> {
+    let filter = env_filter(config.debug);
+    let builder = fmt::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(filter);
+
+    if config.json_output {
+        builder
+            .json()
+            .try_init()
+            .map_err(|e| io::Error::other(e.to_string()))
+    } else {
+        builder
+            .with_ansi(false)
+            .try_init()
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+}
+
+/// Initialize the tracing subscriber for the current thread and return a guard.
+pub fn configure_logging(
+    config: &LoggingConfig,
+    writer: impl io::Write + Send + Sync + Clone + 'static,
+) -> ThreadLocalLoggingGuard {
+    let filter = env_filter(config.debug);
     let maker = CorrelationMaker(WriterMaker(writer));
 
-    if json_output {
+    if config.json_output {
         let layer = tracing_subscriber::fmt::layer()
             .json()
             .with_writer(maker)
             .with_filter(filter);
         let subscriber = tracing_subscriber::registry().with(layer);
-        install_subscriber(subscriber);
+        ThreadLocalLoggingGuard {
+            _guard: tracing::subscriber::set_default(subscriber),
+        }
     } else {
         let layer = tracing_subscriber::fmt::layer()
             .with_ansi(false)
             .with_writer(maker)
             .with_filter(filter);
         let subscriber = tracing_subscriber::registry().with(layer);
-        install_subscriber(subscriber);
-    };
+        ThreadLocalLoggingGuard {
+            _guard: tracing::subscriber::set_default(subscriber),
+        }
+    }
 }

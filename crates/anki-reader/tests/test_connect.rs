@@ -1,5 +1,5 @@
 use anki_reader::connect::{
-    ANKI_CONNECT_URL, ANKI_CONNECT_VERSION, AnkiConnectClient, DEFAULT_TIMEOUT_SECS,
+    ANKI_CONNECT_URL, ANKI_CONNECT_VERSION, AddNoteOutcome, AnkiConnectClient, DEFAULT_TIMEOUT_SECS,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -30,10 +30,10 @@ fn client_custom_url() {
     let _ = client;
 }
 
-// --- invoke ---
+// --- request envelope ---
 
 #[tokio::test]
-async fn invoke_sends_correct_payload() {
+async fn version_sends_correct_payload() {
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -49,12 +49,12 @@ async fn invoke_sends_correct_payload() {
         .await;
 
     let client = AnkiConnectClient::new(&server.uri(), 5);
-    let result = client.invoke("version", None).await.unwrap();
-    assert_eq!(result, json!(6));
+    let result = client.version().await.unwrap();
+    assert_eq!(result, 6);
 }
 
 #[tokio::test]
-async fn invoke_sends_params() {
+async fn find_notes_sends_params() {
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -71,15 +71,12 @@ async fn invoke_sends_params() {
         .await;
 
     let client = AnkiConnectClient::new(&server.uri(), 5);
-    let result = client
-        .invoke("findNotes", Some(json!({"query": "deck:Default"})))
-        .await
-        .unwrap();
-    assert_eq!(result, json!([1, 2, 3]));
+    let result = client.find_notes("deck:Default").await.unwrap();
+    assert_eq!(result, vec![1, 2, 3]);
 }
 
 #[tokio::test]
-async fn invoke_returns_error_on_anki_error() {
+async fn version_returns_error_on_anki_error() {
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -91,14 +88,14 @@ async fn invoke_returns_error_on_anki_error() {
         .await;
 
     let client = AnkiConnectClient::new(&server.uri(), 5);
-    let result = client.invoke("badAction", None).await;
+    let result = client.version().await;
     assert!(result.is_err());
 }
 
 // --- ping ---
 
 #[tokio::test]
-async fn ping_returns_true_when_connected() {
+async fn ping_returns_ok_when_connected() {
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -110,14 +107,14 @@ async fn ping_returns_true_when_connected() {
         .await;
 
     let client = AnkiConnectClient::new(&server.uri(), 5);
-    assert!(client.ping().await);
+    assert!(client.ping().await.is_ok());
 }
 
 #[tokio::test]
-async fn ping_returns_false_when_refused() {
+async fn ping_returns_error_when_refused() {
     // Use a port that's not listening
     let client = AnkiConnectClient::new("http://127.0.0.1:19999", 1);
-    assert!(!client.ping().await);
+    assert!(client.ping().await.is_err());
 }
 
 // --- version ---
@@ -135,7 +132,23 @@ async fn version_returns_number() {
         .await;
 
     let client = AnkiConnectClient::new(&server.uri(), 5);
-    assert_eq!(client.version().await, Some(6));
+    assert_eq!(client.version().await.unwrap(), 6);
+}
+
+#[tokio::test]
+async fn version_returns_error_when_result_missing() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "error": null
+        })))
+        .mount(&server)
+        .await;
+
+    let client = AnkiConnectClient::new(&server.uri(), 5);
+    let result = client.version().await;
+    assert!(result.is_err());
 }
 
 // --- deck_names ---
@@ -217,11 +230,11 @@ async fn add_note_returns_id_on_success() {
         .add_note("Default", "Basic", &fields, &["tag1".into()], false)
         .await
         .unwrap();
-    assert_eq!(id, Some(999));
+    assert_eq!(id, AddNoteOutcome::Added(999));
 }
 
 #[tokio::test]
-async fn add_note_returns_none_on_duplicate() {
+async fn add_note_returns_duplicate_outcome() {
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -239,7 +252,7 @@ async fn add_note_returns_none_on_duplicate() {
         .add_note("Default", "Basic", &fields, &[], false)
         .await
         .unwrap();
-    assert_eq!(id, None);
+    assert_eq!(id, AddNoteOutcome::Duplicate);
 }
 
 // --- delete_notes ---
@@ -269,6 +282,37 @@ async fn get_tags_returns_list() {
     let client = AnkiConnectClient::new(&server.uri(), 5);
     let tags = client.get_tags().await.unwrap();
     assert_eq!(tags, vec!["vocab", "grammar", "kanji"]);
+}
+
+// --- notes_info ---
+
+#[tokio::test]
+async fn notes_info_returns_typed_models() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "result": [{
+                "noteId": 42,
+                "modelName": "Basic",
+                "tags": ["tag1"],
+                "fields": {
+                    "Front": {"value": "Q", "order": 0},
+                    "Back": {"value": "A", "order": 1}
+                },
+                "cards": [9001]
+            }],
+            "error": null
+        })))
+        .mount(&server)
+        .await;
+
+    let client = AnkiConnectClient::new(&server.uri(), 5);
+    let notes = client.notes_info(&[42]).await.unwrap();
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].note_id, 42);
+    assert_eq!(notes[0].model_name, "Basic");
+    assert_eq!(notes[0].fields["Front"].value, "Q");
 }
 
 #[tokio::test]

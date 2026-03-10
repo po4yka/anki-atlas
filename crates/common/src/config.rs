@@ -1,5 +1,4 @@
 use std::env;
-use std::sync::OnceLock;
 
 use serde::Deserialize;
 
@@ -10,6 +9,15 @@ pub enum Quantization {
     None,
     Scalar,
     Binary,
+}
+
+/// Supported embedding providers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EmbeddingProviderKind {
+    OpenAi,
+    Google,
+    Mock,
 }
 
 /// Configuration error returned by Settings::load() and Settings::validate().
@@ -35,7 +43,7 @@ pub struct Settings {
     pub job_queue_name: String,
     pub job_result_ttl_seconds: u32,
     pub job_max_retries: u32,
-    pub embedding_provider: String,
+    pub embedding_provider: EmbeddingProviderKind,
     pub embedding_model: String,
     pub embedding_dimension: u32,
     pub rerank_enabled: bool,
@@ -47,6 +55,47 @@ pub struct Settings {
     pub api_key: Option<String>,
     pub debug: bool,
     pub anki_collection_path: Option<String>,
+}
+
+/// Database bootstrap settings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatabaseSettings {
+    pub postgres_url: String,
+}
+
+/// Job runtime settings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobSettings {
+    pub redis_url: String,
+    pub queue_name: String,
+    pub result_ttl_seconds: u32,
+    pub max_retries: u32,
+}
+
+/// API server runtime settings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApiSettings {
+    pub host: String,
+    pub port: u16,
+    pub api_key: Option<String>,
+    pub debug: bool,
+}
+
+/// Embedding runtime settings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmbeddingSettings {
+    pub provider: EmbeddingProviderKind,
+    pub model: String,
+    pub dimension: u32,
+}
+
+/// Reranking runtime settings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RerankSettings {
+    pub enabled: bool,
+    pub model: String,
+    pub top_n: u32,
+    pub batch_size: u32,
 }
 
 impl Settings {
@@ -69,7 +118,8 @@ impl Settings {
                 .parse_u32("job_result_ttl_seconds")?,
             job_max_retries: env_or("ANKIATLAS_JOB_MAX_RETRIES", "3")
                 .parse_u32("job_max_retries")?,
-            embedding_provider: env_or("ANKIATLAS_EMBEDDING_PROVIDER", "openai"),
+            embedding_provider: env_or("ANKIATLAS_EMBEDDING_PROVIDER", "openai")
+                .parse_embedding_provider()?,
             embedding_model: env_or("ANKIATLAS_EMBEDDING_MODEL", "text-embedding-3-small"),
             embedding_dimension: env_or("ANKIATLAS_EMBEDDING_DIMENSION", "1536")
                 .parse_u32("embedding_dimension")?,
@@ -131,7 +181,7 @@ impl Settings {
                 "embedding_dimension must be positive".to_string(),
             ));
         }
-        if self.embedding_provider != "mock" {
+        if self.embedding_provider != EmbeddingProviderKind::Mock {
             const VALID_DIMS: [u32; 5] = [384, 768, 1024, 1536, 3072];
             if !VALID_DIMS.contains(&self.embedding_dimension) {
                 return Err(ConfigError(format!(
@@ -161,34 +211,52 @@ impl Settings {
 
         Ok(())
     }
-}
 
-/// Try to return a lazily-initialized, globally cached `&'static Settings`.
-///
-/// Returns an error if settings fail to load (missing env vars, parse errors, etc.).
-/// Prefer this over [`get_settings`] in library code.
-pub fn try_get_settings() -> Result<&'static Settings, ConfigError> {
-    static SETTINGS: OnceLock<Settings> = OnceLock::new();
-    static ERROR: OnceLock<String> = OnceLock::new();
-    if let Some(s) = SETTINGS.get() {
-        return Ok(s);
-    }
-    match Settings::load() {
-        Ok(s) => Ok(SETTINGS.get_or_init(|| s)),
-        Err(e) => {
-            let msg = ERROR.get_or_init(|| e.to_string());
-            Err(ConfigError(msg.clone()))
+    /// Extract the database-specific settings needed to create a pool.
+    pub fn database(&self) -> DatabaseSettings {
+        DatabaseSettings {
+            postgres_url: self.postgres_url.clone(),
         }
     }
-}
 
-/// Return a lazily-initialized, globally cached `&'static Settings`.
-///
-/// # Panics
-///
-/// Panics if settings fail to load. Use [`try_get_settings`] in library code.
-pub fn get_settings() -> &'static Settings {
-    try_get_settings().expect("failed to load settings")
+    /// Extract the job-runtime settings needed by queue producers and workers.
+    pub fn jobs(&self) -> JobSettings {
+        JobSettings {
+            redis_url: self.redis_url.clone(),
+            queue_name: self.job_queue_name.clone(),
+            result_ttl_seconds: self.job_result_ttl_seconds,
+            max_retries: self.job_max_retries,
+        }
+    }
+
+    /// Extract the API server settings needed at the HTTP boundary.
+    pub fn api(&self) -> ApiSettings {
+        ApiSettings {
+            host: self.api_host.clone(),
+            port: self.api_port,
+            api_key: self.api_key.clone(),
+            debug: self.debug,
+        }
+    }
+
+    /// Extract the embedding settings needed by embedding provider bootstrap.
+    pub fn embedding(&self) -> EmbeddingSettings {
+        EmbeddingSettings {
+            provider: self.embedding_provider,
+            model: self.embedding_model.clone(),
+            dimension: self.embedding_dimension,
+        }
+    }
+
+    /// Extract the reranking settings needed by search bootstrap.
+    pub fn rerank(&self) -> RerankSettings {
+        RerankSettings {
+            enabled: self.rerank_enabled,
+            model: self.rerank_model.clone(),
+            top_n: self.rerank_top_n,
+            batch_size: self.rerank_batch_size,
+        }
+    }
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -199,6 +267,7 @@ trait ParseHelper {
     fn parse_u32(self, field: &str) -> Result<u32, ConfigError>;
     fn parse_bool(self, field: &str) -> Result<bool, ConfigError>;
     fn parse_quantization(self) -> Result<Quantization, ConfigError>;
+    fn parse_embedding_provider(self) -> Result<EmbeddingProviderKind, ConfigError>;
 }
 
 impl ParseHelper for String {
@@ -219,6 +288,17 @@ impl ParseHelper for String {
             "binary" => Ok(Quantization::Binary),
             other => Err(ConfigError(format!(
                 "invalid quantization: {other}, expected none|scalar|binary"
+            ))),
+        }
+    }
+
+    fn parse_embedding_provider(self) -> Result<EmbeddingProviderKind, ConfigError> {
+        match self.as_str() {
+            "openai" => Ok(EmbeddingProviderKind::OpenAi),
+            "google" => Ok(EmbeddingProviderKind::Google),
+            "mock" => Ok(EmbeddingProviderKind::Mock),
+            other => Err(ConfigError(format!(
+                "invalid embedding_provider: {other}, expected openai|google|mock"
             ))),
         }
     }

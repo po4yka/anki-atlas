@@ -116,17 +116,19 @@ fn config_deserialize_mock() {
 
 #[test]
 fn config_deserialize_openai() {
-    let json = r#"{"type": "open_ai", "model": "text-embedding-3-small", "dimension": 1536, "batch_size": 50}"#;
+    let json = r#"{"type": "open_ai", "model": "text-embedding-3-small", "dimension": 1536, "batch_size": 50, "api_key": "sk-openai"}"#;
     let config: EmbeddingProviderConfig = serde_json::from_str(json).unwrap();
     match config {
         EmbeddingProviderConfig::OpenAi {
             model,
             dimension,
             batch_size,
+            api_key,
         } => {
             assert_eq!(model, "text-embedding-3-small");
             assert_eq!(dimension, 1536);
             assert_eq!(batch_size, Some(50));
+            assert_eq!(api_key, "sk-openai");
         }
         _ => panic!("expected OpenAi variant"),
     }
@@ -134,17 +136,19 @@ fn config_deserialize_openai() {
 
 #[test]
 fn config_deserialize_google() {
-    let json = r#"{"type": "google", "model": "text-embedding-004", "dimension": 768}"#;
+    let json = r#"{"type": "google", "model": "text-embedding-004", "dimension": 768, "api_key": "sk-google"}"#;
     let config: EmbeddingProviderConfig = serde_json::from_str(json).unwrap();
     match config {
         EmbeddingProviderConfig::Google {
             model,
             dimension,
             batch_size,
+            api_key,
         } => {
             assert_eq!(model, "text-embedding-004");
             assert_eq!(dimension, 768);
             assert_eq!(batch_size, None);
+            assert_eq!(api_key, "sk-google");
         }
         _ => panic!("expected Google variant"),
     }
@@ -167,6 +171,19 @@ async fn factory_mock_provider_embeds_correctly() {
     let result = provider.embed(&["test".to_string()]).await.unwrap();
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].len(), 32);
+}
+
+#[test]
+fn factory_openai_provider_requires_api_key() {
+    let config = EmbeddingProviderConfig::OpenAi {
+        model: "text-embedding-3-small".to_string(),
+        dimension: 1536,
+        batch_size: Some(16),
+        api_key: String::new(),
+    };
+
+    let result = create_embedding_provider(&config);
+    assert!(matches!(result, Err(EmbeddingError::NotConfigured(_))));
 }
 
 // ── Send + Sync bounds ────────────────────────────────────────────

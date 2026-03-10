@@ -35,7 +35,7 @@ fn settings_for_container(host: &str, port: u16) -> common::config::Settings {
         job_queue_name: "test_jobs".to_string(),
         job_result_ttl_seconds: 3600,
         job_max_retries: 3,
-        embedding_provider: "mock".to_string(),
+        embedding_provider: common::config::EmbeddingProviderKind::Mock,
         embedding_model: "test".to_string(),
         embedding_dimension: 384,
         rerank_enabled: false,
@@ -61,7 +61,7 @@ async fn test_create_pool_connects_successfully() {
     let port = container.get_host_port_ipv4(5432).await.unwrap();
     let settings = settings_for_container(&host.to_string(), port);
 
-    let pool = create_pool(&settings)
+    let pool = create_pool(&settings.database())
         .await
         .expect("create_pool should succeed");
 
@@ -75,7 +75,7 @@ async fn test_create_pool_fails_with_bad_url() {
     let mut settings = settings_for_container("localhost", 1);
     settings.postgres_url = "postgresql://localhost:1/nonexistent".to_string();
 
-    let result = create_pool(&settings).await;
+    let result = create_pool(&settings.database()).await;
     assert!(
         result.is_err(),
         "create_pool should fail with unreachable database"

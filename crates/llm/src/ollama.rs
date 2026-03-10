@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use reqwest::Client;
+use serde::Deserialize;
 use serde_json::json;
 use tracing::instrument;
 
@@ -11,7 +12,8 @@ use crate::provider::{GenerateOptions, LlmProvider};
 use crate::response::LlmResponse;
 
 /// Ollama provider configuration.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct OllamaConfig {
     pub base_url: String,
     pub api_key: Option<String>,
@@ -152,19 +154,34 @@ impl LlmProvider for OllamaProvider {
             .await
             .map_err(|e| LlmError::Connection(e.to_string()))?;
 
-        let body: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| LlmError::Connection(e.to_string()))?;
+        let status = resp.status().as_u16();
+        if status != 200 {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(LlmError::Http { status, body });
+        }
+
+        let body: serde_json::Value = resp.json().await.map_err(|e| LlmError::Provider {
+            message: format!("failed to parse models response: {e}"),
+            source: Some(Box::new(e)),
+        })?;
 
         let models = body["models"]
             .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|m| m["name"].as_str().map(|s| s.to_string()))
-                    .collect()
+            .ok_or_else(|| LlmError::Provider {
+                message: "models response missing models array".to_string(),
+                source: None,
+            })?
+            .iter()
+            .map(|model| {
+                model["name"]
+                    .as_str()
+                    .map(String::from)
+                    .ok_or_else(|| LlmError::Provider {
+                        message: "models response missing model name".to_string(),
+                        source: None,
+                    })
             })
-            .unwrap_or_default();
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(models)
     }

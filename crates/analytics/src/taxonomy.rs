@@ -179,6 +179,26 @@ pub fn load_taxonomy_from_yaml(path: &std::path::Path) -> Result<Taxonomy, Analy
     Ok(taxonomy)
 }
 
+/// Load taxonomy from YAML or database, hydrating topic IDs after sync.
+pub async fn load_taxonomy(
+    pool: &sqlx::PgPool,
+    yaml_path: Option<&std::path::Path>,
+) -> Result<Taxonomy, AnalyticsError> {
+    match yaml_path {
+        Some(path) => {
+            let mut taxonomy = load_taxonomy_from_yaml(path)?;
+            if taxonomy.topics.is_empty() {
+                return Ok(taxonomy);
+            }
+
+            let topic_ids = sync_taxonomy_to_db(pool, &taxonomy).await?;
+            taxonomy.apply_topic_ids(&topic_ids);
+            Ok(taxonomy)
+        }
+        None => load_taxonomy_from_db(pool).await,
+    }
+}
+
 /// Sync taxonomy to database (upsert by path). Returns path -> topic_id map.
 pub async fn sync_taxonomy_to_db(
     pool: &sqlx::PgPool,

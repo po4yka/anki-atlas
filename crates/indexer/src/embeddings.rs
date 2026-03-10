@@ -28,6 +28,24 @@ pub trait EmbeddingProvider: Send + Sync {
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError>;
 }
 
+#[async_trait]
+impl<T> EmbeddingProvider for &T
+where
+    T: EmbeddingProvider + ?Sized,
+{
+    fn model_name(&self) -> &str {
+        (*self).model_name()
+    }
+
+    fn dimension(&self) -> usize {
+        (*self).dimension()
+    }
+
+    async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        (*self).embed(texts).await
+    }
+}
+
 /// SHA-256[:16] hash of "{model_name}:{text}" for change detection.
 pub fn content_hash(model_name: &str, text: &str) -> String {
     let input = format!("{model_name}:{text}");
@@ -90,9 +108,14 @@ impl OpenAiEmbeddingProvider {
         model: impl Into<String>,
         dimension: usize,
         batch_size: usize,
+        api_key: impl Into<String>,
     ) -> Result<Self, EmbeddingError> {
-        let api_key = std::env::var("OPENAI_API_KEY")
-            .map_err(|_| EmbeddingError::NotConfigured("OPENAI_API_KEY not set".into()))?;
+        let api_key = api_key.into();
+        if api_key.trim().is_empty() {
+            return Err(EmbeddingError::NotConfigured(
+                "OpenAI api_key must be provided".into(),
+            ));
+        }
         Ok(Self {
             model: model.into(),
             dimension,
@@ -150,9 +173,12 @@ impl EmbeddingProvider for OpenAiEmbeddingProvider {
 
                 if status == 200 {
                     let parsed: OpenAiEmbeddingResponse =
-                        response.json().await.map_err(|e| EmbeddingError::BatchFailed {
-                            source: Box::new(e),
-                        })?;
+                        response
+                            .json()
+                            .await
+                            .map_err(|e| EmbeddingError::BatchFailed {
+                                source: Box::new(e),
+                            })?;
                     let mut items = parsed.data;
                     items.sort_by_key(|item| item.index);
                     all_embeddings.extend(items.into_iter().map(|item| item.embedding));
@@ -199,9 +225,14 @@ impl GoogleEmbeddingProvider {
         model: impl Into<String>,
         dimension: usize,
         batch_size: usize,
+        api_key: impl Into<String>,
     ) -> Result<Self, EmbeddingError> {
-        let api_key = std::env::var("GOOGLE_API_KEY")
-            .map_err(|_| EmbeddingError::NotConfigured("GOOGLE_API_KEY not set".into()))?;
+        let api_key = api_key.into();
+        if api_key.trim().is_empty() {
+            return Err(EmbeddingError::NotConfigured(
+                "Google api_key must be provided".into(),
+            ));
+        }
         Ok(Self {
             model: model.into(),
             dimension,
@@ -272,9 +303,12 @@ impl EmbeddingProvider for GoogleEmbeddingProvider {
 
                 if status == 200 {
                     let parsed: GoogleBatchEmbedResponse =
-                        response.json().await.map_err(|e| EmbeddingError::BatchFailed {
-                            source: Box::new(e),
-                        })?;
+                        response
+                            .json()
+                            .await
+                            .map_err(|e| EmbeddingError::BatchFailed {
+                                source: Box::new(e),
+                            })?;
                     all_embeddings.extend(parsed.embeddings.into_iter().map(|e| e.values));
                     last_err = None;
                     break;
@@ -313,11 +347,13 @@ pub enum EmbeddingProviderConfig {
         model: String,
         dimension: usize,
         batch_size: Option<usize>,
+        api_key: String,
     },
     Google {
         model: String,
         dimension: usize,
         batch_size: Option<usize>,
+        api_key: String,
     },
     Mock {
         dimension: usize,
@@ -336,13 +372,25 @@ pub fn create_embedding_provider(
             model,
             dimension,
             batch_size,
-        } => OpenAiEmbeddingProvider::new(model.clone(), *dimension, batch_size.unwrap_or(100))
-            .map(|p| Box::new(p) as Box<dyn EmbeddingProvider>),
+            api_key,
+        } => OpenAiEmbeddingProvider::new(
+            model.clone(),
+            *dimension,
+            batch_size.unwrap_or(100),
+            api_key.clone(),
+        )
+        .map(|p| Box::new(p) as Box<dyn EmbeddingProvider>),
         EmbeddingProviderConfig::Google {
             model,
             dimension,
             batch_size,
-        } => GoogleEmbeddingProvider::new(model.clone(), *dimension, batch_size.unwrap_or(100))
-            .map(|p| Box::new(p) as Box<dyn EmbeddingProvider>),
+            api_key,
+        } => GoogleEmbeddingProvider::new(
+            model.clone(),
+            *dimension,
+            batch_size.unwrap_or(100),
+            api_key.clone(),
+        )
+        .map(|p| Box::new(p) as Box<dyn EmbeddingProvider>),
     }
 }

@@ -1,4 +1,6 @@
 use common::error::{AnkiAtlasError, Result};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
@@ -16,6 +18,39 @@ pub struct AnkiConnectClient {
     client: reqwest::Client,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct AnkiConnectNoteField {
+    pub value: String,
+    pub order: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct AnkiConnectNoteInfo {
+    #[serde(rename = "noteId")]
+    pub note_id: i64,
+    #[serde(rename = "modelName")]
+    pub model_name: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub fields: HashMap<String, AnkiConnectNoteField>,
+    #[serde(default)]
+    pub cards: Vec<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddNoteOutcome {
+    Added(i64),
+    Duplicate,
+}
+
+#[derive(Serialize)]
+struct AnkiConnectRequest<'a> {
+    action: &'a str,
+    version: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    params: Option<Value>,
+}
+
 impl AnkiConnectClient {
     pub fn new(url: &str, timeout_secs: u64) -> Self {
         Self {
@@ -25,16 +60,19 @@ impl AnkiConnectClient {
         }
     }
 
-    /// Send a raw action request to AnkiConnect.
-    pub async fn invoke(&self, action: &str, params: Option<Value>) -> Result<Value> {
-        let mut payload = json!({
-            "action": action,
-            "version": ANKI_CONNECT_VERSION,
-        });
-
-        if let Some(p) = params {
-            payload["params"] = p;
+    fn action_error(&self, action: &str, message: impl Into<String>) -> AnkiAtlasError {
+        AnkiAtlasError::AnkiConnect {
+            message: message.into(),
+            context: HashMap::from([("action".into(), action.to_string())]),
         }
+    }
+
+    async fn invoke_value(&self, action: &str, params: Option<Value>) -> Result<Value> {
+        let payload = AnkiConnectRequest {
+            action,
+            version: ANKI_CONNECT_VERSION,
+            params,
+        };
 
         let response = self
             .client
@@ -52,64 +90,64 @@ impl AnkiConnectClient {
                 } else {
                     format!("HTTP error: {e}")
                 };
-                AnkiAtlasError::AnkiConnect {
-                    message,
-                    context: HashMap::from([("action".into(), action.to_string())]),
-                }
+                self.action_error(action, message)
             })?;
 
         let body: Value = response
             .json()
             .await
-            .map_err(|e| AnkiAtlasError::AnkiConnect {
-                message: format!("failed to parse response: {e}"),
-                context: HashMap::from([("action".into(), action.to_string())]),
-            })?;
+            .map_err(|e| self.action_error(action, format!("failed to parse response: {e}")))?;
 
         if let Some(error) = body.get("error").and_then(|e| e.as_str()) {
-            return Err(AnkiAtlasError::AnkiConnect {
-                message: error.to_string(),
-                context: HashMap::from([("action".into(), action.to_string())]),
-            });
+            return Err(self.action_error(action, error));
         }
 
-        Ok(body.get("result").cloned().unwrap_or(Value::Null))
+        body.get("result")
+            .cloned()
+            .ok_or_else(|| self.action_error(action, "response missing result field"))
     }
 
-    pub async fn ping(&self) -> bool {
-        self.version().await.is_some()
+    async fn invoke_typed<T: DeserializeOwned>(
+        &self,
+        action: &str,
+        params: Option<Value>,
+    ) -> Result<T> {
+        let result = self.invoke_value(action, params).await?;
+        serde_json::from_value(result)
+            .map_err(|e| self.action_error(action, format!("failed to parse result: {e}")))
     }
 
-    pub async fn version(&self) -> Option<u32> {
-        self.invoke("version", None)
-            .await
-            .ok()
-            .and_then(|v| v.as_u64().map(|n| n as u32))
+    async fn invoke_unit(&self, action: &str, params: Option<Value>) -> Result<()> {
+        let result = self.invoke_value(action, params).await?;
+        if result.is_null() {
+            Ok(())
+        } else {
+            Err(self.action_error(action, "expected null result"))
+        }
+    }
+
+    pub async fn ping(&self) -> Result<()> {
+        self.version().await.map(|_| ())
+    }
+
+    pub async fn version(&self) -> Result<u32> {
+        self.invoke_typed("version", None).await
     }
 
     pub async fn deck_names(&self) -> Result<Vec<String>> {
-        let result = self.invoke("deckNames", None).await?;
-        serde_json::from_value(result).map_err(|e| AnkiAtlasError::AnkiConnect {
-            message: format!("failed to parse deck names: {e}"),
-            context: HashMap::new(),
-        })
+        self.invoke_typed("deckNames", None).await
     }
 
     pub async fn create_deck(&self, name: &str) -> Result<i64> {
-        let result = self
-            .invoke("createDeck", Some(json!({"deck": name})))
-            .await?;
-        result.as_i64().ok_or_else(|| AnkiAtlasError::AnkiConnect {
-            message: "expected deck id".to_string(),
-            context: HashMap::new(),
-        })
+        self.invoke_typed("createDeck", Some(json!({"deck": name})))
+            .await
     }
 
     pub async fn delete_decks(&self, names: &[String], cards_too: bool) -> Result<()> {
         if names.is_empty() {
             return Ok(());
         }
-        self.invoke(
+        self.invoke_unit(
             "deleteDecks",
             Some(json!({"decks": names, "cardsToo": cards_too})),
         )
@@ -118,26 +156,16 @@ impl AnkiConnectClient {
     }
 
     pub async fn find_notes(&self, query: &str) -> Result<Vec<i64>> {
-        let result = self
-            .invoke("findNotes", Some(json!({"query": query})))
-            .await?;
-        serde_json::from_value(result).map_err(|e| AnkiAtlasError::AnkiConnect {
-            message: format!("failed to parse note ids: {e}"),
-            context: HashMap::new(),
-        })
+        self.invoke_typed("findNotes", Some(json!({"query": query})))
+            .await
     }
 
-    pub async fn notes_info(&self, note_ids: &[i64]) -> Result<Vec<Value>> {
+    pub async fn notes_info(&self, note_ids: &[i64]) -> Result<Vec<AnkiConnectNoteInfo>> {
         if note_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let result = self
-            .invoke("notesInfo", Some(json!({"notes": note_ids})))
-            .await?;
-        serde_json::from_value(result).map_err(|e| AnkiAtlasError::AnkiConnect {
-            message: format!("failed to parse notes info: {e}"),
-            context: HashMap::new(),
-        })
+        self.invoke_typed("notesInfo", Some(json!({"notes": note_ids})))
+            .await
     }
 
     pub async fn add_note(
@@ -147,7 +175,7 @@ impl AnkiConnectClient {
         fields: &HashMap<String, String>,
         tags: &[String],
         allow_duplicate: bool,
-    ) -> Result<Option<i64>> {
+    ) -> Result<AddNoteOutcome> {
         let mut note = json!({
             "deckName": deck_name,
             "modelName": model_name,
@@ -159,12 +187,15 @@ impl AnkiConnectClient {
             note["options"] = json!({"allowDuplicate": true});
         }
 
-        match self.invoke("addNote", Some(json!({"note": note}))).await {
-            Ok(result) => Ok(result.as_i64()),
+        match self
+            .invoke_typed("addNote", Some(json!({"note": note})))
+            .await
+        {
+            Ok(note_id) => Ok(AddNoteOutcome::Added(note_id)),
             Err(AnkiAtlasError::AnkiConnect { ref message, .. })
                 if message.to_lowercase().contains("duplicate") =>
             {
-                Ok(None)
+                Ok(AddNoteOutcome::Duplicate)
             }
             Err(e) => Err(e),
         }
@@ -175,7 +206,7 @@ impl AnkiConnectClient {
         note_id: i64,
         fields: &HashMap<String, String>,
     ) -> Result<()> {
-        self.invoke(
+        self.invoke_unit(
             "updateNoteFields",
             Some(json!({"note": {"id": note_id, "fields": fields}})),
         )
@@ -187,24 +218,20 @@ impl AnkiConnectClient {
         if note_ids.is_empty() {
             return Ok(());
         }
-        self.invoke("deleteNotes", Some(json!({"notes": note_ids})))
+        self.invoke_unit("deleteNotes", Some(json!({"notes": note_ids})))
             .await?;
         Ok(())
     }
 
     pub async fn get_tags(&self) -> Result<Vec<String>> {
-        let result = self.invoke("getTags", None).await?;
-        serde_json::from_value(result).map_err(|e| AnkiAtlasError::AnkiConnect {
-            message: format!("failed to parse tags: {e}"),
-            context: HashMap::new(),
-        })
+        self.invoke_typed("getTags", None).await
     }
 
     pub async fn add_tags(&self, note_ids: &[i64], tags: &str) -> Result<()> {
         if note_ids.is_empty() || tags.is_empty() {
             return Ok(());
         }
-        self.invoke("addTags", Some(json!({"notes": note_ids, "tags": tags})))
+        self.invoke_unit("addTags", Some(json!({"notes": note_ids, "tags": tags})))
             .await?;
         Ok(())
     }
@@ -213,31 +240,22 @@ impl AnkiConnectClient {
         if note_ids.is_empty() || tags.is_empty() {
             return Ok(());
         }
-        self.invoke("removeTags", Some(json!({"notes": note_ids, "tags": tags})))
+        self.invoke_unit("removeTags", Some(json!({"notes": note_ids, "tags": tags})))
             .await?;
         Ok(())
     }
 
     pub async fn model_names(&self) -> Result<Vec<String>> {
-        let result = self.invoke("modelNames", None).await?;
-        serde_json::from_value(result).map_err(|e| AnkiAtlasError::AnkiConnect {
-            message: format!("failed to parse model names: {e}"),
-            context: HashMap::new(),
-        })
+        self.invoke_typed("modelNames", None).await
     }
 
     pub async fn model_field_names(&self, model_name: &str) -> Result<Vec<String>> {
-        let result = self
-            .invoke("modelFieldNames", Some(json!({"modelName": model_name})))
-            .await?;
-        serde_json::from_value(result).map_err(|e| AnkiAtlasError::AnkiConnect {
-            message: format!("failed to parse field names: {e}"),
-            context: HashMap::new(),
-        })
+        self.invoke_typed("modelFieldNames", Some(json!({"modelName": model_name})))
+            .await
     }
 
     pub async fn sync(&self) -> Result<()> {
-        self.invoke("sync", None).await?;
+        self.invoke_unit("sync", None).await?;
         Ok(())
     }
 }

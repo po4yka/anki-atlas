@@ -24,13 +24,6 @@ mockall::mock! {
             opts: &llm::GenerateOptions,
         ) -> Result<llm::LlmResponse, llm::LlmError>;
 
-        async fn generate_json(
-            &self,
-            model: &str,
-            prompt: &str,
-            opts: &llm::GenerateOptions,
-        ) -> Result<HashMap<String, serde_json::Value>, llm::LlmError>;
-
         async fn check_connection(&self) -> bool;
 
         async fn list_models(&self) -> Result<Vec<String>, llm::LlmError>;

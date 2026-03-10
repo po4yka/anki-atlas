@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use std::collections::HashMap;
 
 use crate::error::LlmError;
 use crate::response::LlmResponse;
@@ -35,22 +34,6 @@ pub trait LlmProvider: Send + Sync {
         prompt: &str,
         opts: &GenerateOptions,
     ) -> Result<LlmResponse, LlmError>;
-
-    /// Generate and parse JSON output.
-    async fn generate_json(
-        &self,
-        model: &str,
-        prompt: &str,
-        opts: &GenerateOptions,
-    ) -> Result<HashMap<String, serde_json::Value>, LlmError> {
-        let mut json_opts = opts.clone();
-        json_opts.json_mode = true;
-        let response = self.generate(model, prompt, &json_opts).await?;
-        serde_json::from_str(&response.text).map_err(|e| LlmError::InvalidJson {
-            message: format!("LLM returned invalid JSON: {e}"),
-            response_text: response.text[..response.text.len().min(500)].to_string(),
-        })
-    }
 
     /// Check if the provider API is reachable.
     async fn check_connection(&self) -> bool;

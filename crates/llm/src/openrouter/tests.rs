@@ -472,7 +472,7 @@ async fn list_models_parses_model_ids() {
 }
 
 #[tokio::test]
-async fn list_models_returns_empty_on_error() {
+async fn list_models_returns_error_on_connection_failure() {
     let config = OpenRouterConfig {
         api_key: TEST_API_KEY.to_string(),
         base_url: "http://127.0.0.1:1".to_string(),
@@ -481,11 +481,24 @@ async fn list_models_returns_empty_on_error() {
     };
     let provider = OpenRouterProvider::new(config).unwrap();
     let result = provider.list_models().await;
-    // Python returns empty list on error; either Ok([]) or Err is acceptable
-    match result {
-        Ok(models) => assert!(models.is_empty()),
-        Err(_) => {}
-    }
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn list_models_rejects_missing_data_array() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "unexpected": []
+        })))
+        .mount(&server)
+        .await;
+
+    let provider = OpenRouterProvider::new(config_with_url(&server.uri())).unwrap();
+    let result = provider.list_models().await;
+    assert!(matches!(result, Err(LlmError::Provider { .. })));
 }
 
 // -- Headers --
