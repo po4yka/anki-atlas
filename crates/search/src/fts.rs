@@ -98,7 +98,7 @@ fn build_filter_clauses(
         idx += 1;
     }
     if let Some(ref model_ids) = filters.model_ids {
-        clauses.push(format!("AND n.mid = ANY(${idx}::bigint[])"));
+        clauses.push(format!("AND n.model_id = ANY(${idx}::bigint[])"));
         binds.push(FilterBind::I64Array(model_ids.clone()));
         idx += 1;
     }
@@ -126,7 +126,9 @@ fn build_filter_clauses(
         clauses.push(format!("AND c.reps >= ${idx}"));
         binds.push(FilterBind::I32(min_reps));
         #[allow(unused_assignments)]
-        { idx += 1; }
+        {
+            idx += 1;
+        }
     }
 
     (clauses.join(" "), binds)
@@ -148,7 +150,7 @@ pub(crate) fn needs_card_join(filters: &SearchFilters) -> bool {
 /// Return the JOIN clause for cards/decks when filters require it.
 fn join_clause(filters: Option<&SearchFilters>) -> &'static str {
     if needs_card_join(filters.unwrap_or(&SearchFilters::default())) {
-        "LEFT JOIN cards c ON c.nid = n.id LEFT JOIN decks d ON d.id = c.did"
+        "LEFT JOIN cards c ON c.note_id = n.note_id LEFT JOIN decks d ON d.deck_id = c.deck_id"
     } else {
         ""
     }
@@ -157,7 +159,7 @@ fn join_clause(filters: Option<&SearchFilters>) -> &'static str {
 /// Return GROUP BY clause when card join is present (avoids duplicate rows).
 fn group_by_clause(filters: Option<&SearchFilters>) -> &'static str {
     if needs_card_join(filters.unwrap_or(&SearchFilters::default())) {
-        "GROUP BY n.id, n.fts_vector, n.normalized_text, n.mid, n.tags"
+        "GROUP BY n.note_id, n.normalized_text"
     } else {
         ""
     }
@@ -177,12 +179,7 @@ fn rows_to_results(rows: Vec<FtsRow>, source: FtsSource) -> Vec<FtsResult> {
 
 /// Bind filter values to a sqlx query. Each bind must match the order from `build_filter_clauses`.
 fn bind_filters<'q>(
-    mut q: sqlx::query::QueryAs<
-        'q,
-        sqlx::Postgres,
-        FtsRow,
-        sqlx::postgres::PgArguments,
-    >,
+    mut q: sqlx::query::QueryAs<'q, sqlx::Postgres, FtsRow, sqlx::postgres::PgArguments>,
     binds: &'q [FilterBind],
 ) -> sqlx::query::QueryAs<'q, sqlx::Postgres, FtsRow, sqlx::postgres::PgArguments> {
     for bind in binds {
@@ -226,18 +223,17 @@ pub async fn search_lexical(
 
     // Stage 1: Full-text search
     let fts_sql = format!(
-        "SELECT n.id AS note_id, ts_rank(n.fts_vector, plainto_tsquery('english', $1)) AS rank, \
+        "SELECT n.note_id AS note_id, ts_rank(to_tsvector('english', n.normalized_text), plainto_tsquery('english', $1)) AS rank, \
          ts_headline('english', n.normalized_text, plainto_tsquery('english', $1)) AS headline \
-         FROM notes n {join} WHERE n.fts_vector @@ plainto_tsquery('english', $1) {filter_sql} \
+         FROM notes n {join} WHERE n.deleted_at IS NULL \
+         AND to_tsvector('english', n.normalized_text) @@ plainto_tsquery('english', $1) {filter_sql} \
          {group_by} ORDER BY rank DESC LIMIT $2",
     );
 
     let base = sqlx::query_as::<_, FtsRow>(&fts_sql)
         .bind(query)
         .bind(limit);
-    let rows: Vec<FtsRow> = bind_filters(base, &filter_binds)
-        .fetch_all(pool)
-        .await?;
+    let rows: Vec<FtsRow> = bind_filters(base, &filter_binds).fetch_all(pool).await?;
 
     if !rows.is_empty() {
         return Ok(LexicalSearchResult {
@@ -251,18 +247,17 @@ pub async fn search_lexical(
 
     // Stage 2: Fuzzy search fallback
     let fuzzy_sql = format!(
-        "SELECT n.id AS note_id, similarity(n.normalized_text, $1) AS rank, \
+        "SELECT n.note_id AS note_id, similarity(n.normalized_text, $1) AS rank, \
          NULL AS headline \
-         FROM notes n {join} WHERE similarity(n.normalized_text, $1) > 0.1 {filter_sql} \
+         FROM notes n {join} WHERE n.deleted_at IS NULL \
+         AND similarity(n.normalized_text, $1) > 0.1 {filter_sql} \
          {group_by} ORDER BY rank DESC LIMIT $2",
     );
 
     let base = sqlx::query_as::<_, FtsRow>(&fuzzy_sql)
         .bind(query)
         .bind(limit);
-    let rows: Vec<FtsRow> = bind_filters(base, &filter_binds)
-        .fetch_all(pool)
-        .await?;
+    let rows: Vec<FtsRow> = bind_filters(base, &filter_binds).fetch_all(pool).await?;
 
     if !rows.is_empty() {
         return Ok(LexicalSearchResult {
@@ -276,18 +271,16 @@ pub async fn search_lexical(
 
     // Stage 3: Autocomplete fallback
     let auto_sql = format!(
-        "SELECT n.id AS note_id, 1.0 AS rank, NULL AS headline \
-         FROM notes n {join} WHERE n.normalized_text ILIKE $1 {filter_sql} \
-         {group_by} ORDER BY n.id LIMIT $2",
+        "SELECT n.note_id AS note_id, 1.0 AS rank, NULL AS headline \
+         FROM notes n {join} WHERE n.deleted_at IS NULL AND n.normalized_text ILIKE $1 {filter_sql} \
+         {group_by} ORDER BY n.note_id LIMIT $2",
     );
 
     let prefix_pattern = format!("{}%", query);
     let base = sqlx::query_as::<_, FtsRow>(&auto_sql)
         .bind(&prefix_pattern)
         .bind(limit);
-    let rows: Vec<FtsRow> = bind_filters(base, &filter_binds)
-        .fetch_all(pool)
-        .await?;
+    let rows: Vec<FtsRow> = bind_filters(base, &filter_binds).fetch_all(pool).await?;
 
     let mode = if rows.is_empty() {
         LexicalMode::None

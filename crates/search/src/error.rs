@@ -1,5 +1,15 @@
 use thiserror::Error;
 
+#[derive(Debug, Error)]
+pub enum RerankError {
+    #[error("transport error: {message}")]
+    Transport { message: String },
+    #[error("http {status}: {body}")]
+    Http { status: u16, body: String },
+    #[error("protocol error: {message}")]
+    Protocol { message: String },
+}
+
 /// Search errors.
 #[derive(Debug, Error)]
 pub enum SearchError {
@@ -10,5 +20,5 @@ pub enum SearchError {
     #[error("vector store error: {0}")]
     VectorStore(#[from] indexer::qdrant::VectorStoreError),
     #[error("rerank failed: {0}")]
-    Rerank(String),
+    Rerank(#[from] RerankError),
 }

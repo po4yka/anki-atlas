@@ -1,35 +1,33 @@
 use crate::error::JobError;
-use std::collections::HashMap;
+use crate::types::{IndexJobPayload, IndexJobResult, SyncJobPayload, SyncJobResult};
 
-/// Task execution context with Redis client reference.
+/// Task execution context for one job attempt.
 pub struct TaskContext {
-    pub redis: rustis::client::Client,
     pub attempt: u32,
 }
 
 /// Background task: sync Anki collection and optionally index vectors.
 ///
-/// Phases: migrations (15%) -> sync to PostgreSQL (40%) -> index vectors (75%) -> done (100%).
-/// Checks for cancellation between phases.
-/// On retryable failure, sets status to "retrying" and returns error.
-/// On terminal failure, sets status to "failed".
+/// The async job runtime is wired end-to-end, but task execution is still pending.
 pub async fn job_sync(
     _ctx: &TaskContext,
     _job_id: &str,
-    _payload: &HashMap<String, serde_json::Value>,
-) -> Result<HashMap<String, serde_json::Value>, JobError> {
-    // TODO(impl): implement
-    Err(JobError::TaskExecution("not implemented".to_string()))
+    _payload: &SyncJobPayload,
+) -> Result<SyncJobResult, JobError> {
+    Err(JobError::Unsupported(
+        "sync job execution is not implemented yet".to_string(),
+    ))
 }
 
 /// Background task: index notes to vector store.
 ///
-/// Phases: start (10%) -> index (50%) -> done (100%).
+/// The async job runtime is wired end-to-end, but task execution is still pending.
 pub async fn job_index(
     _ctx: &TaskContext,
     _job_id: &str,
-    _payload: &HashMap<String, serde_json::Value>,
-) -> Result<HashMap<String, serde_json::Value>, JobError> {
-    // TODO(impl): implement
-    Err(JobError::TaskExecution("not implemented".to_string()))
+    _payload: &IndexJobPayload,
+) -> Result<IndexJobResult, JobError> {
+    Err(JobError::Unsupported(
+        "index job execution is not implemented yet".to_string(),
+    ))
 }

@@ -14,8 +14,7 @@ pub async fn save_job_record(
     ttl_seconds: u64,
 ) -> Result<(), JobError> {
     let key = job_key(&record.job_id);
-    let json =
-        serde_json::to_string(record).map_err(|e| JobError::Serialization(e.to_string()))?;
+    let json = serde_json::to_string(record).map_err(|e| JobError::Serialization(e.to_string()))?;
     let _: bool = client
         .set_with_options(
             &key,
@@ -41,8 +40,8 @@ pub async fn load_job_record(
         .map_err(|e| JobError::Redis(e.to_string()))?;
     match raw {
         Some(s) => {
-            let record = serde_json::from_str(&s)
-                .map_err(|e| JobError::Serialization(e.to_string()))?;
+            let record =
+                serde_json::from_str(&s).map_err(|e| JobError::Serialization(e.to_string()))?;
             Ok(Some(record))
         }
         None => Ok(None),

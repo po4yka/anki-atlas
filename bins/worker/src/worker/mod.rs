@@ -1,6 +1,7 @@
 use crate::config::WorkerConfig;
 use crate::envelope::JobEnvelope;
-use jobs::types::JobStatus;
+use jobs::tasks::TaskContext;
+use jobs::{JobError, JobRecord, JobResultData, JobStatus};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
@@ -17,10 +18,8 @@ pub trait QueueBackend: Send + Sync {
     async fn lpush(&self, key: &str, value: &str) -> anyhow::Result<()>;
 
     /// Load a job record by ID.
-    async fn load_job_record(
-        &self,
-        job_id: &str,
-    ) -> anyhow::Result<Option<jobs::types::JobRecord>>;
+    async fn load_job_record(&self, job_id: &str)
+    -> anyhow::Result<Option<jobs::types::JobRecord>>;
 
     /// Save a job record with TTL.
     async fn save_job_record(
@@ -87,53 +86,144 @@ impl<Q: QueueBackend + 'static> Worker<Q> {
 
     /// Process a single job envelope.
     async fn process_job(&self, envelope: JobEnvelope) {
-        let mut record = match self.queue.load_job_record(&envelope.job_id).await {
-            Ok(Some(r)) => r,
-            _ => return,
+        let _permit = match self.semaphore.clone().acquire_owned().await {
+            Ok(permit) => permit,
+            Err(error) => {
+                tracing::warn!(job_id = %envelope.job_id, error = %error, "worker semaphore closed");
+                return;
+            }
         };
 
-        // Set status to Running before dispatch
-        record.status = JobStatus::Running;
-        record.attempts += 1;
-        if let Err(e) = self
-            .queue
-            .save_job_record(&record, self.config.result_ttl_seconds)
-            .await
-        {
-            tracing::warn!(job_id = %envelope.job_id, error = %e, "failed to save running status");
+        let mut record = match self.load_record(&envelope.job_id).await {
+            Some(record) => record,
+            None => return,
+        };
+
+        if record.status.is_terminal() {
+            return;
         }
 
-        // TODO(impl): call crate::dispatcher::dispatch() once TaskContext
-        // can be constructed from the queue backend.
-        // For now, apply retry logic since task stubs always return errors.
-        if record.attempts < record.max_retries {
+        if record.cancel_requested || matches!(record.status, JobStatus::CancelRequested) {
+            self.finish_cancelled(&mut record).await;
+            return;
+        }
+
+        if record.scheduled_for.is_some() {
+            self.finish_failed(
+                &mut record,
+                JobError::Unsupported("scheduled jobs are not supported yet".to_string()),
+            )
+            .await;
+            return;
+        }
+
+        record.status = JobStatus::Running;
+        record.attempts += 1;
+        if record.started_at.is_none() {
+            record.started_at = Some(chrono::Utc::now());
+        }
+        record.message = Some("job started".to_string());
+
+        if !self.save_record(&record, "save running status").await {
+            return;
+        }
+
+        let ctx = TaskContext {
+            attempt: record.attempts,
+        };
+
+        match crate::dispatcher::dispatch(&ctx, &envelope).await {
+            Ok(result) => self.finish_succeeded(&mut record, result).await,
+            Err(error) => self.finish_error(&mut record, &envelope, error).await,
+        }
+    }
+
+    async fn load_record(&self, job_id: &str) -> Option<JobRecord> {
+        match self.queue.load_job_record(job_id).await {
+            Ok(Some(record)) => Some(record),
+            Ok(None) => None,
+            Err(error) => {
+                tracing::warn!(job_id = %job_id, error = %error, "failed to load job record");
+                None
+            }
+        }
+    }
+
+    async fn save_record(&self, record: &JobRecord, action: &str) -> bool {
+        match self
+            .queue
+            .save_job_record(record, self.config.result_ttl_seconds)
+            .await
+        {
+            Ok(()) => true,
+            Err(error) => {
+                tracing::warn!(job_id = %record.job_id, error = %error, action, "worker persistence failed");
+                false
+            }
+        }
+    }
+
+    async fn finish_cancelled(&self, record: &mut JobRecord) {
+        record.status = JobStatus::Cancelled;
+        record.progress = 1.0;
+        record.finished_at = Some(chrono::Utc::now());
+        record.message = Some("job cancelled before execution".to_string());
+        record.error = None;
+        self.save_record(record, "save cancelled status").await;
+    }
+
+    async fn finish_succeeded(&self, record: &mut JobRecord, result: JobResultData) {
+        record.status = JobStatus::Succeeded;
+        record.progress = 1.0;
+        record.finished_at = Some(chrono::Utc::now());
+        record.message = Some("job completed".to_string());
+        record.result = Some(result);
+        record.error = None;
+        self.save_record(record, "save succeeded status").await;
+    }
+
+    async fn finish_error(&self, record: &mut JobRecord, envelope: &JobEnvelope, error: JobError) {
+        let error_message = error.to_string();
+
+        if error.is_retryable() && record.attempts < record.max_retries && !record.cancel_requested
+        {
             record.status = JobStatus::Retrying;
-            if let Err(e) = self
-                .queue
-                .save_job_record(&record, self.config.result_ttl_seconds)
-                .await
-            {
-                tracing::warn!(job_id = %envelope.job_id, error = %e, "failed to save retrying status");
+            record.message = Some("retrying after transient worker failure".to_string());
+            record.error = Some(error_message);
+
+            if self.save_record(record, "save retrying status").await {
+                self.reenqueue(envelope).await;
             }
-            if let Ok(envelope_json) = serde_json::to_string(&envelope) {
-                if let Err(e) = self
-                    .queue
-                    .lpush(&self.config.queue_name, &envelope_json)
-                    .await
-                {
-                    tracing::warn!(job_id = %envelope.job_id, error = %e, "failed to re-enqueue job");
-                }
+            return;
+        }
+
+        self.finish_failed(record, error).await;
+    }
+
+    async fn finish_failed(&self, record: &mut JobRecord, error: JobError) {
+        record.status = JobStatus::Failed;
+        record.progress = 1.0;
+        record.finished_at = Some(chrono::Utc::now());
+        record.message = Some("job failed".to_string());
+        record.error = Some(error.to_string());
+        self.save_record(record, "save failed status").await;
+    }
+
+    async fn reenqueue(&self, envelope: &JobEnvelope) {
+        let envelope_json = match serde_json::to_string(envelope) {
+            Ok(envelope_json) => envelope_json,
+            Err(error) => {
+                tracing::warn!(job_id = %envelope.job_id, error = %error, "failed to serialize job envelope");
+                return;
             }
-        } else {
-            record.status = JobStatus::Failed;
-            record.error = Some("max retries exhausted".to_string());
-            if let Err(e) = self
-                .queue
-                .save_job_record(&record, self.config.result_ttl_seconds)
-                .await
-            {
-                tracing::warn!(job_id = %envelope.job_id, error = %e, "failed to save exhausted status");
-            }
+        };
+
+        if let Err(error) = self
+            .queue
+            .lpush(&self.config.queue_name, &envelope_json)
+            .await
+        {
+            tracing::warn!(job_id = %envelope.job_id, error = %error, "failed to re-enqueue job");
         }
     }
 

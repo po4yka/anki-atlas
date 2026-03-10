@@ -2,7 +2,6 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde_json::json;
 use std::collections::HashMap;
 use tracing::instrument;
 
@@ -22,13 +21,33 @@ fn record_to_accepted(rec: &jobs::JobRecord) -> JobAcceptedResponse {
     }
 }
 
-
-/// Map `JobError` to `AppError`, translating backend-unavailable to a 503 domain error.
-fn map_job_error(e: jobs::JobError) -> AppError {
-    match e {
-        jobs::JobError::BackendUnavailable(msg) => AppError(
+/// Map `JobError` to `AppError` with one consistent domain-to-HTTP contract.
+fn map_job_error(error: jobs::JobError) -> AppError {
+    match error {
+        jobs::JobError::BackendUnavailable(message) => AppError(
             common::error::AnkiAtlasError::JobBackendUnavailable {
-                message: msg,
+                message,
+                context: HashMap::new(),
+            }
+            .into(),
+        ),
+        jobs::JobError::NotFound(job_id) => AppError(
+            common::error::AnkiAtlasError::NotFound {
+                message: format!("job {job_id} not found"),
+                context: HashMap::new(),
+            }
+            .into(),
+        ),
+        jobs::JobError::TerminalState { job_id, status } => AppError(
+            common::error::AnkiAtlasError::Conflict {
+                message: format!("job {job_id} already in terminal state: {status}"),
+                context: HashMap::new(),
+            }
+            .into(),
+        ),
+        jobs::JobError::Unsupported(message) => AppError(
+            common::error::AnkiAtlasError::Conflict {
+                message,
                 context: HashMap::new(),
             }
             .into(),
@@ -37,36 +56,18 @@ fn map_job_error(e: jobs::JobError) -> AppError {
     }
 }
 
-/// Build a 404 JSON response for a missing job.
-fn job_not_found(job_id: &str) -> Response {
-    (
-        StatusCode::NOT_FOUND,
-        Json(json!({ "error": "NotFound", "message": format!("job {} not found", job_id) })),
-    )
-        .into_response()
-}
-
 /// Enqueue an async sync job. Returns 202 with job details.
 #[instrument(skip(state, req))]
 pub async fn enqueue_sync_job(
     State(state): State<AppState>,
     Json(req): Json<AsyncSyncRequest>,
 ) -> Result<Response, AppError> {
-    let mut payload = HashMap::new();
-    payload.insert("source".to_string(), serde_json::Value::String(req.source));
-    payload.insert(
-        "run_migrations".to_string(),
-        serde_json::Value::Bool(req.run_migrations),
-    );
-    payload.insert("index".to_string(), serde_json::Value::Bool(req.index));
-    payload.insert(
-        "force_reindex".to_string(),
-        serde_json::Value::Bool(req.force_reindex),
-    );
+    let run_at = req.run_at;
+    let payload = jobs::SyncJobPayload::from(req);
 
     let rec = state
         .job_manager
-        .enqueue_sync_job(payload, req.run_at)
+        .enqueue_sync_job(payload, run_at)
         .await
         .map_err(map_job_error)?;
 
@@ -79,15 +80,12 @@ pub async fn enqueue_index_job(
     State(state): State<AppState>,
     Json(req): Json<AsyncIndexRequest>,
 ) -> Result<Response, AppError> {
-    let mut payload = HashMap::new();
-    payload.insert(
-        "force_reindex".to_string(),
-        serde_json::Value::Bool(req.force_reindex),
-    );
+    let run_at = req.run_at;
+    let payload = jobs::IndexJobPayload::from(req);
 
     let rec = state
         .job_manager
-        .enqueue_index_job(payload, req.run_at)
+        .enqueue_index_job(payload, run_at)
         .await
         .map_err(map_job_error)?;
 
@@ -104,12 +102,9 @@ pub async fn get_job_status(
         .job_manager
         .get_job(&job_id)
         .await
-        .map_err(|e| AppError(anyhow::anyhow!(e)))?;
+        .map_err(map_job_error)?;
 
-    match rec {
-        Some(r) => Ok((StatusCode::OK, Json(JobStatusResponse::from(r))).into_response()),
-        None => Ok(job_not_found(&job_id)),
-    }
+    Ok((StatusCode::OK, Json(JobStatusResponse::from(rec))).into_response())
 }
 
 /// Request cancellation of a job by ID. Returns 404 if not found.
@@ -122,10 +117,7 @@ pub async fn cancel_job(
         .job_manager
         .cancel_job(&job_id)
         .await
-        .map_err(|e| AppError(anyhow::anyhow!(e)))?;
+        .map_err(map_job_error)?;
 
-    match rec {
-        Some(r) => Ok((StatusCode::OK, Json(JobStatusResponse::from(r))).into_response()),
-        None => Ok(job_not_found(&job_id)),
-    }
+    Ok((StatusCode::OK, Json(JobStatusResponse::from(rec))).into_response())
 }

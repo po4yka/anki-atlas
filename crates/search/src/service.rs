@@ -133,6 +133,36 @@ where
         }
     }
 
+    async fn build_rerank_documents(
+        &self,
+        results: &[SearchResult],
+        rerank_top_n: usize,
+    ) -> Result<Vec<(i64, String)>, SearchError> {
+        let top_note_ids: Vec<i64> = results
+            .iter()
+            .take(rerank_top_n)
+            .map(|result| result.note_id)
+            .collect();
+        let note_details = self.get_notes_details(&top_note_ids).await?;
+
+        Ok(results
+            .iter()
+            .take(rerank_top_n)
+            .filter_map(|result| {
+                let note_text = note_details
+                    .get(&result.note_id)
+                    .map(|detail| detail.normalized_text.clone())
+                    .or_else(|| result.headline.clone())?;
+
+                if note_text.trim().is_empty() {
+                    None
+                } else {
+                    Some((result.note_id, note_text))
+                }
+            })
+            .collect())
+    }
+
     /// Execute hybrid search: semantic + FTS -> RRF fusion -> optional rerank.
     #[instrument(skip(self))]
     pub async fn search(&self, params: &SearchParams) -> Result<HybridSearchResult, SearchError> {
@@ -186,16 +216,18 @@ where
         };
 
         // FTS search
-        let (fts_results, lexical_mode, lexical_fallback_used, query_suggestions, autocomplete_suggestions) = if semantic_only {
+        let (
+            fts_results,
+            lexical_mode,
+            lexical_fallback_used,
+            query_suggestions,
+            autocomplete_suggestions,
+        ) = if semantic_only {
             (vec![], LexicalMode::None, false, vec![], vec![])
         } else {
-            let lexical = crate::fts::search_lexical(
-                &self.db,
-                query,
-                params.filters.as_ref(),
-                limit as i64,
-            )
-            .await?;
+            let lexical =
+                crate::fts::search_lexical(&self.db, query, params.filters.as_ref(), limit as i64)
+                    .await?;
             let fts_results = lexical
                 .results
                 .into_iter()
@@ -228,31 +260,27 @@ where
 
         if should_rerank {
             if let Some(ref reranker) = self.reranker {
-                let docs: Vec<(i64, String)> = results
-                    .iter()
-                    .take(rerank_top_n)
-                    .map(|r| (r.note_id, String::new()))
-                    .collect();
-
-                if !docs.is_empty() {
-                    match reranker.rerank(query, &docs).await {
-                        Ok(scores) => {
-                            let score_map: HashMap<i64, f64> = scores.into_iter().collect();
-                            for r in &mut results {
-                                if let Some(&s) = score_map.get(&r.note_id) {
-                                    r.rerank_score = Some(s);
+                if let Ok(documents) = self.build_rerank_documents(&results, rerank_top_n).await {
+                    if !documents.is_empty() {
+                        match reranker.rerank(query, &documents).await {
+                            Ok(scores) => {
+                                let score_map: HashMap<i64, f64> = scores.into_iter().collect();
+                                for result in &mut results {
+                                    if let Some(&score) = score_map.get(&result.note_id) {
+                                        result.rerank_score = Some(score);
+                                    }
                                 }
+                                results.sort_by(|a, b| {
+                                    b.rerank_score
+                                        .partial_cmp(&a.rerank_score)
+                                        .unwrap_or(std::cmp::Ordering::Equal)
+                                });
+                                rerank_applied = true;
+                                rerank_model = Some(reranker.model_name().to_string());
                             }
-                            results.sort_by(|a, b| {
-                                b.rerank_score
-                                    .partial_cmp(&a.rerank_score)
-                                    .unwrap_or(std::cmp::Ordering::Equal)
-                            });
-                            rerank_applied = true;
-                            rerank_model = Some(reranker.model_name().to_string());
-                        }
-                        Err(_) => {
-                            // Degrade gracefully: skip reranking
+                            Err(_) => {
+                                // Degrade gracefully: skip reranking
+                            }
                         }
                     }
                 }
@@ -293,16 +321,16 @@ where
         }
 
         let rows = sqlx::query_as::<_, NoteDetailRow>(
-            "SELECT n.id AS note_id, n.mid AS model_id, n.normalized_text, \
+            "SELECT n.note_id AS note_id, n.model_id AS model_id, n.normalized_text, \
              n.tags, \
              COALESCE(d.name, '') AS deck_name, \
              COALESCE(c.ivl >= 21, false) AS mature, \
              COALESCE(c.lapses, 0) AS lapses, \
              COALESCE(c.reps, 0) AS reps \
              FROM notes n \
-             LEFT JOIN cards c ON c.nid = n.id \
-             LEFT JOIN decks d ON d.id = c.did \
-             WHERE n.id = ANY($1)",
+             LEFT JOIN cards c ON c.note_id = n.note_id \
+             LEFT JOIN decks d ON d.deck_id = c.deck_id \
+             WHERE n.note_id = ANY($1)",
         )
         .bind(note_ids)
         .fetch_all(&self.db)
@@ -320,6 +348,9 @@ where
                 lapses: row.lapses,
                 reps: row.reps,
             });
+            entry.mature |= row.mature;
+            entry.lapses = entry.lapses.max(row.lapses);
+            entry.reps = entry.reps.max(row.reps);
             if !row.deck_name.is_empty() && !entry.deck_names.contains(&row.deck_name) {
                 entry.deck_names.push(row.deck_name.clone());
             }
@@ -331,7 +362,13 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
     use super::*;
+    use database::run_migrations;
+    use sqlx::postgres::PgPoolOptions;
+    use testcontainers::runners::AsyncRunner;
+    use testcontainers_modules::postgres::Postgres;
 
     // ── Test helpers ──────────────────────────────────────────────
 
@@ -479,7 +516,9 @@ mod tests {
             documents: &[(i64, String)],
         ) -> Result<Vec<(i64, f64)>, SearchError> {
             if self.should_fail {
-                return Err(SearchError::Rerank("model unavailable".to_string()));
+                return Err(SearchError::from(crate::error::RerankError::Protocol {
+                    message: "model unavailable".to_string(),
+                }));
             }
             // Return descending scores based on position
             Ok(documents
@@ -492,6 +531,121 @@ mod tests {
 
     fn fake_pool() -> sqlx::PgPool {
         sqlx::PgPool::connect_lazy("postgres://invalid:5432/fake").unwrap()
+    }
+
+    struct RecordingReranker {
+        seen_documents: Arc<Mutex<Vec<(i64, String)>>>,
+    }
+
+    impl RecordingReranker {
+        fn new(seen_documents: Arc<Mutex<Vec<(i64, String)>>>) -> Self {
+            Self { seen_documents }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Reranker for RecordingReranker {
+        fn model_name(&self) -> &str {
+            "recording/reranker"
+        }
+
+        async fn rerank(
+            &self,
+            _query: &str,
+            documents: &[(i64, String)],
+        ) -> Result<Vec<(i64, f64)>, SearchError> {
+            *self.seen_documents.lock().unwrap() = documents.to_vec();
+            Ok(documents
+                .iter()
+                .enumerate()
+                .map(|(index, (note_id, _))| (*note_id, 1.0 - index as f64 * 0.1))
+                .collect())
+        }
+    }
+
+    async fn setup_real_pool() -> Option<(sqlx::PgPool, testcontainers::ContainerAsync<Postgres>)> {
+        let container = Postgres::default().start().await.ok()?;
+        let host = container.get_host().await.ok()?;
+        let port = container.get_host_port_ipv4(5432).await.ok()?;
+        let url = format!("postgresql://postgres:postgres@{host}:{port}/postgres");
+
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&url)
+            .await
+            .ok()?;
+
+        run_migrations(&pool).await.ok()?;
+        Some((pool, container))
+    }
+
+    async fn seed_search_fixture(pool: &sqlx::PgPool) {
+        sqlx::query("INSERT INTO decks (deck_id, name) VALUES ($1, $2), ($3, $4)")
+            .bind(10_i64)
+            .bind("Default")
+            .bind(20_i64)
+            .bind("Archive")
+            .execute(pool)
+            .await
+            .unwrap();
+
+        sqlx::query(
+            "INSERT INTO notes \
+             (note_id, model_id, tags, fields_json, raw_fields, normalized_text, mtime, usn) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8), \
+                    ($9, $10, $11, $12, $13, $14, $15, $16)",
+        )
+        .bind(1_i64)
+        .bind(100_i64)
+        .bind(vec!["rust".to_string()])
+        .bind(serde_json::json!({"Front": "What is ownership?", "Back": "A Rust rule"}))
+        .bind(Some("Front\x1fBack"))
+        .bind("rust ownership borrowing rules")
+        .bind(1_i64)
+        .bind(0_i32)
+        .bind(2_i64)
+        .bind(100_i64)
+        .bind(vec!["postgres".to_string()])
+        .bind(serde_json::json!({"Front": "What is SQLx?", "Back": "A Rust SQL toolkit"}))
+        .bind(Some("Front\x1fBack"))
+        .bind("postgres sqlx migrations testing")
+        .bind(1_i64)
+        .bind(0_i32)
+        .execute(pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "INSERT INTO cards \
+             (card_id, note_id, deck_id, ord, ivl, lapses, reps, queue, type, mtime, usn) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11), \
+                    ($12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)",
+        )
+        .bind(1000_i64)
+        .bind(1_i64)
+        .bind(10_i64)
+        .bind(0_i32)
+        .bind(30_i32)
+        .bind(1_i32)
+        .bind(5_i32)
+        .bind(0_i32)
+        .bind(0_i32)
+        .bind(1_i64)
+        .bind(0_i32)
+        .bind(2000_i64)
+        .bind(2_i64)
+        .bind(20_i64)
+        .bind(0_i32)
+        .bind(5_i32)
+        .bind(0_i32)
+        .bind(2_i32)
+        .bind(0_i32)
+        .bind(0_i32)
+        .bind(1_i64)
+        .bind(0_i32)
+        .execute(pool)
+        .await
+        .unwrap();
     }
 
     // ── Type construction tests ──────────────────────────────────
@@ -709,6 +863,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn search_fts_only_returns_hits_with_real_pool() {
+        let Some((pool, _container)) = setup_real_pool().await else {
+            return;
+        };
+        seed_search_fixture(&pool).await;
+
+        let svc = SearchService::new(
+            FakeEmbedding,
+            FakeVectorRepo::empty(),
+            Some(FakeReranker::new()),
+            pool,
+            false,
+            20,
+        );
+
+        let result = svc.search(&params_fts_only("ownership")).await.unwrap();
+
+        assert_eq!(result.lexical_mode, LexicalMode::Fts);
+        assert_eq!(result.results.len(), 1);
+        assert_eq!(result.results[0].note_id, 1);
+        assert!(result.results[0].headline.is_some());
+    }
+
+    #[tokio::test]
     async fn search_returns_query_in_result() {
         let pool = fake_pool();
         let svc = SearchService::new(
@@ -740,10 +918,7 @@ mod tests {
             20,
         );
 
-        let result = svc
-            .search(&params_semantic_only("test"))
-            .await
-            .unwrap();
+        let result = svc.search(&params_semantic_only("test")).await.unwrap();
 
         assert!(!result.rerank_applied);
         assert!(result.rerank_model.is_none());
@@ -873,6 +1048,46 @@ mod tests {
         assert!(result.results.len() <= 5);
     }
 
+    #[tokio::test]
+    async fn search_rerank_uses_note_text_from_real_pool() {
+        let Some((pool, _container)) = setup_real_pool().await else {
+            return;
+        };
+        seed_search_fixture(&pool).await;
+
+        let seen_documents = Arc::new(Mutex::new(Vec::new()));
+        let reranker = RecordingReranker::new(Arc::clone(&seen_documents));
+        let svc = SearchService::new(
+            FakeEmbedding,
+            FakeVectorRepo::new(vec![(1, 0.95), (2, 0.85)]),
+            Some(reranker),
+            pool,
+            true,
+            2,
+        );
+
+        let result = svc
+            .search(&SearchParams {
+                query: "rust ownership".into(),
+                semantic_only: true,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        assert!(result.rerank_applied);
+        let recorded_documents = seen_documents.lock().unwrap().clone();
+        assert_eq!(recorded_documents.len(), 2);
+        assert_eq!(
+            recorded_documents[0],
+            (1, "rust ownership borrowing rules".to_string())
+        );
+        assert_eq!(
+            recorded_documents[1],
+            (2, "postgres sqlx migrations testing".to_string())
+        );
+    }
+
     // ── Send + Sync ──────────────────────────────────────────────
 
     #[test]
@@ -927,5 +1142,29 @@ mod tests {
         // With actual IDs and a fake pool, should return a DB error (not panic)
         let result = svc.get_notes_details(&[1, 2, 3]).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn get_notes_details_returns_real_rows() {
+        let Some((pool, _container)) = setup_real_pool().await else {
+            return;
+        };
+        seed_search_fixture(&pool).await;
+
+        let svc = SearchService::new(
+            FakeEmbedding,
+            FakeVectorRepo::empty(),
+            Some(FakeReranker::new()),
+            pool,
+            false,
+            20,
+        );
+
+        let result = svc.get_notes_details(&[1, 2]).await.unwrap();
+
+        assert_eq!(result[&1].normalized_text, "rust ownership borrowing rules");
+        assert_eq!(result[&1].deck_names, vec!["Default".to_string()]);
+        assert!(result[&1].mature);
+        assert_eq!(result[&2].deck_names, vec!["Archive".to_string()]);
     }
 }

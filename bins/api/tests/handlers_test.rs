@@ -5,10 +5,12 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::response::Response;
 use common::config::Settings;
-use jobs::{JobError, JobManager, JobRecord, JobStatus, JobType};
+use jobs::{
+    IndexJobPayload, JobError, JobManager, JobPayload, JobRecord, JobStatus, JobType,
+    SyncJobPayload,
+};
 use mockall::mock;
 use serde_json::{Value, json};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -20,19 +22,19 @@ mock! {
     impl JobManager for Jobs {
         async fn enqueue_sync_job(
             &self,
-            payload: HashMap<String, serde_json::Value>,
+            payload: SyncJobPayload,
             run_at: Option<chrono::DateTime<chrono::Utc>>,
         ) -> Result<JobRecord, JobError>;
 
         async fn enqueue_index_job(
             &self,
-            payload: HashMap<String, serde_json::Value>,
+            payload: IndexJobPayload,
             run_at: Option<chrono::DateTime<chrono::Utc>>,
         ) -> Result<JobRecord, JobError>;
 
-        async fn get_job(&self, job_id: &str) -> Result<Option<JobRecord>, JobError>;
+        async fn get_job(&self, job_id: &str) -> Result<JobRecord, JobError>;
 
-        async fn cancel_job(&self, job_id: &str) -> Result<Option<JobRecord>, JobError>;
+        async fn cancel_job(&self, job_id: &str) -> Result<JobRecord, JobError>;
 
         async fn close(&self) -> Result<(), JobError>;
     }
@@ -71,11 +73,23 @@ fn test_state(mock_jobs: MockJobs) -> AppState {
 }
 
 fn make_job_record(job_id: &str, job_type: JobType, status: JobStatus) -> JobRecord {
+    let payload = match job_type {
+        JobType::Sync => JobPayload::Sync(SyncJobPayload {
+            source: "/tmp/collection.anki2".to_string(),
+            run_migrations: true,
+            index: true,
+            force_reindex: false,
+        }),
+        JobType::Index => JobPayload::Index(IndexJobPayload {
+            force_reindex: false,
+        }),
+    };
+
     JobRecord {
         job_id: job_id.to_string(),
         job_type,
         status,
-        payload: HashMap::new(),
+        payload,
         progress: 0.0,
         message: None,
         attempts: 0,
@@ -217,9 +231,36 @@ async fn enqueue_index_job_returns_202() {
 }
 
 #[tokio::test]
+async fn enqueue_sync_job_rejects_scheduling_until_supported() {
+    let mut mock = MockJobs::new();
+    mock.expect_enqueue_sync_job().returning(|_, _| {
+        Err(JobError::Unsupported(
+            "scheduled jobs are not supported yet".into(),
+        ))
+    });
+
+    let app = build_router(test_state(mock));
+    let body = json!({
+        "source": "/path/col.anki2",
+        "run_at": "2026-03-11T10:00:00Z"
+    });
+    let resp: Response = app
+        .oneshot(
+            Request::post("/jobs/sync")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
 async fn get_job_returns_404_for_unknown() {
     let mut mock = MockJobs::new();
-    mock.expect_get_job().returning(|_| Ok(None));
+    mock.expect_get_job()
+        .returning(|job_id| Err(JobError::NotFound(job_id.to_string())));
 
     let app = build_router(test_state(mock));
     let resp: Response = app
@@ -240,7 +281,7 @@ async fn get_job_returns_status() {
         let mut rec = make_job_record("job-3", JobType::Sync, JobStatus::Running);
         rec.progress = 0.5;
         rec.message = Some("halfway".into());
-        Ok(Some(rec))
+        Ok(rec)
     });
 
     let app = build_router(test_state(mock));
@@ -259,7 +300,7 @@ async fn cancel_job_returns_updated_status() {
     mock.expect_cancel_job().returning(|_| {
         let mut rec = make_job_record("job-4", JobType::Sync, JobStatus::CancelRequested);
         rec.cancel_requested = true;
-        Ok(Some(rec))
+        Ok(rec)
     });
 
     let app = build_router(test_state(mock));

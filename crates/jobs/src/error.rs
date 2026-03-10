@@ -11,6 +11,9 @@ pub enum JobError {
     #[error("job already in terminal state: {status}")]
     TerminalState { job_id: String, status: String },
 
+    #[error("unsupported jobs feature: {0}")]
+    Unsupported(String),
+
     #[error("Redis error: {0}")]
     Redis(String),
 
@@ -19,4 +22,10 @@ pub enum JobError {
 
     #[error("task execution error: {0}")]
     TaskExecution(String),
+}
+
+impl JobError {
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, Self::BackendUnavailable(_) | Self::Redis(_))
+    }
 }

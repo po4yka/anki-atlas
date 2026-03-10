@@ -2,9 +2,11 @@ use crate::connection::{RedisConfig, parse_redis_url};
 use crate::error::JobError;
 use crate::manager::{JobManager, MockJobManager};
 use crate::persistence::job_key;
-use crate::types::{JOB_KEY_PREFIX, JobRecord, JobStatus, JobType};
+use crate::types::{
+    IndexJobPayload, JOB_KEY_PREFIX, JobPayload, JobRecord, JobResultData, JobStatus, JobType,
+    SyncJobPayload, SyncJobResult,
+};
 use chrono::Utc;
-use std::collections::HashMap;
 
 // ── Send + Sync compile-time assertions ──────────────────────────────────────
 
@@ -111,7 +113,12 @@ fn sample_record() -> JobRecord {
         job_id: "test-123".to_string(),
         job_type: JobType::Sync,
         status: JobStatus::Queued,
-        payload: HashMap::from([("key".to_string(), serde_json::json!("value"))]),
+        payload: JobPayload::Sync(SyncJobPayload {
+            source: "/tmp/collection.anki2".to_string(),
+            run_migrations: true,
+            index: true,
+            force_reindex: false,
+        }),
         progress: 42.5,
         message: Some("testing".to_string()),
         attempts: 1,
@@ -146,10 +153,18 @@ fn job_record_json_with_all_fields() {
     let mut record = sample_record();
     record.started_at = Some(Utc::now());
     record.finished_at = Some(Utc::now());
-    record.result = Some(HashMap::from([(
-        "count".to_string(),
-        serde_json::json!(42),
-    )]));
+    record.result = Some(JobResultData::Sync(SyncJobResult {
+        decks_upserted: 1,
+        models_upserted: 2,
+        notes_upserted: 3,
+        notes_deleted: 0,
+        cards_upserted: 4,
+        card_stats_upserted: 5,
+        duration_ms: 250,
+        notes_embedded: Some(6),
+        notes_skipped: Some(1),
+        index_errors: vec!["minor warning".to_string()],
+    }));
     record.error = Some("some error".to_string());
 
     let json = serde_json::to_string(&record).expect("serialize");
@@ -240,11 +255,11 @@ fn parse_redis_url_rejects_ftp() {
 async fn mock_job_manager_compiles_and_works() {
     let mut mock = MockJobManager::new();
     mock.expect_get_job()
-        .returning(|_| Box::pin(async { Ok(Some(sample_record())) }));
+        .returning(|_| Box::pin(async { Ok(sample_record()) }));
 
     let result = mock.get_job("test-123").await;
     assert!(result.is_ok());
-    let record = result.unwrap().unwrap();
+    let record = result.unwrap();
     assert_eq!(record.job_id, "test-123");
 }
 
@@ -255,7 +270,15 @@ async fn mock_job_manager_enqueue_sync() {
         .returning(|_payload, _run_at| Box::pin(async { Ok(sample_record()) }));
 
     let result = mock
-        .enqueue_sync_job(HashMap::new(), None)
+        .enqueue_sync_job(
+            SyncJobPayload {
+                source: "/tmp/collection.anki2".to_string(),
+                run_migrations: true,
+                index: true,
+                force_reindex: false,
+            },
+            None,
+        )
         .await
         .expect("enqueue");
     assert_eq!(result.job_type, JobType::Sync);
@@ -269,12 +292,20 @@ async fn mock_job_manager_enqueue_index() {
             Box::pin(async {
                 let mut rec = sample_record();
                 rec.job_type = JobType::Index;
+                rec.payload = JobPayload::Index(IndexJobPayload {
+                    force_reindex: false,
+                });
                 Ok(rec)
             })
         });
 
     let result = mock
-        .enqueue_index_job(HashMap::new(), None)
+        .enqueue_index_job(
+            IndexJobPayload {
+                force_reindex: false,
+            },
+            None,
+        )
         .await
         .expect("enqueue");
     assert_eq!(result.job_type, JobType::Index);
@@ -287,12 +318,12 @@ async fn mock_job_manager_cancel() {
         Box::pin(async {
             let mut rec = sample_record();
             rec.status = JobStatus::Cancelled;
-            Ok(Some(rec))
+            Ok(rec)
         })
     });
 
     let result = mock.cancel_job("test-123").await.expect("cancel");
-    assert_eq!(result.unwrap().status, JobStatus::Cancelled);
+    assert_eq!(result.status, JobStatus::Cancelled);
 }
 
 #[tokio::test]
@@ -301,6 +332,18 @@ async fn mock_job_manager_close() {
     mock.expect_close().returning(|| Box::pin(async { Ok(()) }));
 
     mock.close().await.expect("close");
+}
+
+#[test]
+fn unsupported_error_is_not_retryable() {
+    let error = JobError::Unsupported("scheduled jobs are not supported yet".to_string());
+    assert!(!error.is_retryable());
+}
+
+#[test]
+fn redis_error_is_retryable() {
+    let error = JobError::Redis("timeout".to_string());
+    assert!(error.is_retryable());
 }
 
 // ── Error display ────────────────────────────────────────────────────────────
@@ -327,6 +370,9 @@ fn error_display_messages() {
 
     let e = JobError::TaskExecution("panic".to_string());
     assert!(e.to_string().contains("panic"));
+
+    let e = JobError::Unsupported("scheduling".to_string());
+    assert!(e.to_string().contains("scheduling"));
 }
 
 // ── JOB_KEY_PREFIX constant ──────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use jobs::types::{JobStatus, JobType};
+use jobs::types::{IndexJobPayload, JobResultData, JobStatus, JobType, SyncJobPayload};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -70,6 +70,25 @@ pub struct AsyncIndexRequest {
     pub run_at: Option<DateTime<Utc>>,
 }
 
+impl From<AsyncSyncRequest> for SyncJobPayload {
+    fn from(request: AsyncSyncRequest) -> Self {
+        Self {
+            source: request.source,
+            run_migrations: request.run_migrations,
+            index: request.index,
+            force_reindex: request.force_reindex,
+        }
+    }
+}
+
+impl From<AsyncIndexRequest> for IndexJobPayload {
+    fn from(request: AsyncIndexRequest) -> Self {
+        Self {
+            force_reindex: request.force_reindex,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct JobAcceptedResponse {
     pub job_id: String,
@@ -94,7 +113,7 @@ pub struct JobStatusResponse {
     pub scheduled_for: Option<DateTime<Utc>>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
-    pub result: Option<HashMap<String, serde_json::Value>>,
+    pub result: Option<JobResultData>,
     pub error: Option<String>,
 }
 

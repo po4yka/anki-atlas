@@ -1,4 +1,4 @@
-use crate::error::SearchError;
+use crate::error::{RerankError, SearchError};
 
 /// Trait for second-stage reranking implementations.
 #[async_trait::async_trait]
@@ -76,31 +76,44 @@ impl Reranker for CrossEncoderReranker {
                 .json(&body)
                 .send()
                 .await
-                .map_err(|e| SearchError::Rerank(e.to_string()))?;
+                .map_err(|e| {
+                    SearchError::Rerank(RerankError::Transport {
+                        message: e.to_string(),
+                    })
+                })?;
 
             if !response.status().is_success() {
                 let status = response.status().as_u16();
                 let body_text = response.text().await.unwrap_or_default();
-                return Err(SearchError::Rerank(format!("HTTP {status}: {body_text}")));
+                return Err(SearchError::Rerank(RerankError::Http {
+                    status,
+                    body: body_text,
+                }));
             }
 
-            let parsed: serde_json::Value = response
-                .json()
-                .await
-                .map_err(|e| SearchError::Rerank(e.to_string()))?;
+            let parsed: serde_json::Value = response.json().await.map_err(|e| {
+                SearchError::Rerank(RerankError::Protocol {
+                    message: e.to_string(),
+                })
+            })?;
 
-            let results = parsed["results"]
-                .as_array()
-                .ok_or_else(|| SearchError::Rerank("missing results array".to_string()))?;
+            let results = parsed["results"].as_array().ok_or_else(|| {
+                SearchError::Rerank(RerankError::Protocol {
+                    message: "missing results array".to_string(),
+                })
+            })?;
 
             for item in results {
-                let index = item["index"]
-                    .as_u64()
-                    .ok_or_else(|| SearchError::Rerank("missing index".to_string()))?
-                    as usize;
-                let score = item["relevance_score"]
-                    .as_f64()
-                    .ok_or_else(|| SearchError::Rerank("missing relevance_score".to_string()))?;
+                let index = item["index"].as_u64().ok_or_else(|| {
+                    SearchError::Rerank(RerankError::Protocol {
+                        message: "missing index".to_string(),
+                    })
+                })? as usize;
+                let score = item["relevance_score"].as_f64().ok_or_else(|| {
+                    SearchError::Rerank(RerankError::Protocol {
+                        message: "missing relevance_score".to_string(),
+                    })
+                })?;
                 let (note_id, _) = batch[index];
                 all_scores.push((note_id, score));
             }
@@ -191,14 +204,21 @@ mod tests {
     async fn mock_reranker_can_return_error() {
         let mut mock = MockReranker::new();
         mock.expect_rerank().returning(|_query, _docs| {
-            Box::pin(async { Err(SearchError::Rerank("model unavailable".to_string())) })
+            Box::pin(async {
+                Err(SearchError::Rerank(RerankError::Protocol {
+                    message: "model unavailable".to_string(),
+                }))
+            })
         });
 
         let docs = vec![(1, "doc".to_string())];
         let result = mock.rerank("query", &docs).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, SearchError::Rerank(_)));
+        assert!(matches!(
+            err,
+            SearchError::Rerank(RerankError::Protocol { .. })
+        ));
     }
 
     #[tokio::test]

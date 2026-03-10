@@ -7,7 +7,7 @@ use config::WorkerConfig;
 use worker::{QueueBackend, Worker};
 
 use common::logging::{LoggingConfig, init_global_logging};
-use jobs::types::{JOB_KEY_PREFIX, JobRecord};
+use jobs::JobRecord;
 
 /// Redis-backed queue backend for production use.
 struct RedisQueueBackend {
@@ -16,7 +16,9 @@ struct RedisQueueBackend {
 
 impl RedisQueueBackend {
     async fn connect(redis_url: &str) -> anyhow::Result<Self> {
-        let client = rustis::client::Client::connect(redis_url).await?;
+        let client = jobs::connection::create_redis_client(redis_url)
+            .await
+            .map_err(anyhow::Error::from)?;
         Ok(Self { client })
     }
 }
@@ -36,29 +38,15 @@ impl QueueBackend for RedisQueueBackend {
     }
 
     async fn load_job_record(&self, job_id: &str) -> anyhow::Result<Option<JobRecord>> {
-        use rustis::commands::StringCommands;
-        let key = format!("{JOB_KEY_PREFIX}{job_id}");
-        let raw: Option<String> = self.client.get(&key).await?;
-        match raw {
-            Some(s) => Ok(Some(serde_json::from_str(&s)?)),
-            None => Ok(None),
-        }
+        jobs::persistence::load_job_record(&self.client, job_id)
+            .await
+            .map_err(anyhow::Error::from)
     }
 
     async fn save_job_record(&self, record: &JobRecord, ttl_seconds: u64) -> anyhow::Result<()> {
-        use rustis::commands::StringCommands;
-        let key = format!("{JOB_KEY_PREFIX}{}", record.job_id);
-        let json = serde_json::to_string(record)?;
-        self.client
-            .set_with_options(
-                &key,
-                &json,
-                rustis::commands::SetCondition::None,
-                rustis::commands::SetExpiration::Ex(ttl_seconds),
-                false,
-            )
-            .await?;
-        Ok(())
+        jobs::persistence::save_job_record(&self.client, record, ttl_seconds)
+            .await
+            .map_err(anyhow::Error::from)
     }
 }
 
