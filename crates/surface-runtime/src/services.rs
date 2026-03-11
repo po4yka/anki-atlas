@@ -279,7 +279,10 @@ pub async fn build_surface_services(
         .await
         .context("check Qdrant health for surface runtime")?;
 
-    let vector_store = Arc::new(QdrantVectorStore::new(qdrant_client.clone(), collection_name));
+    let vector_store = Arc::new(QdrantVectorStore::new(
+        qdrant_client.clone(),
+        collection_name,
+    ));
     vector_store
         .ensure_collection(settings.embedding().dimension as usize)
         .await
