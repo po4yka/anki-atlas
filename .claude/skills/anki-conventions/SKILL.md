@@ -1,5 +1,6 @@
 ---
 name: anki-conventions
+user-invocable: false
 description: >
   Anki card creation patterns, query syntax, FSRS settings, and spaced repetition principles.
   Use when creating flashcards, querying decks, discussing learning strategies, managing backlogs,

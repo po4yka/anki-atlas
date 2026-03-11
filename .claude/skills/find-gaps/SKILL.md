@@ -1,6 +1,9 @@
 ---
 name: find-gaps
-description: Finds notes without Anki cards and identifies coverage gaps. Use to discover uncovered topics before bulk card generation or to check vault coverage.
+description: >
+  Finds notes without Anki cards and identifies coverage gaps. Use to discover uncovered topics before bulk card generation or to check vault coverage.
+  Don't use when checking what changed since last sync (use detect-changes).
+argument-hint: "[path|--topic name|--all]"
 allowed-tools: Read, Glob, Grep, Bash
 ---
 

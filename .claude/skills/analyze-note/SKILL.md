@@ -1,6 +1,7 @@
 ---
 name: analyze-note
 description: Analyzes Obsidian note structure, identifies card-worthy topics, and assesses quality before flashcard creation. Use to prepare notes or assess card potential.
+argument-hint: "<note-path>"
 allowed-tools: Read, Glob, Grep, Bash
 ---
 

@@ -1,6 +1,9 @@
 ---
 name: detect-changes
-description: Detects note modifications since last sync by comparing content hashes. Use to find stale cards, modified notes, or orphans before syncing.
+description: >
+  Detects note modifications since last sync by comparing content hashes. Use to find stale cards, modified notes, or orphans before syncing.
+  Don't use when the user wants to sync cards (use sync-cards) or delete orphans (use cleanup-cards).
+argument-hint: "[path|--topic name]"
 allowed-tools: Read, Glob, Grep, Bash
 ---
 

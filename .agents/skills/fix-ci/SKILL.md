@@ -1,6 +1,6 @@
 ---
 name: fix-ci
-description: "Use when CI checks fail and need fixing. Diagnoses and auto-fixes formatting, clippy lints; provides structured analysis for compile errors and test failures. Triggers on: fix CI, CI failing, clippy error, format error, cargo fmt, test failed, compile error"
+description: "Use when CI checks fail and need fixing. Don't use when running CI proactively (use act-ci). Diagnoses and auto-fixes formatting, clippy lints; provides structured analysis for compile errors and test failures. Triggers on: fix CI, CI failing, clippy error, format error, cargo fmt, test failed, compile error"
 globs: ["**/*.rs", "Cargo.toml"]
 allowed-tools: ["Read", "Grep", "Glob", "Bash", "Edit", "Write"]
 ---

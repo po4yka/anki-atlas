@@ -1,6 +1,7 @@
 ---
 name: cleanup-cards
 description: Cleans up orphaned, duplicate, or problematic cards from registry and Anki. Provides dry-run preview. Requires AnkiConnect MCP server for Anki operations.
+disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash, mcp__anki__findNotes, mcp__anki__notesInfo, mcp__anki__deleteNotes
 ---
 

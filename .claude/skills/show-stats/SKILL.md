@@ -1,6 +1,8 @@
 ---
 name: show-stats
-description: Generates reports on sync status, card coverage, deck health, and vector database statistics. Use for system overview or progress tracking.
+description: >
+  Generates reports on sync status, card coverage, deck health, and vector database statistics. Use for system overview or progress tracking.
+  Don't use when comparing registry with live Anki state (use review-cards).
 allowed-tools: Read, Bash
 ---
 

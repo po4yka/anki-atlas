@@ -1,6 +1,7 @@
 ---
 name: bulk-process
 description: Processes multiple Obsidian notes for batch card generation and sync. Use for folders, topics, or multiple notes at once. Tracks progress and provides summaries.
+argument-hint: "<path-to-notes> [--topic name]"
 allowed-tools: Read, Glob, Grep, Bash
 ---
 

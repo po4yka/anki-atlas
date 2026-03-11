@@ -1,6 +1,8 @@
 ---
 name: review-cards
-description: Reviews and compares registry cards with live Anki state via MCP. Use for finding outdated cards, detecting discrepancies, or maintenance. Requires AnkiConnect MCP server.
+description: >
+  Reviews and compares registry cards with live Anki state via MCP. Use for finding outdated cards, detecting discrepancies, or maintenance. Requires AnkiConnect MCP server.
+  Don't use when the user wants statistics (use show-stats) or note quality analysis (use analyze-note).
 allowed-tools: Read, Glob, Grep, Bash, mcp__anki__findNotes, mcp__anki__notesInfo, mcp__anki__deleteNotes, mcp__anki__updateNoteFields, mcp__anki__deckActions
 ---
 

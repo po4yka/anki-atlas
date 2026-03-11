@@ -1,6 +1,6 @@
 ---
 name: act-ci
-description: "Use when running CI checks locally before pushing, testing specific CI jobs, or verifying code passes CI. Triggers on: act, CI, local CI, run CI, check CI, clippy, fmt, format check, cargo test, integration test, pre-push"
+description: "Use when running CI checks locally before pushing, testing specific CI jobs, or verifying code passes CI. Don't use when CI has already failed and needs fixing (use fix-ci). Triggers on: act, CI, local CI, run CI, check CI, clippy, fmt, format check, cargo test, integration test, pre-push"
 globs: ["**/*.rs", ".github/workflows/*.yml", "Cargo.toml", "Cargo.lock"]
 allowed-tools: ["Read", "Grep", "Glob", "Bash"]
 ---

@@ -1,6 +1,7 @@
 ---
 name: generate-cards
 description: Creates bilingual (EN+RU) Anki flashcards from Obsidian notes. Use when creating cards, generating flashcards, or making study materials. Requires reading and manually crafting cards - do not rely on automatic extraction.
+argument-hint: "<note-path>"
 allowed-tools: Read, Glob, Grep, Bash
 ---
 

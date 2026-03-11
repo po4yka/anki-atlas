@@ -1,6 +1,7 @@
 ---
 name: sync-cards
 description: Syncs flashcards to Anki via AnkiConnect API. Use after generating cards, when pushing to Anki, or updating existing cards. Requires Anki running with AnkiConnect.
+disable-model-invocation: true
 allowed-tools: Read, Bash
 ---
 
