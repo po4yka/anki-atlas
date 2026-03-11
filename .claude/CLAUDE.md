@@ -18,6 +18,7 @@ Skip them locally with `--exclude anki-sync --exclude database`.
 crates/     -- Library crates (shared, reusable)
 bins/       -- Binary entry points (cli, api, mcp, worker)
 specs/      -- Ralph loop spec files (one per crate)
+presets/    -- Ralph orchestrator configs (YAML + prompt files)
 config/     -- Configuration files
 ```
 
@@ -52,6 +53,13 @@ Crates may depend on other crates but **no circular dependencies**.
 | api | axum | REST API with auth middleware |
 | mcp | rmcp | MCP server for AI agents |
 | worker | tokio | Background job worker |
+
+### Ralph Presets
+
+| Preset | Purpose | Run |
+|--------|---------|-----|
+| `tdd-rewrite.yml` | TDD loop for crate rewrites (red/green/refactor) | `ralph run -c presets/tdd-rewrite.yml` |
+| `card-improve.yml` | Iterative card quality improvement (select/analyze/improve/review) | `ralph run -c presets/card-improve.yml` |
 
 ## Conventions
 

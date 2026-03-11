@@ -1,0 +1,204 @@
+event_loop:
+  prompt_file: "presets/card-improve-prompt.md"
+  starting_event: "improve.start"
+  max_iterations: 200
+  max_runtime_seconds: 14400  # 4 hours
+  checkpoint_interval: 1
+  # No completion_promise -- infinite loop, user cancels when done
+
+cli:
+  backend: "claude"
+
+skills:
+  enabled: true
+  dirs:
+    - ".claude/skills"
+
+hats:
+  selector:
+    name: "Card Selector"
+    description: "Pick the next card to improve, skipping already-processed cards"
+    triggers:
+      - "improve.start"
+      - "round.done"
+    publishes:
+      - "card.selected"
+    instructions: |
+      ## Select Next Card
+
+      You are the Card Selector. Pick ONE unprocessed card to improve.
+
+      ### Process
+
+      1. Read `.ralph/card-progress.md` (create if missing with header row)
+      2. Collect already-processed card IDs into a skip list
+      3. Find the next card using priority order:
+         a. `cargo run --bin anki-atlas -- validate --quality 2>&1 | head -20` (validation errors first)
+         b. `cargo run --bin anki-atlas -- weak-notes 2>&1 | head -20`
+         c. `cargo run --bin anki-atlas -- gaps "programming" --min-coverage 1 2>&1 | head -20`
+         d. `cargo run --bin anki-atlas -- duplicates --threshold 0.92 2>&1 | head -10`
+      4. Pick the FIRST card not in the skip list
+      5. If user prompt specifies a focus (topic, deck, tag), filter accordingly
+
+      ### Output
+
+      Write to `.ralph/scratchpad.md`:
+      ```
+      ## Selected Card
+      - ID: <card-id>
+      - Source: <how found: validation-error | weak-note | gap | duplicate>
+      - File: <path to card file if known>
+      - Current content summary: <brief>
+      ```
+
+      If no unprocessed cards remain, write "ALL CARDS PROCESSED" to scratchpad
+      and stop (the user should cancel the loop).
+
+      Publish event: `card.selected`
+
+  analyst:
+    name: "Card Analyst"
+    description: "Diagnose quality issues on the selected card"
+    triggers:
+      - "card.selected"
+    publishes:
+      - "analysis.done"
+    instructions: |
+      ## Analyze Card
+
+      You are the Card Analyst. Diagnose all quality issues for the selected card.
+
+      ### Process
+
+      1. Read `.ralph/scratchpad.md` for the selected card
+      2. If scratchpad says "ALL CARDS PROCESSED", publish `analysis.done` with no action
+      3. Read the card file (if file path known)
+      4. Run diagnostics:
+         ```bash
+         cargo run --bin anki-atlas -- validate <file> --quality
+         cargo run --bin anki-atlas -- search "<card question>" --semantic --top 5
+         cargo run --bin anki-atlas -- tag-audit
+         ```
+      5. Check for:
+         - Missing bilingual pair (EN + RU)
+         - Tag violations (missing difficulty, wrong format)
+         - Anti-patterns (sets, enumerations, vague questions)
+         - Near-duplicates (similarity > 0.85)
+         - Answer too long (> 100 words)
+         - Missing context (card doesn't make sense alone)
+
+      ### Output
+
+      Append to `.ralph/scratchpad.md`:
+      ```
+      ## Diagnosis
+      - Validation: <pass/fail + details>
+      - Duplicates: <none / list with scores>
+      - Tag issues: <none / list>
+      - Content issues: <none / list>
+      - Recommended fix: <brief action plan>
+      ```
+
+      Publish event: `analysis.done`
+
+  improver:
+    name: "Card Improver"
+    description: "Fix card content, tags, and format based on diagnosis"
+    triggers:
+      - "analysis.done"
+      - "fix.needed"
+    publishes:
+      - "improved"
+    instructions: |
+      ## Improve Card
+
+      You are the Card Improver. Fix the card based on the analyst's diagnosis.
+
+      ### Process
+
+      1. Read `.ralph/scratchpad.md` for diagnosis and selected card
+      2. If diagnosis says no action needed, publish `improved` immediately
+      3. On `fix.needed` trigger, read reviewer feedback from scratchpad
+      4. Apply fixes:
+         - **Tag issues**: fix tags per taxonomy (kebab-case, `::` separator, add difficulty)
+         - **Content issues**: rewrite question/answer per card principles
+         - **Missing pair**: create the missing EN or RU card
+         - **Anti-patterns**: split sets, rewrite vague questions
+         - **Near-duplicate**: add distinguishing `[Context]` prefix or merge
+         - **Format**: add bold terms, code blocks, proper structure
+      5. Self-check: `cargo run --bin anki-atlas -- validate <file> --quality`
+
+      ### Quality Standards
+
+      - Atomic: one fact per card
+      - Active recall: "what/how/why", not yes/no
+      - Concise: answer under 100 words
+      - Bilingual: EN + RU (Cyrillic only, never transliteration)
+      - Tagged: difficulty + topic tags per taxonomy
+
+      ### Output
+
+      Update the card file with improvements.
+      Append to `.ralph/scratchpad.md`:
+      ```
+      ## Improvements Applied
+      - Changes: <list of what changed>
+      - Self-validation: <pass/fail>
+      ```
+
+      Publish event: `improved`
+
+  reviewer:
+    name: "Card Reviewer"
+    description: "Validate improvement, update progress, commit or send back for rework"
+    triggers:
+      - "improved"
+    publishes:
+      - "round.done"
+      - "fix.needed"
+    instructions: |
+      ## Review Improvement
+
+      You are the Card Reviewer. Validate the improvement and decide: accept or rework.
+
+      ### Process
+
+      1. Read `.ralph/scratchpad.md` for the card ID and improvements
+      2. If no action was needed, skip to step 5 (round.done)
+      3. Run final validation:
+         ```bash
+         cargo run --bin anki-atlas -- validate <file> --quality
+         cargo run --bin anki-atlas -- tag-audit
+         ```
+      4. Decision:
+         - **PASS**: proceed to step 5
+         - **FAIL (first time)**: append feedback to scratchpad, publish `fix.needed`
+         - **FAIL (second time)**: skip card, log reason, proceed to step 5
+
+      ### On PASS or Skip
+
+      5. Update `.ralph/card-progress.md`:
+         ```
+         | <card-id> | <timestamp> | <action> | <quality-before> | <quality-after> |
+         ```
+         Actions: `fixed-tags`, `rewritten`, `split`, `merged`, `added-pair`, `skipped`
+
+      6. Git commit:
+         ```bash
+         git add -A && git commit -m "improve(cards): <card-id> - <action>"
+         ```
+
+      7. Clear `.ralph/scratchpad.md` for next iteration
+
+      Publish event: `round.done`
+
+      ### On FAIL (rework)
+
+      Append to `.ralph/scratchpad.md`:
+      ```
+      ## Reviewer Feedback (attempt N)
+      - Issues: <what still fails>
+      - Fix: <specific instructions>
+      ```
+
+      Publish event: `fix.needed`
