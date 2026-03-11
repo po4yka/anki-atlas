@@ -15,9 +15,7 @@ use axum::{
     body::{Body, to_bytes},
     http::{Method, Request, StatusCode, header::CONTENT_TYPE},
 };
-use common::config::{EmbeddingProviderKind, Quantization, Settings, qdrant_grpc_url};
-use qdrant_client::Qdrant;
-use qdrant_client::qdrant::{CreateCollectionBuilder, Distance, VectorParamsBuilder};
+use common::config::{EmbeddingProviderKind, Quantization, Settings};
 use rusqlite::Connection;
 use serde_json::Value;
 use sqlx::PgPool;
@@ -200,17 +198,45 @@ impl TestStack {
             bail!("unexpected qdrant delete status: {}", response.status());
         }
 
-        let grpc_client = Qdrant::from_url(&qdrant_grpc_url(&self.qdrant_url)?)
-            .build()
-            .context("connect qdrant for test reset")?;
-        grpc_client
-            .create_collection(
-                CreateCollectionBuilder::new(QDRANT_COLLECTION_NAME).vectors_config(
-                    VectorParamsBuilder::new(u64::from(TEST_EMBEDDING_DIMENSION), Distance::Cosine),
-                ),
-            )
+        wait_for_qdrant_collection_state(
+            &rest_client,
+            &self.qdrant_url,
+            QDRANT_COLLECTION_NAME,
+            false,
+        )
+        .await?;
+
+        let response = rest_client
+            .put(format!(
+                "{}/collections/{QDRANT_COLLECTION_NAME}",
+                self.qdrant_url
+            ))
+            .json(&serde_json::json!({
+                "vectors": {
+                    "size": TEST_EMBEDDING_DIMENSION,
+                    "distance": "Cosine"
+                }
+            }))
+            .send()
             .await
             .context("recreate qdrant collection for test reset")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<failed to read qdrant response body>".to_string());
+            bail!("unexpected qdrant create status {status}: {body}");
+        }
+
+        wait_for_qdrant_collection_state(
+            &rest_client,
+            &self.qdrant_url,
+            QDRANT_COLLECTION_NAME,
+            true,
+        )
+        .await?;
 
         Ok(())
     }
@@ -701,6 +727,44 @@ async fn wait_for_qdrant_ready(qdrant_url: &str) -> Result<()> {
         }
 
         tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
+async fn wait_for_qdrant_collection_state(
+    client: &reqwest::Client,
+    qdrant_url: &str,
+    collection_name: &str,
+    should_exist: bool,
+) -> Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let collection_url = format!("{qdrant_url}/collections/{collection_name}");
+
+    loop {
+        let response = client
+            .get(&collection_url)
+            .send()
+            .await
+            .with_context(|| format!("poll qdrant collection state for {collection_name}"))?;
+        let exists = response.status().is_success();
+
+        if exists == should_exist {
+            return Ok(());
+        }
+        if !exists && response.status() != StatusCode::NOT_FOUND {
+            bail!(
+                "unexpected qdrant collection poll status {} for {}",
+                response.status(),
+                collection_name
+            );
+        }
+
+        if Instant::now() >= deadline {
+            bail!(
+                "qdrant collection {collection_name} did not reach expected existence state {should_exist}"
+            );
+        }
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
     }
 }
 

@@ -109,7 +109,6 @@ dependencies = [
  "escargot",
  "jobs",
  "mockall",
- "qdrant-client",
  "reqwest 0.13.2",
  "rusqlite",
  "search",
