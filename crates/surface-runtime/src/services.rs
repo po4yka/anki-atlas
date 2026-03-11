@@ -279,10 +279,12 @@ pub async fn build_surface_services(
         .await
         .context("check Qdrant health for surface runtime")?;
 
-    let vector_repo = Arc::new(QdrantVectorStore::new(
-        qdrant_client.clone(),
-        collection_name,
-    )) as SharedVectorRepository;
+    let vector_store = Arc::new(QdrantVectorStore::new(qdrant_client.clone(), collection_name));
+    vector_store
+        .ensure_collection(settings.embedding().dimension as usize)
+        .await
+        .context("ensure Qdrant collection for surface runtime")?;
+    let vector_repo = vector_store as SharedVectorRepository;
     let reranker = build_reranker(settings);
     let rerank_enabled = settings.rerank().enabled && reranker.is_some();
 
