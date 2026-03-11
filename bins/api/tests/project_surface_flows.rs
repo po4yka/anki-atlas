@@ -193,6 +193,12 @@ async fn api_key_auth_works_with_real_services() -> Result<()> {
     let (status_code, _) = stack.get_json("/topics", &[]).await?;
     assert_eq!(status_code, StatusCode::UNAUTHORIZED);
 
+    let (status_code, topics) = stack
+        .get_json("/topics", &[("x-api-key", "secret-key")])
+        .await?;
+    assert_eq!(status_code, StatusCode::OK);
+    assert_eq!(topics["topics"].as_array().unwrap().len(), 0);
+
     let (status_code, _) = stack
         .post_json("/search", &json!({ "query": "Ownership" }), &[])
         .await?;
@@ -206,15 +212,6 @@ async fn api_key_auth_works_with_real_services() -> Result<()> {
         )
         .await?;
     assert_eq!(status_code, StatusCode::UNAUTHORIZED);
-
-    let (status_code, _) = stack
-        .post_json(
-            "/search",
-            &json!({ "query": "Ownership" }),
-            &[("x-api-key", "secret-key")],
-        )
-        .await?;
-    assert_eq!(status_code, StatusCode::OK);
 
     Ok(())
 }
