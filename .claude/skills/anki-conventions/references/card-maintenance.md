@@ -188,11 +188,21 @@ Flipping cards without committing to an answer:
 
 **Fix:** Say or write answer before flipping.
 
+### AI-Dependent Recall
+
+Relying on AI instead of building your own recall ability:
+- Prompting for answers feels like knowing, but doesn't build retrieval pathways
+- Skipping the struggle phase prevents durable memory formation
+- Over time, you lose the ability to reason independently about the topic
+
+**Fix:** Use AI to generate practice questions and test yourself, not to replace recall. If you can't explain it without AI, you don't know it yet. See `learning-in-ai-age.md`.
+
 ### Over-Ankification
 
 Spending more time on Anki than on actual learning/practice:
 - Anki supports learning, doesn't replace it
 - Procedural skills need practice, not cards
 - Diminishing returns on card quantity
+- AI-assisted learning shifts the balance: use AI for exploration, Anki for retention
 
-**Fix:** 80% immersion/practice, 20% Anki.
+**Fix:** 70% immersion/practice, 10% AI-assisted exploration, 20% Anki.

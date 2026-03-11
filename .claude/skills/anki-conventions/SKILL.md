@@ -13,7 +13,7 @@ description: >
 
 ## Card Philosophy: Mastery-Oriented
 
-Cards are designed for deep understanding and terminology mastery, not elementary-level learning.
+Cards are designed for deep understanding and terminology mastery, not elementary-level learning. Cards build the mental models AI cannot substitute.
 
 | Principle | Description |
 |-----------|-------------|
@@ -92,9 +92,11 @@ See `references/tag-conventions.md` for full rules, normalization, and validatio
 
 ### FSRS Quick Setup
 
+FSRS-7 is the **final major version**. Current: FSRS-6 (Anki 25.02+).
+
 1. Enable FSRS in deck options
 2. Set desired retention to **0.90**
-3. Learning step: **15m or 30m** (single step)
+3. Learning step: **15m or 30m** (single step, completable same day)
 4. Click "Optimize" monthly
 5. Use **Again** and **Good** primarily (never "Hard" when forgotten)
 
@@ -147,4 +149,5 @@ Always verify operations:
 | **Deck organization** | `references/deck-organization.md` |
 | **Card maintenance** | `references/card-maintenance.md` |
 | **Tag conventions** | `references/tag-conventions.md` |
+| **Learning in AI age** | `references/learning-in-ai-age.md` |
 | **Troubleshooting** | `references/troubleshooting.md` |

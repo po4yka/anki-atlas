@@ -32,12 +32,14 @@ Programming is an applied discipline. Cards should build expert-level mental mod
 | Design rationale | Why certain APIs are designed a way, what problems they solve |
 | Failure mode knowledge | What causes specific errors, how to diagnose and prevent them |
 | Comparative analysis | Hash table vs BST trade-offs, when each excels |
+| Mental models AI can't substitute | Intuitions that guide architectural decisions and debugging hunches |
 
 ## What NOT to Card
 
 | Avoid | Why |
 |-------|-----|
 | Detailed API signatures | Reference docs exist, APIs change |
+| AI-retrievable syntax | LLMs answer syntax questions instantly; card the reasoning instead |
 | Information that changes frequently | Version-specific details |
 | Entire function implementations | Should be practiced, not memorized |
 | Multi-step procedural knowledge | Deployment scripts, setup procedures |
@@ -165,6 +167,13 @@ Technical knowledge changes. Schedule periodic reviews:
 - [ ] Remove cards you now find trivial
 - [ ] Add cards for new gotchas you encounter
 
+## Cards in the AI Age
+
+Programming cards should focus on reasoning, trade-offs, and mental models that build intuition -- not facts an LLM can answer instantly. Card the "why" behind design decisions, the failure modes you need to recognize in real-time, and the comparative frameworks that guide architectural choices. Outsource exact syntax, API signatures, and boilerplate to AI lookup.
+
+See `learning-in-ai-age.md` for the full decision framework.
+
 ## Related References
 
 - See `card-patterns.md` for general card design principles
+- See `learning-in-ai-age.md` for what to card vs outsource to AI

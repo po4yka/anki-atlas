@@ -77,9 +77,39 @@ Provides additional features:
 
 | Version | Anki Release | Key Features |
 |---------|--------------|--------------|
-| FSRS-4 | < 24.11 | Original implementation |
+| FSRS-4 | < 24.11 | Original implementation, 19 parameters |
 | FSRS-5 | 24.11+ | Short-term memory modeling, recency weighting |
-| FSRS-6 | 25.02+ | 21 parameters, considers all daily reviews |
+| FSRS-6 | 25.02+ | 21 parameters (+`w19`, `w20`), personalized forgetting curve, uses all same-day reviews |
+| FSRS-7 | TBA | **Final major version** -- no further major releases planned |
+
+### FSRS-6 Details
+
+**Personalized forgetting curve:** FSRS-6 introduces `w20` which personalizes the shape of the forgetting curve per user. The formula changes from exponential to a power function:
+
+```
+R = (1 + w20 * t/S)^(-1/w20)
+```
+
+Where `R` = retrievability, `t` = time since last review, `S` = stability. When `w20` is small, the curve approximates exponential decay; larger values produce slower forgetting.
+
+**Same-day review handling:** FSRS-5 used only the first review of a card on any given day. FSRS-6 uses all same-day reviews, improving accuracy for cards reviewed multiple times in one session.
+
+## Algorithm Benchmarks
+
+Based on the open benchmark dataset: 9,999 collections, 350M+ reviews.
+
+| Comparison | FSRS-6 Superiority | Meaning |
+|------------|-------------------|---------|
+| FSRS-6 vs SM-2 | 99.6% | FSRS-6 outperforms SM-2 on nearly all collections |
+| FSRS-6 vs FSRS-5 | 88.2% | Meaningful improvement from personalized forgetting curve |
+
+**Recency weighting** (introduced in FSRS-5) reduces prediction error by ~4.5% by giving more weight to recent reviews during parameter optimization.
+
+### Desired Retention Notes
+
+- **90% remains the recommended default** for most users
+- Anki provides a "Compute minimum recommended retention" feature to find the workload-optimal point
+- Learning steps should be completable within the same day (max 12-14 hours) to avoid interfering with FSRS scheduling
 
 ## Troubleshooting
 
