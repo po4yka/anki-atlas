@@ -31,3 +31,34 @@ pub enum SurfaceError {
     #[error("obsidian error: {0}")]
     Obsidian(#[from] obsidian::ObsidianError),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn surface_error_display_messages() {
+        let err = SurfaceError::Unsupported("nope".into());
+        assert_eq!(err.to_string(), "unsupported operation: nope");
+
+        let err = SurfaceError::PathNotFound(PathBuf::from("/tmp/missing"));
+        assert_eq!(err.to_string(), "path not found: /tmp/missing");
+
+        let err = SurfaceError::InvalidInput("bad data".into());
+        assert_eq!(err.to_string(), "invalid input: bad data");
+    }
+
+    #[test]
+    fn surface_error_from_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "gone");
+        let err: SurfaceError = io_err.into();
+        assert!(matches!(err, SurfaceError::Io(_)));
+        assert!(err.to_string().contains("gone"));
+    }
+
+    #[test]
+    fn surface_error_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<SurfaceError>();
+    }
+}

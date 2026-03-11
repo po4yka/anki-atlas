@@ -451,6 +451,7 @@ pub struct IndexingService {
 }
 
 #[async_trait::async_trait]
+#[cfg_attr(test, mockall::automock)]
 pub trait IndexExecutor: Send + Sync {
     async fn index_all_notes(
         &self,
@@ -721,6 +722,8 @@ impl VectorRepository for UnsupportedVectorRepository {
         Ok(())
     }
 }
+
+// ---- QdrantVectorStore ----
 
 pub struct QdrantVectorStore {
     client: Qdrant,
@@ -1019,5 +1022,305 @@ impl VectorRepository for QdrantVectorStore {
 
     async fn close(&self) -> Result<(), indexer::qdrant::VectorStoreError> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anki_sync::SyncStats;
+    use indexer::qdrant::SearchFilters;
+    use obsidian::parser::ParsedNote;
+    use obsidian::sync::CardGenerator;
+    use qdrant_client::qdrant::point_id;
+    use std::collections::HashMap;
+
+    // --- build_filters tests ---
+
+    fn dummy_store() -> QdrantVectorStore {
+        let client = Qdrant::from_url("http://localhost:0").build().unwrap();
+        QdrantVectorStore::new(client, "test")
+    }
+
+    #[test]
+    fn build_filters_all_none_returns_none() {
+        let store = dummy_store();
+        let filters = SearchFilters::default();
+        assert!(store.build_filters(&filters).is_none());
+    }
+
+    #[test]
+    fn build_filters_deck_names_only() {
+        let store = dummy_store();
+        let filters = SearchFilters {
+            deck_names: Some(vec!["Deck1".into()]),
+            ..Default::default()
+        };
+        let filter = store.build_filters(&filters).unwrap();
+        assert_eq!(filter.must.len(), 1);
+        assert!(filter.must_not.is_empty());
+    }
+
+    #[test]
+    fn build_filters_tags_exclude_only() {
+        let store = dummy_store();
+        let filters = SearchFilters {
+            tags_exclude: Some(vec!["old".into()]),
+            ..Default::default()
+        };
+        let filter = store.build_filters(&filters).unwrap();
+        assert!(filter.must.is_empty());
+        assert_eq!(filter.must_not.len(), 1);
+    }
+
+    #[test]
+    fn build_filters_mature_only_flag() {
+        let store = dummy_store();
+        let filters = SearchFilters {
+            mature_only: true,
+            ..Default::default()
+        };
+        let filter = store.build_filters(&filters).unwrap();
+        assert_eq!(filter.must.len(), 1);
+    }
+
+    #[test]
+    fn build_filters_min_reps_range() {
+        let store = dummy_store();
+        let filters = SearchFilters {
+            min_reps: Some(5),
+            ..Default::default()
+        };
+        let filter = store.build_filters(&filters).unwrap();
+        assert_eq!(filter.must.len(), 1);
+    }
+
+    #[test]
+    fn build_filters_max_lapses_range() {
+        let store = dummy_store();
+        let filters = SearchFilters {
+            max_lapses: Some(3),
+            ..Default::default()
+        };
+        let filter = store.build_filters(&filters).unwrap();
+        assert_eq!(filter.must.len(), 1);
+    }
+
+    #[test]
+    fn build_filters_combined_must_and_must_not() {
+        let store = dummy_store();
+        let filters = SearchFilters {
+            deck_names: Some(vec!["A".into()]),
+            tags_exclude: Some(vec!["B".into()]),
+            ..Default::default()
+        };
+        let filter = store.build_filters(&filters).unwrap();
+        assert_eq!(filter.must.len(), 1);
+        assert_eq!(filter.must_not.len(), 1);
+    }
+
+    #[test]
+    fn build_filters_empty_vecs_treated_as_none() {
+        let store = dummy_store();
+        let filters = SearchFilters {
+            deck_names: Some(vec![]),
+            tags: Some(vec![]),
+            tags_exclude: Some(vec![]),
+            deck_names_exclude: Some(vec![]),
+            model_ids: Some(vec![]),
+            ..Default::default()
+        };
+        assert!(store.build_filters(&filters).is_none());
+    }
+
+    // --- parse_validation_input tests ---
+
+    #[test]
+    fn parse_validation_input_valid_three_parts() {
+        let content = "What is Rust?\n---\nA systems language.\n---\ncs::rust\nprogramming";
+        let (front, back, tags) = parse_validation_input(content).unwrap();
+        assert_eq!(front, "What is Rust?");
+        assert_eq!(back, "A systems language.");
+        assert_eq!(tags, vec!["cs::rust", "programming"]);
+    }
+
+    #[test]
+    fn parse_validation_input_two_parts_no_tags() {
+        let content = "Front\n---\nBack";
+        let (front, back, tags) = parse_validation_input(content).unwrap();
+        assert_eq!(front, "Front");
+        assert_eq!(back, "Back");
+        assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn parse_validation_input_missing_back_returns_error() {
+        let content = "Only front content";
+        let result = parse_validation_input(content);
+        assert!(matches!(result, Err(SurfaceError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn parse_validation_input_empty_front_returns_error() {
+        let content = "\n---\nBack content";
+        let result = parse_validation_input(content);
+        assert!(matches!(result, Err(SurfaceError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn parse_validation_input_tags_trimmed_and_filtered() {
+        let content = "Front\n---\nBack\n---\n  cs::basics  \n\n  rust  \n  ";
+        let (_, _, tags) = parse_validation_input(content).unwrap();
+        assert_eq!(tags, vec!["cs::basics", "rust"]);
+    }
+
+    // --- PreviewCardGenerator tests ---
+
+    fn make_parsed_note(
+        title: Option<&str>,
+        sections: Vec<(&str, &str)>,
+        body: &str,
+    ) -> ParsedNote {
+        ParsedNote {
+            path: PathBuf::from("test.md"),
+            frontmatter: HashMap::new(),
+            content: String::new(),
+            body: body.to_string(),
+            sections: sections
+                .into_iter()
+                .map(|(h, c)| (h.to_string(), c.to_string()))
+                .collect(),
+            title: title.map(ToString::to_string),
+        }
+    }
+
+    #[test]
+    fn preview_card_generator_with_sections() {
+        let generator = PreviewCardGenerator;
+        let note = make_parsed_note(
+            Some("Test Note"),
+            vec![("Heading 1", "Content 1"), ("Heading 2", "Content 2")],
+            "",
+        );
+        let cards = generator.generate(&note);
+        assert_eq!(cards.len(), 2);
+        assert!(cards[0].apf_html.contains("Heading 1"));
+        assert!(cards[1].apf_html.contains("Content 2"));
+    }
+
+    #[test]
+    fn preview_card_generator_no_sections_generates_one() {
+        let generator = PreviewCardGenerator;
+        let note = make_parsed_note(Some("Empty"), vec![], "Full body text");
+        let cards = generator.generate(&note);
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].apf_html, "Full body text");
+    }
+
+    #[test]
+    fn preview_card_generator_slug_format() {
+        let generator = PreviewCardGenerator;
+        let note = make_parsed_note(
+            Some("My Great Note"),
+            vec![("S1", "C1"), ("S2", "C2")],
+            "",
+        );
+        let cards = generator.generate(&note);
+        assert_eq!(cards[0].slug, "my-great-note-1");
+        assert_eq!(cards[1].slug, "my-great-note-2");
+    }
+
+    // --- SyncStatsSummary::from ---
+
+    #[test]
+    fn sync_stats_summary_from_maps_all_fields() {
+        let stats = SyncStats {
+            decks_upserted: 1,
+            models_upserted: 2,
+            notes_upserted: 3,
+            notes_deleted: 4,
+            cards_upserted: 5,
+            card_stats_upserted: 6,
+            duration_ms: 7,
+        };
+        let summary = SyncStatsSummary::from(stats);
+        assert_eq!(summary.decks_upserted, 1);
+        assert_eq!(summary.models_upserted, 2);
+        assert_eq!(summary.notes_upserted, 3);
+        assert_eq!(summary.notes_deleted, 4);
+        assert_eq!(summary.cards_upserted, 5);
+        assert_eq!(summary.card_stats_upserted, 6);
+        assert_eq!(summary.duration_ms, 7);
+    }
+
+    // --- Default impls ---
+
+    #[test]
+    fn generate_preview_service_default_does_not_panic() {
+        let _service: GeneratePreviewService = Default::default();
+    }
+
+    #[test]
+    fn validation_service_default_does_not_panic() {
+        let _service = ValidationService::default();
+    }
+
+    #[test]
+    fn obsidian_scan_service_default_does_not_panic() {
+        let _service: ObsidianScanService = Default::default();
+    }
+
+    #[test]
+    fn tag_audit_service_default_does_not_panic() {
+        let _service: TagAuditService = Default::default();
+    }
+
+    // --- note_id_from_point ---
+
+    #[test]
+    fn note_id_from_point_numeric_ok() {
+        let store = dummy_store();
+        let point = Some(PointId {
+            point_id_options: Some(point_id::PointIdOptions::Num(42)),
+        });
+        assert_eq!(store.note_id_from_point(point).unwrap(), 42);
+    }
+
+    #[test]
+    fn note_id_from_point_uuid_err() {
+        let store = dummy_store();
+        let point = Some(PointId {
+            point_id_options: Some(point_id::PointIdOptions::Uuid(
+                "550e8400-e29b-41d4-a716-446655440000".into(),
+            )),
+        });
+        assert!(store.note_id_from_point(point).is_err());
+    }
+
+    #[test]
+    fn note_id_from_point_none_err() {
+        let store = dummy_store();
+        assert!(store.note_id_from_point(None).is_err());
+    }
+
+    // --- Send + Sync ---
+
+    #[test]
+    fn all_public_types_are_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<GeneratePreview>();
+        assert_send_sync::<ValidationSummary>();
+        assert_send_sync::<ObsidianNotePreview>();
+        assert_send_sync::<ObsidianScanPreview>();
+        assert_send_sync::<TagAuditEntry>();
+        assert_send_sync::<TagAuditSummary>();
+        assert_send_sync::<SyncExecutionSummary>();
+        assert_send_sync::<IndexExecutionSummary>();
+        assert_send_sync::<SyncStatsSummary>();
+        assert_send_sync::<GeneratePreviewService>();
+        assert_send_sync::<ValidationService>();
+        assert_send_sync::<ObsidianScanService>();
+        assert_send_sync::<TagAuditService>();
+        assert_send_sync::<QdrantVectorStore>();
     }
 }

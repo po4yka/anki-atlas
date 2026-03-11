@@ -36,6 +36,7 @@ pub struct BuildSurfaceServicesOptions {
 }
 
 #[async_trait::async_trait]
+#[cfg_attr(test, mockall::automock)]
 pub trait SearchFacade: Send + Sync {
     async fn search(
         &self,
@@ -44,6 +45,7 @@ pub trait SearchFacade: Send + Sync {
 }
 
 #[async_trait::async_trait]
+#[cfg_attr(test, mockall::automock)]
 pub trait AnalyticsFacade: Send + Sync {
     async fn load_taxonomy(
         &self,
