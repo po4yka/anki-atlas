@@ -15,7 +15,9 @@ use axum::{
     body::{Body, to_bytes},
     http::{Method, Request, StatusCode, header::CONTENT_TYPE},
 };
-use common::config::{EmbeddingProviderKind, Quantization, Settings};
+use common::config::{EmbeddingProviderKind, Quantization, Settings, qdrant_grpc_url};
+use qdrant_client::Qdrant;
+use qdrant_client::qdrant::{CreateCollectionBuilder, Distance, VectorParamsBuilder};
 use rusqlite::Connection;
 use serde_json::Value;
 use sqlx::PgPool;
@@ -31,6 +33,7 @@ use uuid::Uuid;
 
 const QDRANT_COLLECTION_NAME: &str = "anki_notes";
 const QDRANT_IMAGE_TAG: &str = "v1.16.3";
+const TEST_EMBEDDING_DIMENSION: u32 = 384;
 
 pub struct SeedNote<'a> {
     pub note_id: i64,
@@ -183,8 +186,8 @@ impl TestStack {
     }
 
     pub async fn reset_qdrant_collection(&self) -> Result<()> {
-        let client = reqwest::Client::new();
-        let response = client
+        let rest_client = reqwest::Client::new();
+        let response = rest_client
             .delete(format!(
                 "{}/collections/{QDRANT_COLLECTION_NAME}",
                 self.qdrant_url
@@ -196,6 +199,18 @@ impl TestStack {
         if !response.status().is_success() && response.status() != StatusCode::NOT_FOUND {
             bail!("unexpected qdrant delete status: {}", response.status());
         }
+
+        let grpc_client = Qdrant::from_url(&qdrant_grpc_url(&self.qdrant_url)?)
+            .build()
+            .context("connect qdrant for test reset")?;
+        grpc_client
+            .create_collection(
+                CreateCollectionBuilder::new(QDRANT_COLLECTION_NAME).vectors_config(
+                    VectorParamsBuilder::new(u64::from(TEST_EMBEDDING_DIMENSION), Distance::Cosine),
+                ),
+            )
+            .await
+            .context("recreate qdrant collection for test reset")?;
 
         Ok(())
     }
@@ -571,7 +586,7 @@ fn build_settings(
         job_max_retries: 3,
         embedding_provider: EmbeddingProviderKind::Mock,
         embedding_model: "mock/test".to_string(),
-        embedding_dimension: 384,
+        embedding_dimension: TEST_EMBEDDING_DIMENSION,
         rerank_enabled: false,
         rerank_model: "test-rerank".to_string(),
         rerank_top_n: 10,

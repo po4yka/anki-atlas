@@ -40,6 +40,7 @@ async-trait = { workspace = true }
 database = { path = "../../crates/database" }
 escargot = "0.5"
 mockall = { workspace = true }
+qdrant-client = { workspace = true }
 reqwest = { workspace = true }
 rusqlite = { workspace = true }
 serde_json = { workspace = true }
