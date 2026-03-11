@@ -87,12 +87,7 @@ impl TestStack {
             .start()
             .await
             .context("start postgres container")?;
-        let redis = GenericImage::new("redis", "7-alpine")
-            .with_exposed_port(6379.tcp())
-            .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
-            .start()
-            .await
-            .context("start redis container")?;
+        let redis = start_redis_container().await?;
         let qdrant = GenericImage::new("qdrant/qdrant", QDRANT_IMAGE_TAG)
             .with_exposed_port(6333.tcp())
             .with_exposed_port(6334.tcp())
@@ -643,6 +638,32 @@ fn default_env(settings: &Settings) -> HashMap<String, String> {
             settings.api_key.clone().unwrap_or_default(),
         ),
     ])
+}
+
+async fn start_redis_container() -> Result<ContainerAsync<GenericImage>> {
+    let mut last_error = None;
+
+    for attempt in 1..=3 {
+        match GenericImage::new("redis", "7-alpine")
+            .with_exposed_port(6379.tcp())
+            .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
+            .start()
+            .await
+        {
+            Ok(container) => return Ok(container),
+            Err(error) => {
+                last_error = Some(error);
+                if attempt < 3 {
+                    tokio::time::sleep(Duration::from_secs(attempt)).await;
+                }
+            }
+        }
+    }
+
+    Err(anyhow!(
+        "start redis container after retries: {}",
+        last_error.expect("redis startup should produce an error")
+    ))
 }
 
 async fn wait_for_qdrant_ready(qdrant_url: &str) -> Result<()> {

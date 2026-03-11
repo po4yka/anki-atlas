@@ -109,6 +109,32 @@ where
     }
 }
 
+async fn start_redis_container() -> anyhow::Result<testcontainers::ContainerAsync<GenericImage>> {
+    let mut last_error = None;
+
+    for attempt in 1..=3 {
+        match GenericImage::new("redis", "7-alpine")
+            .with_exposed_port(6379.tcp())
+            .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
+            .start()
+            .await
+        {
+            Ok(container) => return Ok(container),
+            Err(error) => {
+                last_error = Some(error);
+                if attempt < 3 {
+                    tokio::time::sleep(Duration::from_secs(attempt)).await;
+                }
+            }
+        }
+    }
+
+    Err(anyhow::anyhow!(
+        "start redis container after retries: {}",
+        last_error.expect("redis startup should produce an error")
+    ))
+}
+
 async fn shutdown_and_join<Q: QueueBackend + 'static>(
     worker: &Arc<Worker<Q>>,
     handle: tokio::task::JoinHandle<anyhow::Result<()>>,
@@ -675,12 +701,7 @@ async fn brpop_uses_configured_queue_name_and_timeout() {
 
 #[tokio::test]
 async fn redis_manager_and_worker_drive_terminal_job_status() {
-    let (redis_url, _container) = match GenericImage::new("redis", "7-alpine")
-        .with_exposed_port(6379.tcp())
-        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
-        .start()
-        .await
-    {
+    let (redis_url, _container) = match start_redis_container().await {
         Ok(container) => {
             let host = container.get_host().await.expect("redis host");
             let port = container
