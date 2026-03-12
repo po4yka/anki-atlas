@@ -23,7 +23,7 @@ use sqlx::PgPool;
 
 use crate::workflows::{
     GeneratePreviewService, IndexExecutor, IndexingService, ObsidianScanService, QdrantVectorStore,
-    SyncExecutionService, SyncExecutor, TagAuditService, ValidationService,
+    SyncExecutionService, TagAuditService, ValidationService,
 };
 
 type SharedEmbeddingProvider = Arc<dyn EmbeddingProvider>;
@@ -180,7 +180,7 @@ pub struct SurfaceServices {
     pub job_manager: Arc<dyn JobManager>,
     pub search: Arc<dyn SearchFacade>,
     pub analytics: Arc<dyn AnalyticsFacade>,
-    pub sync: Arc<dyn SyncExecutor>,
+    pub sync: Arc<SyncExecutionService>,
     pub index: Arc<dyn IndexExecutor>,
     pub generate_preview: Arc<GeneratePreviewService>,
     pub validation: Arc<ValidationService>,

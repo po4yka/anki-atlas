@@ -9,7 +9,7 @@ pub use services::{
 };
 pub use workflows::{
     GeneratePreview, GeneratePreviewService, IndexExecutionSummary, IndexExecutor, IndexingService,
-    ObsidianScanPreview, ObsidianScanService, SyncExecutionService, SyncExecutionSummary,
-    SyncExecutor, TagAuditEntry, TagAuditService, TagAuditSummary, ValidationService,
-    ValidationSummary,
+    ObsidianScanPreview, ObsidianScanService, SurfaceOperation, SurfaceProgressEvent,
+    SurfaceProgressSink, SyncExecutionHandle, SyncExecutionService, SyncExecutionSummary,
+    TagAuditEntry, TagAuditService, TagAuditSummary, ValidationService, ValidationSummary,
 };

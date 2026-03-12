@@ -7,6 +7,7 @@ Anki Atlas is a Rust workspace for syncing Anki data, building a hybrid search i
 | Surface | Binary | What it does |
 |---|---|---|
 | CLI | `anki-atlas` | Direct sync/index execution, search, analytics, taxonomy operations, and local preview workflows |
+| TUI | `anki-atlas tui` | Full-screen operator console over the local runtime for search, analytics, and workflow execution |
 | API | `anki-atlas-api` | Typed read endpoints plus async-only job entrypoints for sync and index |
 | MCP | `anki-atlas-mcp` | Typed agent tools with `markdown` and `json` output modes |
 | Worker | `anki-atlas-worker` | Redis-backed job execution, gated behind `ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1` |
@@ -70,6 +71,7 @@ cargo run --bin anki-atlas -- migrate
 # CLI
 cargo run --bin anki-atlas -- search "ownership" -n 5
 cargo run --bin anki-atlas -- topics tree --root-path rust
+cargo run --bin anki-atlas -- tui
 
 # API
 cargo run --bin anki-atlas-api
@@ -108,6 +110,7 @@ The CLI currently supports:
 
 - `version`
 - `migrate`
+- `tui`
 - `sync`
 - `index`
 - `search`
@@ -130,7 +133,28 @@ cargo run --bin anki-atlas -- sync /path/to/collection.anki2 --force-reindex
 cargo run --bin anki-atlas -- duplicates --threshold 0.95 --max 25 --deck Rust
 cargo run --bin anki-atlas -- validate /path/to/cards.txt --quality
 cargo run --bin anki-atlas -- obsidian-sync /path/to/vault --dry-run
+cargo run --bin anki-atlas -- tui
 ```
+
+### TUI
+
+`anki-atlas tui` starts a full-screen terminal UI over the same direct local runtime used by the CLI. It bootstraps PostgreSQL, Qdrant, and Redis on startup and exposes:
+
+- `Home` for bootstrap state, config summary, and session activity
+- `Search` for hybrid search queries with deck/tag filters
+- `Topics` for taxonomy tree, coverage, gaps, weak notes, and duplicates
+- `Workflows` for sync, index, generate preview, validate, obsidian preview, and tag audit
+
+Keybindings:
+
+- `Tab` to advance within the active screen
+- `Shift+Tab` to move focus back to the navigation rail
+- `Arrow keys` or `j` / `k` to move
+- `Arrow left/right` or `h` / `l` to change tabs or result selection
+- `Enter` to edit, toggle, or run
+- `/` to jump straight to search
+- `Esc` to back out
+- `q` to quit
 
 ## MCP Surface
 

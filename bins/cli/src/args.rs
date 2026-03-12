@@ -16,6 +16,7 @@ pub struct Cli {
 pub enum Commands {
     Version,
     Migrate,
+    Tui,
     Sync(SyncArgs),
     Index(IndexArgs),
     Search(SearchArgs),

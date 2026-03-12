@@ -1,6 +1,9 @@
 use std::fs;
+use std::sync::{Arc, Mutex};
 
-use surface_runtime::ObsidianScanService;
+use surface_runtime::{
+    ObsidianScanService, SurfaceOperation, SurfaceProgressEvent, SurfaceProgressSink,
+};
 
 #[test]
 fn scan_non_dry_run_returns_unsupported() {
@@ -57,4 +60,38 @@ fn scan_vault_with_markdown_notes() {
         .unwrap();
     assert!(preview.note_count >= 2, "should find at least 2 notes");
     assert!(!preview.notes.is_empty());
+}
+
+#[test]
+fn scan_with_progress_emits_stage_updates() {
+    let dir = tempfile::tempdir().unwrap();
+    let notes_dir = dir.path().join("notes");
+    fs::create_dir_all(&notes_dir).unwrap();
+    fs::write(
+        notes_dir.join("topic.md"),
+        "---\ntitle: Topic\n---\n## Section 1\nContent here.\n",
+    )
+    .unwrap();
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let captured = Arc::clone(&events);
+    let progress = Arc::new(move |event: SurfaceProgressEvent| {
+        captured.lock().unwrap().push(event);
+    }) as SurfaceProgressSink;
+
+    let service = ObsidianScanService::new();
+    let preview = service
+        .scan_with_progress(dir.path(), &["notes".to_string()], true, Some(progress))
+        .unwrap();
+
+    let events = events.lock().unwrap();
+    assert!(preview.note_count >= 1);
+    assert!(events.iter().any(|event| event.stage == "scanning_vault"));
+    assert!(events.iter().any(|event| event.stage == "generating"));
+    assert!(events.iter().any(|event| event.stage == "completed"));
+    assert!(
+        events
+            .iter()
+            .all(|event| event.operation == SurfaceOperation::ObsidianScan)
+    );
 }

@@ -23,6 +23,59 @@ pub struct NoteForIndexing {
     pub fail_rate: Option<f64>,
 }
 
+/// Progress callback for indexing work.
+pub type IndexProgressCallback = Arc<dyn Fn(IndexProgressEvent) + Send + Sync>;
+
+/// Stage-level progress emitted during indexing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexProgressStage {
+    Starting,
+    HashLookup,
+    Diffing,
+    Embedding,
+    Upserting,
+    Completed,
+}
+
+impl IndexProgressStage {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Starting => "starting",
+            Self::HashLookup => "hash_lookup",
+            Self::Diffing => "diffing",
+            Self::Embedding => "embedding",
+            Self::Upserting => "upserting",
+            Self::Completed => "completed",
+        }
+    }
+}
+
+/// Progress event emitted during indexing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexProgressEvent {
+    pub stage: IndexProgressStage,
+    pub current: usize,
+    pub total: usize,
+    pub message: String,
+}
+
+fn emit_progress(
+    callback: Option<&IndexProgressCallback>,
+    stage: IndexProgressStage,
+    current: usize,
+    total: usize,
+    message: impl Into<String>,
+) {
+    if let Some(callback) = callback {
+        callback(IndexProgressEvent {
+            stage,
+            current,
+            total,
+            message: message.into(),
+        });
+    }
+}
+
 /// Statistics from an indexing operation.
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct IndexStats {
@@ -68,12 +121,52 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         notes: &[NoteForIndexing],
         force_reindex: bool,
     ) -> Result<IndexStats, IndexError> {
+        self.index_notes_with_progress(notes, force_reindex, None)
+            .await
+    }
+
+    #[instrument(skip(self, notes, progress), fields(note_count = notes.len()))]
+    pub async fn index_notes_with_progress(
+        &self,
+        notes: &[NoteForIndexing],
+        force_reindex: bool,
+        progress: Option<IndexProgressCallback>,
+    ) -> Result<IndexStats, IndexError> {
+        emit_progress(
+            progress.as_ref(),
+            IndexProgressStage::Starting,
+            0,
+            notes.len().max(1),
+            format!("starting indexing for {} notes", notes.len()),
+        );
+
         if notes.is_empty() {
+            emit_progress(
+                progress.as_ref(),
+                IndexProgressStage::Completed,
+                1,
+                1,
+                "indexing completed with no notes",
+            );
             return Ok(IndexStats::default());
         }
 
+        emit_progress(
+            progress.as_ref(),
+            IndexProgressStage::HashLookup,
+            0,
+            1,
+            "loading stored content hashes",
+        );
         let note_ids: Vec<i64> = notes.iter().map(|n| n.note_id).collect();
         let existing_hashes = self.vector_repo.get_existing_hashes(&note_ids).await?;
+        emit_progress(
+            progress.as_ref(),
+            IndexProgressStage::HashLookup,
+            1,
+            1,
+            "loaded stored content hashes",
+        );
 
         let model_name = self.embedding.model_name();
 
@@ -81,17 +174,31 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         let mut to_embed: Vec<(&NoteForIndexing, String)> = Vec::new();
         let mut skipped = 0usize;
 
-        for note in notes {
+        for (idx, note) in notes.iter().enumerate() {
             let new_hash = embeddings::content_hash(model_name, &note.normalized_text);
             if !force_reindex {
                 if let Some(existing) = existing_hashes.get(&note.note_id) {
                     if *existing == new_hash {
                         skipped += 1;
+                        emit_progress(
+                            progress.as_ref(),
+                            IndexProgressStage::Diffing,
+                            idx + 1,
+                            notes.len(),
+                            format!("skipped unchanged note {}", note.note_id),
+                        );
                         continue;
                     }
                 }
             }
             to_embed.push((note, new_hash));
+            emit_progress(
+                progress.as_ref(),
+                IndexProgressStage::Diffing,
+                idx + 1,
+                notes.len(),
+                format!("queued note {} for embedding", note.note_id),
+            );
         }
 
         let mut stats = IndexStats {
@@ -101,15 +208,36 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         };
 
         if to_embed.is_empty() {
+            emit_progress(
+                progress.as_ref(),
+                IndexProgressStage::Completed,
+                notes.len(),
+                notes.len(),
+                "all notes were unchanged; indexing skipped",
+            );
             return Ok(stats);
         }
 
         // Embed texts
+        emit_progress(
+            progress.as_ref(),
+            IndexProgressStage::Embedding,
+            0,
+            to_embed.len(),
+            format!("embedding {} notes", to_embed.len()),
+        );
         let texts: Vec<String> = to_embed
             .iter()
             .map(|(n, _)| n.normalized_text.clone())
             .collect();
         let vectors = self.embedding.embed(&texts).await?;
+        emit_progress(
+            progress.as_ref(),
+            IndexProgressStage::Embedding,
+            to_embed.len(),
+            to_embed.len(),
+            format!("embedded {} notes", to_embed.len()),
+        );
 
         // Build payloads using cached hashes
         let payloads: Vec<NotePayload> = to_embed
@@ -133,12 +261,36 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
             .map(|(n, _)| QdrantRepository::text_to_sparse_vector(&n.normalized_text))
             .collect();
 
+        emit_progress(
+            progress.as_ref(),
+            IndexProgressStage::Upserting,
+            0,
+            to_embed.len(),
+            format!("upserting {} note vectors", to_embed.len()),
+        );
         let upserted = self
             .vector_repo
             .upsert_vectors(&vectors, &payloads, Some(&sparse_vectors))
             .await?;
 
         stats.notes_embedded = upserted;
+        emit_progress(
+            progress.as_ref(),
+            IndexProgressStage::Upserting,
+            upserted,
+            to_embed.len(),
+            format!("upserted {upserted} note vectors"),
+        );
+        emit_progress(
+            progress.as_ref(),
+            IndexProgressStage::Completed,
+            notes.len(),
+            notes.len(),
+            format!(
+                "indexing completed: {} embedded, {} skipped",
+                stats.notes_embedded, stats.notes_skipped
+            ),
+        );
 
         Ok(stats)
     }
@@ -156,6 +308,7 @@ mod tests {
     use crate::embeddings::{EmbeddingError, MockEmbeddingProvider};
     use crate::qdrant::{MockVectorRepository, VectorStoreError};
     use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
 
     // -- Helper to build a NoteForIndexing with defaults --
 
@@ -337,6 +490,57 @@ mod tests {
         assert_eq!(stats.notes_processed, 2);
         assert_eq!(stats.notes_embedded, 2);
         assert_eq!(stats.notes_skipped, 0);
+    }
+
+    #[tokio::test]
+    async fn index_notes_with_progress_emits_stages_in_order() {
+        let embedding = MockEmbeddingProvider::new(4);
+        let mut repo = MockVectorRepository::new();
+
+        repo.expect_get_existing_hashes()
+            .returning(|_| Box::pin(async { Ok(HashMap::new()) }));
+        repo.expect_upsert_vectors()
+            .returning(|_, _, _| Box::pin(async { Ok(2) }));
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&events);
+        let progress = Arc::new(move |event: IndexProgressEvent| {
+            captured.lock().unwrap().push(event);
+        }) as IndexProgressCallback;
+
+        let service = IndexService::new(embedding, repo);
+        let stats = service
+            .index_notes_with_progress(
+                &[make_note(1, "one"), make_note(2, "two")],
+                false,
+                Some(progress),
+            )
+            .await
+            .unwrap();
+
+        let stages: Vec<IndexProgressStage> = events
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|event| event.stage)
+            .collect();
+
+        assert_eq!(stats.notes_embedded, 2);
+        assert_eq!(
+            stages,
+            vec![
+                IndexProgressStage::Starting,
+                IndexProgressStage::HashLookup,
+                IndexProgressStage::HashLookup,
+                IndexProgressStage::Diffing,
+                IndexProgressStage::Diffing,
+                IndexProgressStage::Embedding,
+                IndexProgressStage::Embedding,
+                IndexProgressStage::Upserting,
+                IndexProgressStage::Upserting,
+                IndexProgressStage::Completed,
+            ]
+        );
     }
 
     #[tokio::test]
@@ -571,7 +775,7 @@ mod tests {
         let mut repo = MockVectorRepository::new();
 
         repo.expect_delete_vectors()
-            .withf(|ids| ids == &[10, 20, 30])
+            .withf(|ids| ids == [10, 20, 30])
             .returning(|ids| {
                 let len = ids.len();
                 Box::pin(async move { Ok(len) })
@@ -746,7 +950,7 @@ mod tests {
         });
 
         repo.expect_delete_vectors()
-            .withf(|ids| ids == &[1, 2])
+            .withf(|ids| ids == [1, 2])
             .returning(|ids| {
                 let len = ids.len();
                 Box::pin(async move { Ok(len) })

@@ -1,6 +1,10 @@
-use anki_sync::{SyncService, SyncStats, sync_anki_collection};
+use anki_sync::{
+    SyncProgressCallback, SyncProgressEvent, SyncProgressStage, SyncService, SyncStats,
+    sync_anki_collection,
+};
 use rusqlite::Connection;
 use sqlx::PgPool;
+use std::sync::{Arc, Mutex};
 use tempfile::NamedTempFile;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
@@ -212,8 +216,10 @@ fn sync_stats_debug_impl() {
 
 #[test]
 fn sync_stats_clone() {
-    let mut stats = SyncStats::default();
-    stats.decks_upserted = 5;
+    let stats = SyncStats {
+        decks_upserted: 5,
+        ..Default::default()
+    };
     let cloned = stats.clone();
     assert_eq!(cloned.decks_upserted, 5);
 }
@@ -631,4 +637,35 @@ async fn sync_anki_collection_convenience_delegates() {
     assert_eq!(stats.decks_upserted, 2);
     assert_eq!(stats.notes_upserted, 2);
     assert_eq!(stats.cards_upserted, 2);
+}
+
+#[tokio::test]
+async fn sync_collection_with_progress_emits_stage_updates() {
+    let Some((pool, _container)) = setup_pg().await else {
+        return;
+    };
+    let db = create_test_anki_db();
+    let service = SyncService::new(pool);
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let captured = Arc::clone(&events);
+    let progress = Arc::new(move |event: SyncProgressEvent| {
+        captured.lock().unwrap().push(event);
+    }) as SyncProgressCallback;
+
+    let stats = service
+        .sync_collection_with_progress(db.path(), Some(progress))
+        .await
+        .unwrap();
+
+    let stages: Vec<SyncProgressStage> = events
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|event| event.stage)
+        .collect();
+
+    assert_eq!(stats.notes_upserted, 2);
+    assert!(stages.contains(&SyncProgressStage::ReadingCollection));
+    assert!(stages.contains(&SyncProgressStage::UpsertingNotes));
+    assert_eq!(stages.last().copied(), Some(SyncProgressStage::Completed));
 }

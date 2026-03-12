@@ -14,7 +14,10 @@ pub(crate) fn now_secs() -> f64 {
         .as_secs_f64()
 }
 
-pub use core::{SyncService, SyncStats, sync_anki_collection, sync_anki_collection_owned};
+pub use core::{
+    SyncProgressCallback, SyncProgressEvent, SyncProgressStage, SyncService, SyncStats,
+    sync_anki_collection, sync_anki_collection_owned, sync_anki_collection_owned_with_progress,
+};
 pub use engine::{SyncEngine, SyncResult};
 pub use progress::{ProgressTracker, SyncPhase, SyncProgress, VALID_STATS};
 pub use recovery::{CardRecovery, CardTransaction, RollbackAction};
@@ -31,6 +34,8 @@ mod send_sync_tests {
         assert_send_sync::<super::SyncProgress>();
         assert_send_sync::<super::ProgressTracker>();
         assert_send_sync::<super::SyncResult>();
+        assert_send_sync::<super::SyncProgressEvent>();
+        assert_send_sync::<super::SyncProgressCallback>();
         assert_send_sync::<super::CardTransaction>();
         assert_send_sync::<super::RollbackAction>();
         assert_send_sync::<super::SyncStats>();

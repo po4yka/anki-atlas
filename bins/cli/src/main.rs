@@ -1,6 +1,8 @@
 mod args;
 mod commands;
 mod output;
+mod tui;
+mod usecases;
 
 use clap::Parser;
 
@@ -16,6 +18,7 @@ async fn main() -> anyhow::Result<()> {
             let settings = common::config::Settings::load()?;
             commands::migrate::run(&settings).await
         }
+        Commands::Tui => tui::run().await,
         Commands::Generate(args) => commands::generate::run(args).await,
         Commands::Validate(args) => commands::validate::run(args).await,
         Commands::ObsidianSync(args) => commands::obsidian_sync::run(args).await,
@@ -122,6 +125,15 @@ mod tests {
                 assert!(!args.no_index);
             }
             _ => panic!("expected sync command"),
+        }
+    }
+
+    #[test]
+    fn parse_tui_command() {
+        let cli = Cli::parse_from(["anki-atlas", "tui"]);
+        match cli.command {
+            Commands::Tui => {}
+            _ => panic!("expected tui command"),
         }
     }
 

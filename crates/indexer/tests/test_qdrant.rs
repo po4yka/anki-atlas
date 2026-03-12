@@ -257,7 +257,7 @@ fn sparse_vector_repeated_token_has_higher_weight() {
 fn sparse_vector_multiple_tokens_have_correct_count() {
     let sv = QdrantRepository::text_to_sparse_vector("aaa bbb ccc");
     // 3 unique tokens → 3 indices (assuming no hash collisions)
-    assert!(sv.indices.len() >= 1); // at least 1 (could be fewer with collisions)
+    assert!(!sv.indices.is_empty()); // at least 1 (could be fewer with collisions)
     assert!(sv.indices.len() <= 3); // at most 3
     assert_eq!(sv.indices.len(), sv.values.len());
 }
@@ -273,7 +273,7 @@ fn sparse_vector_whitespace_only_returns_empty() {
 fn sparse_vector_numbers_are_tokens() {
     let sv = QdrantRepository::text_to_sparse_vector("test123 456");
     // "test123" and "456" are valid tokens
-    assert!(sv.indices.len() >= 1);
+    assert!(!sv.indices.is_empty());
 }
 
 #[test]

@@ -40,6 +40,7 @@ tokio.workspace = true
 ```text
 anki-atlas version
 anki-atlas migrate
+anki-atlas tui
 anki-atlas sync <source> [--no-migrate] [--no-index] [--force-reindex]
 anki-atlas index [--force]
 anki-atlas search <query> [--deck <name>]... [--tag <tag>]... [-n <limit>] [--semantic] [--fts] [--verbose]
@@ -62,6 +63,10 @@ anki-atlas tag-audit <file> [--fix]
   - may run migrations first
   - runs direct sync execution
   - may run direct indexing afterward
+- `tui`
+  - boots the shared local runtime in a full-screen terminal UI
+  - exposes search, analytics, taxonomy views, and workflow execution
+  - renders runtime progress for sync, index, and obsidian preview workflows
 - `index`
   - runs direct indexing over PostgreSQL notes
 - `search`
@@ -111,6 +116,7 @@ Current output categories:
 - sync and index summaries
 - validation issue reports
 - preview output for generation and Obsidian scans
+- a full-screen TUI surface for local operator workflows
 
 ## Constraints
 

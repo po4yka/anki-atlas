@@ -1,14 +1,18 @@
 use std::collections::BTreeSet;
-use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
 use std::sync::Arc;
 
-use anki_sync::SyncStats;
+use anki_sync::{
+    SyncProgressCallback, SyncProgressEvent, SyncProgressStage, SyncStats,
+    sync_anki_collection_owned_with_progress,
+};
 use generator::models::GeneratedCard;
 use indexer::embeddings::EmbeddingProvider;
 use indexer::qdrant::{NotePayload, SparseVector, VectorRepository};
-use indexer::service::{IndexService, IndexStats, NoteForIndexing};
+use indexer::service::{
+    IndexProgressCallback, IndexProgressEvent, IndexProgressStage, IndexService, IndexStats,
+    NoteForIndexing,
+};
 use obsidian::analyzer::VaultAnalyzer;
 use obsidian::parser::{ParsedNote, parse_note};
 use obsidian::sync::{CardGenerator, GeneratedCardRef, ObsidianSyncWorkflow};
@@ -27,6 +31,67 @@ use validation::quality::QualityScore;
 use validation::validators::{ContentValidator, FormatValidator, HtmlValidator, TagValidator};
 
 use crate::error::SurfaceError;
+
+pub type SurfaceProgressSink = Arc<dyn Fn(SurfaceProgressEvent) + Send + Sync>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum SurfaceOperation {
+    Sync,
+    Index,
+    ObsidianScan,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SurfaceProgressEvent {
+    pub operation: SurfaceOperation,
+    pub stage: String,
+    pub current: usize,
+    pub total: usize,
+    pub message: String,
+}
+
+fn emit_progress(
+    sink: Option<&SurfaceProgressSink>,
+    operation: SurfaceOperation,
+    stage: impl Into<String>,
+    current: usize,
+    total: usize,
+    message: impl Into<String>,
+) {
+    if let Some(sink) = sink {
+        sink(SurfaceProgressEvent {
+            operation,
+            stage: stage.into(),
+            current,
+            total,
+            message: message.into(),
+        });
+    }
+}
+
+fn map_sync_progress(progress: &SyncProgressEvent) -> SurfaceProgressEvent {
+    SurfaceProgressEvent {
+        operation: SurfaceOperation::Sync,
+        stage: progress.stage.as_str().to_string(),
+        current: progress.current,
+        total: progress.total,
+        message: progress.message.clone(),
+    }
+}
+
+fn map_index_progress(progress: &IndexProgressEvent) -> Option<SurfaceProgressEvent> {
+    if progress.stage == IndexProgressStage::Completed {
+        return None;
+    }
+
+    Some(SurfaceProgressEvent {
+        operation: SurfaceOperation::Index,
+        stage: progress.stage.as_str().to_string(),
+        current: progress.current,
+        total: progress.total,
+        message: progress.message.clone(),
+    })
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct GeneratePreview {
@@ -320,6 +385,16 @@ impl ObsidianScanService {
         source_dirs: &[String],
         dry_run: bool,
     ) -> Result<ObsidianScanPreview, SurfaceError> {
+        self.scan_with_progress(vault, source_dirs, dry_run, None)
+    }
+
+    pub fn scan_with_progress(
+        &self,
+        vault: &Path,
+        source_dirs: &[String],
+        dry_run: bool,
+        progress: Option<SurfaceProgressSink>,
+    ) -> Result<ObsidianScanPreview, SurfaceError> {
         if !dry_run {
             return Err(SurfaceError::Unsupported(
                 "obsidian persistence is not implemented; use --dry-run".to_string(),
@@ -329,7 +404,29 @@ impl ObsidianScanService {
             return Err(SurfaceError::PathNotFound(vault.to_path_buf()));
         }
 
-        let workflow = ObsidianSyncWorkflow::new(PreviewCardGenerator, None);
+        emit_progress(
+            progress.as_ref(),
+            SurfaceOperation::ObsidianScan,
+            "scanning_vault",
+            0,
+            1,
+            format!("scanning vault {}", vault.display()),
+        );
+        let workflow = ObsidianSyncWorkflow::new(
+            PreviewCardGenerator,
+            progress.as_ref().map(|sink| {
+                let sink = Arc::clone(sink);
+                Box::new(move |phase: &str, current: usize, total: usize| {
+                    sink(SurfaceProgressEvent {
+                        operation: SurfaceOperation::ObsidianScan,
+                        stage: phase.to_string(),
+                        current,
+                        total,
+                        message: format!("{phase}: {current}/{total}"),
+                    });
+                }) as obsidian::sync::ProgressCallback
+            }),
+        );
         let dir_refs: Vec<&str> = source_dirs.iter().map(String::as_str).collect();
         let notes = if dir_refs.is_empty() {
             workflow.scan_vault(vault, None)?
@@ -342,6 +439,14 @@ impl ObsidianScanService {
             workflow.run(vault, Some(&dir_refs))?
         };
 
+        emit_progress(
+            progress.as_ref(),
+            SurfaceOperation::ObsidianScan,
+            "analyzing_vault",
+            0,
+            1,
+            "analyzing vault structure",
+        );
         let mut analyzer = VaultAnalyzer::new(vault);
         let stats = analyzer.analyze()?;
         let note_previews = notes
@@ -353,7 +458,7 @@ impl ObsidianScanService {
             })
             .collect();
 
-        Ok(ObsidianScanPreview {
+        let preview = ObsidianScanPreview {
             vault_path: vault.to_path_buf(),
             source_dirs: source_dirs.to_vec(),
             note_count: stats.total_notes,
@@ -361,7 +466,19 @@ impl ObsidianScanService {
             orphaned_notes: stats.orphaned_notes,
             broken_links: stats.broken_links,
             notes: note_previews,
-        })
+        };
+        emit_progress(
+            progress.as_ref(),
+            SurfaceOperation::ObsidianScan,
+            "completed",
+            preview.note_count,
+            preview.note_count.max(1),
+            format!(
+                "obsidian scan completed with {} generated cards",
+                preview.generated_cards
+            ),
+        );
+        Ok(preview)
     }
 }
 
@@ -457,6 +574,12 @@ pub trait IndexExecutor: Send + Sync {
         &self,
         force_reindex: bool,
     ) -> Result<IndexExecutionSummary, SurfaceError>;
+
+    async fn index_all_notes_with_progress(
+        &self,
+        force_reindex: bool,
+        progress: Option<SurfaceProgressSink>,
+    ) -> Result<IndexExecutionSummary, SurfaceError>;
 }
 
 impl IndexingService {
@@ -484,11 +607,28 @@ impl IndexingService {
         &self,
         force_reindex: bool,
     ) -> Result<IndexExecutionSummary, SurfaceError> {
+        self.index_all_notes_with_progress(force_reindex, None)
+            .await
+    }
+
+    pub async fn index_all_notes_with_progress(
+        &self,
+        force_reindex: bool,
+        progress: Option<SurfaceProgressSink>,
+    ) -> Result<IndexExecutionSummary, SurfaceError> {
         let service = IndexService::new(self.embedding.clone(), self.vector_repo.clone());
         self.vector_repo
             .ensure_collection(self.embedding.dimension())
             .await?;
 
+        emit_progress(
+            progress.as_ref(),
+            SurfaceOperation::Index,
+            "loading_notes",
+            0,
+            1,
+            "loading active notes from postgres",
+        );
         let active_rows = sqlx::query_as::<_, NoteIndexRow>(
             "SELECT n.note_id,
                     n.model_id,
@@ -509,6 +649,14 @@ impl IndexingService {
         )
         .fetch_all(&self.db)
         .await?;
+        emit_progress(
+            progress.as_ref(),
+            SurfaceOperation::Index,
+            "loading_notes",
+            1,
+            1,
+            format!("loaded {} active notes", active_rows.len()),
+        );
 
         let notes: Vec<NoteForIndexing> = active_rows
             .into_iter()
@@ -529,10 +677,50 @@ impl IndexingService {
             sqlx::query_scalar("SELECT note_id FROM notes WHERE deleted_at IS NOT NULL")
                 .fetch_all(&self.db)
                 .await?;
-        let mut stats = service.index_notes(&notes, force_reindex).await?;
+        let mapped_progress = progress.as_ref().map(|sink| {
+            let sink = Arc::clone(sink);
+            Arc::new(move |event: IndexProgressEvent| {
+                if let Some(mapped) = map_index_progress(&event) {
+                    sink(mapped);
+                }
+            }) as IndexProgressCallback
+        });
+        let mut stats = service
+            .index_notes_with_progress(&notes, force_reindex, mapped_progress)
+            .await?;
+        emit_progress(
+            progress.as_ref(),
+            SurfaceOperation::Index,
+            "delete_cleanup",
+            0,
+            deleted_note_ids.len().max(1),
+            format!(
+                "cleaning up {} deleted note vectors",
+                deleted_note_ids.len()
+            ),
+        );
         if !deleted_note_ids.is_empty() {
             stats.notes_deleted = self.vector_repo.delete_vectors(&deleted_note_ids).await?;
         }
+        emit_progress(
+            progress.as_ref(),
+            SurfaceOperation::Index,
+            "delete_cleanup",
+            deleted_note_ids.len(),
+            deleted_note_ids.len().max(1),
+            format!("deleted {} note vectors", stats.notes_deleted),
+        );
+        emit_progress(
+            progress.as_ref(),
+            SurfaceOperation::Index,
+            "completed",
+            stats.notes_processed,
+            stats.notes_processed.max(1),
+            format!(
+                "index complete: {} embedded, {} skipped, {} deleted",
+                stats.notes_embedded, stats.notes_skipped, stats.notes_deleted
+            ),
+        );
 
         Ok(IndexExecutionSummary {
             force_reindex,
@@ -549,6 +737,14 @@ impl IndexExecutor for IndexingService {
     ) -> Result<IndexExecutionSummary, SurfaceError> {
         Self::index_all_notes(self, force_reindex).await
     }
+
+    async fn index_all_notes_with_progress(
+        &self,
+        force_reindex: bool,
+        progress: Option<SurfaceProgressSink>,
+    ) -> Result<IndexExecutionSummary, SurfaceError> {
+        Self::index_all_notes_with_progress(self, force_reindex, progress).await
+    }
 }
 
 pub struct SyncExecutionService {
@@ -556,14 +752,10 @@ pub struct SyncExecutionService {
     indexer: Arc<dyn IndexExecutor>,
 }
 
-pub trait SyncExecutor: Send + Sync {
-    fn sync_collection(
-        &self,
-        source: PathBuf,
-        run_migrations: bool,
-        run_index: bool,
-        force_reindex: bool,
-    ) -> Pin<Box<dyn Future<Output = Result<SyncExecutionSummary, SurfaceError>> + '_>>;
+#[derive(Clone)]
+pub struct SyncExecutionHandle {
+    db: PgPool,
+    indexer: Arc<dyn IndexExecutor>,
 }
 
 impl SyncExecutionService {
@@ -578,12 +770,31 @@ impl SyncExecutionService {
         Self { db, indexer }
     }
 
+    pub fn handle(&self) -> SyncExecutionHandle {
+        SyncExecutionHandle {
+            db: self.db.clone(),
+            indexer: self.indexer.clone(),
+        }
+    }
+
     pub async fn sync_collection(
         &self,
         source: PathBuf,
         run_migrations: bool,
         run_index: bool,
         force_reindex: bool,
+    ) -> Result<SyncExecutionSummary, SurfaceError> {
+        self.sync_collection_with_progress(source, run_migrations, run_index, force_reindex, None)
+            .await
+    }
+
+    pub async fn sync_collection_with_progress(
+        &self,
+        source: PathBuf,
+        run_migrations: bool,
+        run_index: bool,
+        force_reindex: bool,
+        progress: Option<SurfaceProgressSink>,
     ) -> Result<SyncExecutionSummary, SurfaceError> {
         run_sync_collection(
             self.db.clone(),
@@ -592,33 +803,42 @@ impl SyncExecutionService {
             run_migrations,
             run_index,
             force_reindex,
+            progress,
         )
         .await
     }
 }
 
-impl SyncExecutor for SyncExecutionService {
-    fn sync_collection(
-        &self,
+impl SyncExecutionHandle {
+    pub async fn sync_collection(
+        self,
         source: PathBuf,
         run_migrations: bool,
         run_index: bool,
         force_reindex: bool,
-    ) -> Pin<Box<dyn Future<Output = Result<SyncExecutionSummary, SurfaceError>> + '_>> {
-        let db = self.db.clone();
-        let indexer = self.indexer.clone();
-
-        Box::pin(async move {
-            run_sync_collection(
-                db,
-                indexer,
-                source,
-                run_migrations,
-                run_index,
-                force_reindex,
-            )
+    ) -> Result<SyncExecutionSummary, SurfaceError> {
+        self.sync_collection_with_progress(source, run_migrations, run_index, force_reindex, None)
             .await
-        })
+    }
+
+    pub async fn sync_collection_with_progress(
+        self,
+        source: PathBuf,
+        run_migrations: bool,
+        run_index: bool,
+        force_reindex: bool,
+        progress: Option<SurfaceProgressSink>,
+    ) -> Result<SyncExecutionSummary, SurfaceError> {
+        run_sync_collection(
+            self.db,
+            self.indexer,
+            source,
+            run_migrations,
+            run_index,
+            force_reindex,
+            progress,
+        )
+        .await
     }
 }
 
@@ -629,19 +849,55 @@ async fn run_sync_collection(
     run_migrations: bool,
     run_index: bool,
     force_reindex: bool,
+    progress: Option<SurfaceProgressSink>,
 ) -> Result<SyncExecutionSummary, SurfaceError> {
     if !source.exists() {
         return Err(SurfaceError::PathNotFound(source));
     }
     if run_migrations {
+        emit_progress(
+            progress.as_ref(),
+            SurfaceOperation::Sync,
+            "running_migrations",
+            0,
+            1,
+            "running database migrations",
+        );
         database::run_migrations_owned(db.clone()).await?;
+        emit_progress(
+            progress.as_ref(),
+            SurfaceOperation::Sync,
+            "running_migrations",
+            1,
+            1,
+            "database migrations complete",
+        );
     }
-    let sync = anki_sync::sync_anki_collection_owned(db, source.clone()).await?;
+    let mapped_progress = progress.as_ref().map(|sink| {
+        let sink = Arc::clone(sink);
+        Arc::new(move |event: SyncProgressEvent| {
+            sink(map_sync_progress(&event));
+        }) as SyncProgressCallback
+    });
+    let sync =
+        sync_anki_collection_owned_with_progress(db, source.clone(), mapped_progress).await?;
     let index = if run_index {
-        Some(indexer.index_all_notes(force_reindex).await?)
+        Some(
+            indexer
+                .index_all_notes_with_progress(force_reindex, progress.clone())
+                .await?,
+        )
     } else {
         None
     };
+    emit_progress(
+        progress.as_ref(),
+        SurfaceOperation::Sync,
+        SyncProgressStage::Completed.as_str(),
+        1,
+        1,
+        format!("sync pipeline completed for {}", source.display()),
+    );
 
     Ok(SyncExecutionSummary {
         source,
