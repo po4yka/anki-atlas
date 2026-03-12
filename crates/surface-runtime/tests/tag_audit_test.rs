@@ -69,7 +69,11 @@ fn audit_file_apply_fixes_rewrites_file() {
     // All tags should be normalized (lowercase)
     for line in rewritten.lines() {
         if !line.is_empty() {
-            assert_eq!(line, line.to_lowercase(), "tag should be normalized: {line}");
+            assert_eq!(
+                line,
+                line.to_lowercase(),
+                "tag should be normalized: {line}"
+            );
         }
     }
 }
@@ -86,7 +90,11 @@ fn audit_file_apply_fixes_deduplicates() {
     let rewritten = fs::read_to_string(&file).unwrap();
     let lines: Vec<&str> = rewritten.lines().filter(|l| !l.is_empty()).collect();
     // BTreeSet dedup means only one copy of the normalized tag
-    assert_eq!(lines.len(), 1, "duplicates should be deduped, got: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        1,
+        "duplicates should be deduped, got: {lines:?}"
+    );
 }
 
 #[test]

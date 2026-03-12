@@ -65,11 +65,7 @@ fn preview_empty_sections_filtered() {
 fn preview_content_hash_is_deterministic() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("determ.md");
-    fs::write(
-        &file,
-        "---\ntitle: Deterministic\n---\n## S1\nContent.\n",
-    )
-    .unwrap();
+    fs::write(&file, "---\ntitle: Deterministic\n---\n## S1\nContent.\n").unwrap();
 
     let service = GeneratePreviewService::new();
     let p1 = service.preview(&file).unwrap();

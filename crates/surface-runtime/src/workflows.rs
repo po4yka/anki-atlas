@@ -1220,11 +1220,7 @@ mod tests {
     #[test]
     fn preview_card_generator_slug_format() {
         let generator = PreviewCardGenerator;
-        let note = make_parsed_note(
-            Some("My Great Note"),
-            vec![("S1", "C1"), ("S2", "C2")],
-            "",
-        );
+        let note = make_parsed_note(Some("My Great Note"), vec![("S1", "C1"), ("S2", "C2")], "");
         let cards = generator.generate(&note);
         assert_eq!(cards[0].slug, "my-great-note-1");
         assert_eq!(cards[1].slug, "my-great-note-2");
