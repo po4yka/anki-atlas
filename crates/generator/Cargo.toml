@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 common = { path = "../common" }
 llm = { path = "../llm" }
+taxonomy = { path = "../taxonomy" }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

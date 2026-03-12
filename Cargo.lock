@@ -1778,6 +1778,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "taxonomy",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -4970,6 +4971,7 @@ name = "taxonomy"
 version = "0.1.0"
 dependencies = [
  "phf 0.13.1",
+ "serde",
 ]
 
 [[package]]
@@ -5680,6 +5682,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "taxonomy",
  "thiserror 2.0.18",
 ]
 

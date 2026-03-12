@@ -48,10 +48,15 @@ fuzz_target!(|data: &[u8]| {
     assert!(in_unit_interval(score.testability));
     assert!(in_unit_interval(score.memorability));
     assert!(in_unit_interval(score.accuracy));
+    assert!(in_unit_interval(score.relevance));
     assert!(in_unit_interval(score.overall()));
 
-    let expected_overall =
-        (score.clarity + score.atomicity + score.testability + score.memorability + score.accuracy)
-            / 5.0;
+    let expected_overall = (score.clarity
+        + score.atomicity
+        + score.testability
+        + score.memorability
+        + score.accuracy
+        + 1.5 * score.relevance)
+        / 6.5;
     assert!((score.overall() - expected_overall).abs() <= f64::EPSILON);
 });

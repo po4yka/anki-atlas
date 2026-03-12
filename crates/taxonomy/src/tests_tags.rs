@@ -35,6 +35,7 @@ fn tag_prefix_as_str_all_variants() {
         (TagPrefix::Platform, "platform"),
         (TagPrefix::Security, "security"),
         (TagPrefix::Networking, "networking"),
+        (TagPrefix::Skill, "skill"),
     ];
     for (prefix, expected) in pairs {
         assert_eq!(prefix.as_str(), expected, "failed for {:?}", prefix);
@@ -45,7 +46,7 @@ fn tag_prefix_as_str_all_variants() {
 
 #[test]
 fn valid_prefixes_count() {
-    assert_eq!(VALID_PREFIXES.len(), 15);
+    assert_eq!(VALID_PREFIXES.len(), 16);
 }
 
 #[test]
@@ -71,6 +72,7 @@ fn valid_prefixes_contains_all() {
         "platform",
         "security",
         "networking",
+        "skill",
     ] {
         assert!(VALID_PREFIXES.contains(&prefix), "missing prefix: {prefix}");
     }
@@ -80,7 +82,7 @@ fn valid_prefixes_contains_all() {
 
 #[test]
 fn meta_tag_prefixes_count() {
-    assert_eq!(META_TAG_PREFIXES.len(), 4);
+    assert_eq!(META_TAG_PREFIXES.len(), 5);
 }
 
 #[test]
@@ -89,6 +91,7 @@ fn meta_tag_prefixes_contents() {
     assert!(META_TAG_PREFIXES.contains(&"lang::"));
     assert!(META_TAG_PREFIXES.contains(&"source::"));
     assert!(META_TAG_PREFIXES.contains(&"context::"));
+    assert!(META_TAG_PREFIXES.contains(&"skill::"));
 }
 
 // === META_TAGS ===

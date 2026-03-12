@@ -34,9 +34,10 @@ hats:
       2. Collect already-processed card IDs into a skip list
       3. Find the next card using priority order:
          a. `cargo run --bin anki-atlas -- validate --quality 2>&1 | head -20` (validation errors first)
-         b. `cargo run --bin anki-atlas -- weak-notes 2>&1 | head -20`
-         c. `cargo run --bin anki-atlas -- gaps "programming" --min-coverage 1 2>&1 | head -20`
-         d. `cargo run --bin anki-atlas -- duplicates --threshold 0.92 2>&1 | head -10`
+         b. Cards with relevance warnings (look for "dead skill" or "syntax recall" in validate output)
+         c. `cargo run --bin anki-atlas -- weak-notes 2>&1 | head -20`
+         d. `cargo run --bin anki-atlas -- gaps "programming" --min-coverage 1 2>&1 | head -20`
+         e. `cargo run --bin anki-atlas -- duplicates --threshold 0.92 2>&1 | head -10`
       4. Pick the FIRST card not in the skip list
       5. If user prompt specifies a focus (topic, deck, tag), filter accordingly
 
@@ -86,6 +87,9 @@ hats:
          - Near-duplicates (similarity > 0.85)
          - Answer too long (> 100 words)
          - Missing context (card doesn't make sense alone)
+         - **Skill relevance**: check for "relevance" warnings in validate output
+           - Dead skill patterns: syntax recall, boilerplate, rote lookup
+           - Missing skill:: tag
 
       ### Output
 
@@ -93,6 +97,7 @@ hats:
       ```
       ## Diagnosis
       - Validation: <pass/fail + details>
+      - Relevance: <alive / neutral / dead + reason>
       - Duplicates: <none / list with scores>
       - Tag issues: <none / list>
       - Content issues: <none / list>
@@ -126,6 +131,12 @@ hats:
          - **Anti-patterns**: split sets, rewrite vague questions
          - **Near-duplicate**: add distinguishing `[Context]` prefix or merge
          - **Format**: add bold terms, code blocks, proper structure
+         - **Dead skill pattern**: transform the card:
+           - Syntax recall -> "When/why would you use this?" or "What goes wrong if you get this wrong?"
+           - Boilerplate -> "What problem does this pattern solve?" or "Compare with alternatives"
+           - Pure lookup -> Tag with `skill::dead` and recommend suspension
+         - **Alive skill pattern**: tag with `skill::alive`
+         - **Neutral**: tag with `skill::neutral` if no clear signal
       5. Self-check: `cargo run --bin anki-atlas -- validate <file> --quality`
 
       ### Quality Standards
@@ -134,7 +145,9 @@ hats:
       - Active recall: "what/how/why", not yes/no
       - Concise: answer under 100 words
       - Bilingual: EN + RU (Cyrillic only, never transliteration)
-      - Tagged: difficulty + topic tags per taxonomy
+      - Tagged: difficulty + topic + skill:: tags per taxonomy
+      - Alive skills: system design, debugging, tradeoffs, product thinking, shipping
+      - Dead skills: syntax recall, boilerplate, rote lookup -- transform or suspend
 
       ### Output
 
@@ -171,7 +184,7 @@ hats:
          cargo run --bin anki-atlas -- tag-audit
          ```
       4. Decision:
-         - **PASS**: proceed to step 5
+         - **PASS**: proceed to step 5 (verify card has skill:: tag and no relevance warnings)
          - **FAIL (first time)**: append feedback to scratchpad, publish `fix.needed`
          - **FAIL (second time)**: skip card, log reason, proceed to step 5
 
@@ -181,7 +194,7 @@ hats:
          ```
          | <card-id> | <timestamp> | <action> | <quality-before> | <quality-after> |
          ```
-         Actions: `fixed-tags`, `rewritten`, `split`, `merged`, `added-pair`, `skipped`
+         Actions: `fixed-tags`, `rewritten`, `split`, `merged`, `added-pair`, `transformed-dead`, `suspended-dead`, `skipped`
 
       6. Git commit:
          ```bash

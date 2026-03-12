@@ -1,11 +1,12 @@
 //! Heuristic quality scoring for flashcards.
 //!
-//! Implements a 5-dimension rubric: clarity, atomicity, testability,
-//! memorability, accuracy. Each dimension scores 0.0-1.0.
+//! Implements a 6-dimension rubric: clarity, atomicity, testability,
+//! memorability, accuracy, relevance. Each dimension scores 0.0-1.0.
 
 use serde::Serialize;
+use taxonomy::relevance::{self, SkillRelevance};
 
-/// Five-dimension quality assessment of a flashcard.
+/// Six-dimension quality assessment of a flashcard.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct QualityScore {
     pub clarity: f64,
@@ -13,24 +14,35 @@ pub struct QualityScore {
     pub testability: f64,
     pub memorability: f64,
     pub accuracy: f64,
+    pub relevance: f64,
 }
 
 impl QualityScore {
-    /// Average of all five dimensions.
+    /// Weighted average of all dimensions. Relevance has 1.5x weight.
     pub fn overall(&self) -> f64 {
-        (self.clarity + self.atomicity + self.testability + self.memorability + self.accuracy) / 5.0
+        (self.clarity
+            + self.atomicity
+            + self.testability
+            + self.memorability
+            + self.accuracy
+            + 1.5 * self.relevance)
+            / 6.5
     }
 }
 
 /// Score a card using heuristic checks. Each dimension is 0.0-1.0.
 ///
-/// Dimensions:
-/// - clarity: penalizes vague openers, yes/no questions, missing "?"
-/// - atomicity: penalizes long questions (>20 words), multi-concept splits
-/// - testability: penalizes extremely long answers (>100 words), empty answers
-/// - memorability: penalizes long enumerations (>4 bullet items), long answers (>150 words)
-/// - accuracy: penalizes missing question mark, empty front/back
+/// Relevance defaults to 0.5 (neutral) without tag context.
+/// Use [`assess_quality_with_tags`] for tag-aware relevance scoring.
 pub fn assess_quality(front: &str, back: &str) -> QualityScore {
+    assess_quality_with_tags(front, back, &[])
+}
+
+/// Score a card with tag-aware relevance scoring.
+///
+/// Tags are used to look up topic-level relevance (alive/dead/neutral)
+/// and to check for explicit `skill::` tags.
+pub fn assess_quality_with_tags(front: &str, back: &str, tags: &[String]) -> QualityScore {
     let front_trimmed = front.trim();
     let back_trimmed = back.trim();
 
@@ -40,6 +52,7 @@ pub fn assess_quality(front: &str, back: &str) -> QualityScore {
         testability: score_testability(back_trimmed),
         memorability: score_memorability(back_trimmed),
         accuracy: score_accuracy(front_trimmed, back_trimmed),
+        relevance: score_relevance(front_trimmed, back_trimmed, tags),
     }
 }
 
@@ -192,6 +205,52 @@ fn score_accuracy(front: &str, back: &str) -> f64 {
 
     if !front.is_empty() && !front.contains('?') {
         score -= 0.2;
+    }
+
+    clamp(score)
+}
+
+/// Score relevance based on topic tags and content heuristics.
+///
+/// Starts at 0.5 (neutral). Explicit `skill::` tags take priority,
+/// then topic-level defaults, then content heuristics.
+fn score_relevance(front: &str, back: &str, tags: &[String]) -> f64 {
+    let mut score = 0.5;
+
+    // Explicit skill:: tags take highest priority
+    for tag in tags {
+        if tag == "skill::alive" {
+            return clamp(1.0);
+        }
+        if tag == "skill::dead" {
+            return clamp(0.2);
+        }
+    }
+
+    // Topic-level relevance from tag taxonomy
+    let mut topic_signal = false;
+    for tag in tags {
+        match relevance::topic_relevance(tag) {
+            SkillRelevance::Alive => {
+                score += 0.4;
+                topic_signal = true;
+                break;
+            }
+            SkillRelevance::Dead => {
+                score -= 0.3;
+                topic_signal = true;
+                break;
+            }
+            SkillRelevance::Neutral => {}
+        }
+    }
+
+    // Content heuristics as secondary signal
+    let content_weight = if topic_signal { 0.1 } else { 0.3 };
+    match relevance::content_relevance(front, back) {
+        SkillRelevance::Alive => score += content_weight,
+        SkillRelevance::Dead => score -= content_weight,
+        SkillRelevance::Neutral => {}
     }
 
     clamp(score)

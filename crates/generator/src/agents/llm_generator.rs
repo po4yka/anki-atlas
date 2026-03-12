@@ -8,6 +8,8 @@ use tracing::instrument;
 
 use llm::LlmProvider;
 
+use taxonomy::SkillRelevance;
+
 use crate::agents::{GeneratorAgent, LlmAgentBase};
 use crate::error::GeneratorError;
 use crate::models::{GeneratedCard, GenerationDeps, GenerationResult};
@@ -64,9 +66,24 @@ impl GeneratorAgent for LlmGeneratorAgent {
     ) -> Result<GenerationResult, GeneratorError> {
         let start = Instant::now();
 
+        // Skip generation for dead-skill topics
+        if deps.skill_bias == Some(SkillRelevance::Dead) {
+            return Ok(GenerationResult {
+                cards: vec![],
+                total_cards: 0,
+                model_used: self.base.model_name.clone(),
+                generation_time_secs: start.elapsed().as_secs_f64(),
+                warnings: vec!["Skipped: dead skill topic".to_string()],
+            });
+        }
+
         let prompt = format!(
             "Generate Anki flashcards for note '{}' on topic '{}'. \
-             Languages: {:?}. Q/A pairs: {:?}",
+             Languages: {:?}. Q/A pairs: {:?}. \
+             IMPORTANT: Generate cards that test understanding, reasoning, and application -- \
+             not syntax recall or boilerplate memorization. Prefer questions about: \
+             system design tradeoffs, debugging strategies, when/why to use patterns, \
+             shipping and automation decisions. Each card should require thinking, not lookup.",
             deps.note_title, deps.topic, deps.language_tags, qa_pairs
         );
 

@@ -16,6 +16,7 @@ pub enum TagPrefix {
     Platform,
     Security,
     Networking,
+    Skill,
 }
 
 impl TagPrefix {
@@ -37,6 +38,7 @@ impl TagPrefix {
             Self::Platform => "platform",
             Self::Security => "security",
             Self::Networking => "networking",
+            Self::Skill => "skill",
         }
     }
 }
@@ -58,10 +60,12 @@ pub static VALID_PREFIXES: &[&str] = &[
     "platform",
     "security",
     "networking",
+    "skill",
 ];
 
 /// Prefixes that denote meta tags.
-pub static META_TAG_PREFIXES: &[&str] = &["difficulty::", "lang::", "source::", "context::"];
+pub static META_TAG_PREFIXES: &[&str] =
+    &["difficulty::", "lang::", "source::", "context::", "skill::"];
 
 /// Standalone meta tag values.
 pub static META_TAGS: &[&str] = &["atomic"];

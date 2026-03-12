@@ -40,6 +40,7 @@ fn test_deps() -> GenerationDeps {
         topic: "Rust ownership".into(),
         language_tags: vec!["en".into()],
         source_file: "test.md".into(),
+        skill_bias: None,
     }
 }
 

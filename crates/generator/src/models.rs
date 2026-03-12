@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use taxonomy::SkillRelevance;
 
 /// A single generated flashcard.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,6 +29,9 @@ pub struct GenerationDeps {
     pub topic: String,
     pub language_tags: Vec<String>,
     pub source_file: String,
+    /// Skill relevance bias for generation. When `Dead`, generation is skipped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_bias: Option<SkillRelevance>,
 }
 
 /// A single planned card from a split decision.

@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use taxonomy::relevance::{self, SkillRelevance};
+
 use crate::pipeline::{ValidationIssue, ValidationResult, Validator};
 
 /// Check card content quality: empty fields, min/max length, unmatched code fences.
@@ -282,6 +284,65 @@ impl Validator for TagValidator {
                 ));
             }
         }
+
+        ValidationResult { issues }
+    }
+}
+
+/// Check skill relevance: flags dead-skill patterns as warnings.
+///
+/// Detects syntax recall, boilerplate-only answers, and missing `skill::` tags.
+#[derive(Default)]
+pub struct RelevanceValidator;
+
+impl RelevanceValidator {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Validator for RelevanceValidator {
+    fn validate(&self, front: &str, back: &str, tags: &[String]) -> ValidationResult {
+        let mut issues = Vec::new();
+
+        // Skip if card has explicit skill:: tag
+        let has_skill_tag = tags.iter().any(|t| t.starts_with("skill::"));
+        if has_skill_tag {
+            return ValidationResult { issues };
+        }
+
+        // Check topic-level relevance
+        for tag in tags {
+            if relevance::topic_relevance(tag) == SkillRelevance::Dead {
+                issues.push(ValidationIssue::warning(
+                    format!(
+                        "Topic '{tag}' is a low-value skill area -- \
+                         consider transforming to a reasoning question"
+                    ),
+                    "relevance",
+                ));
+                break;
+            }
+        }
+
+        // Check content-level patterns
+        match relevance::content_relevance(front, back) {
+            SkillRelevance::Dead => {
+                issues.push(ValidationIssue::warning(
+                    "Card tests syntax recall or boilerplate -- \
+                     consider transforming to a reasoning question"
+                        .to_string(),
+                    "relevance",
+                ));
+            }
+            SkillRelevance::Alive | SkillRelevance::Neutral => {}
+        }
+
+        // Suggest adding skill:: tag if none present
+        issues.push(ValidationIssue::info(
+            "Card lacks a skill:: tag (skill::alive, skill::dead, or skill::neutral)",
+            "relevance",
+        ));
 
         ValidationResult { issues }
     }

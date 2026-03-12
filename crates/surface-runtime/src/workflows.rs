@@ -30,7 +30,9 @@ use sqlx::{FromRow, PgPool};
 use taxonomy::{normalize_tag, suggest_tag, validate_tag};
 use validation::pipeline::{ValidationIssue, ValidationPipeline};
 use validation::quality::QualityScore;
-use validation::validators::{ContentValidator, FormatValidator, HtmlValidator, TagValidator};
+use validation::validators::{
+    ContentValidator, FormatValidator, HtmlValidator, RelevanceValidator, TagValidator,
+};
 
 use crate::error::SurfaceError;
 
@@ -304,6 +306,7 @@ impl ValidationService {
                 Box::new(FormatValidator::new()),
                 Box::new(HtmlValidator::new()),
                 Box::new(TagValidator::new()),
+                Box::new(RelevanceValidator::new()),
             ]),
         }
     }
@@ -319,7 +322,8 @@ impl ValidationService {
         let content = std::fs::read_to_string(file)?;
         let (front, back, tags) = parse_validation_input(&content)?;
         let result = self.pipeline.run(&front, &back, &tags);
-        let quality = include_quality.then(|| validation::quality::assess_quality(&front, &back));
+        let quality = include_quality
+            .then(|| validation::quality::assess_quality_with_tags(&front, &back, &tags));
 
         Ok(ValidationSummary {
             source_file: file.to_path_buf(),
@@ -1508,12 +1512,14 @@ impl QdrantVectorStore {
         point_id: Option<qdrant_client::qdrant::PointId>,
     ) -> Result<i64, indexer::qdrant::VectorStoreError> {
         match point_id.and_then(|id| id.point_id_options) {
-            Some(point_id::PointIdOptions::Num(value)) => i64::try_from(value).map_err(|_| {
-                indexer::qdrant::VectorStoreError::Client(format!(
-                    "point id {value} does not fit into i64"
-                ))
-            }),
-            Some(point_id::PointIdOptions::Uuid(value)) => {
+            Some(qdrant_client::qdrant::point_id::PointIdOptions::Num(value)) => {
+                i64::try_from(value).map_err(|_| {
+                    indexer::qdrant::VectorStoreError::Client(format!(
+                        "point id {value} does not fit into i64"
+                    ))
+                })
+            }
+            Some(qdrant_client::qdrant::point_id::PointIdOptions::Uuid(value)) => {
                 Err(indexer::qdrant::VectorStoreError::Client(format!(
                     "uuid point ids are not supported for note-backed storage: {value}"
                 )))

@@ -104,6 +104,7 @@ fn generation_deps_construction() {
         topic: "ownership".to_string(),
         language_tags: vec!["en".to_string(), "ru".to_string()],
         source_file: "notes/rust.md".to_string(),
+        skill_bias: None,
     };
 
     assert_eq!(deps.note_title, "Rust Ownership");
@@ -117,6 +118,7 @@ fn generation_deps_serialization_roundtrip() {
         topic: "testing".to_string(),
         language_tags: vec!["en".to_string()],
         source_file: "test.md".to_string(),
+        skill_bias: None,
     };
 
     let json = serde_json::to_string(&deps).expect("serialize");

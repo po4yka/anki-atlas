@@ -3,15 +3,16 @@ use validation::{QualityScore, assess_quality};
 // ── QualityScore::overall ──────────────────────────────────────────
 
 #[test]
-fn overall_is_mean_of_five_dimensions() {
+fn overall_is_weighted_mean_of_six_dimensions() {
     let score = QualityScore {
         clarity: 1.0,
         atomicity: 0.8,
         testability: 0.6,
         memorability: 0.4,
         accuracy: 0.2,
+        relevance: 0.5,
     };
-    let expected = (1.0 + 0.8 + 0.6 + 0.4 + 0.2) / 5.0;
+    let expected = (1.0 + 0.8 + 0.6 + 0.4 + 0.2 + 1.5 * 0.5) / 6.5;
     assert!((score.overall() - expected).abs() < f64::EPSILON);
 }
 
@@ -23,6 +24,7 @@ fn overall_perfect_score() {
         testability: 1.0,
         memorability: 1.0,
         accuracy: 1.0,
+        relevance: 1.0,
     };
     assert!((score.overall() - 1.0).abs() < f64::EPSILON);
 }
@@ -35,6 +37,7 @@ fn overall_all_zero() {
         testability: 0.0,
         memorability: 0.0,
         accuracy: 0.0,
+        relevance: 0.0,
     };
     assert!((score.overall() - 0.0).abs() < f64::EPSILON);
 }
@@ -42,17 +45,18 @@ fn overall_all_zero() {
 // ── Well-formed card ───────────────────────────────────────────────
 
 #[test]
-fn well_formed_card_scores_all_ones() {
+fn well_formed_card_scores_high() {
     let score = assess_quality(
         "What is polymorphism?",
         "The ability of objects to take many forms.",
     );
-    assert!((score.overall() - 1.0).abs() < f64::EPSILON);
     assert!((score.clarity - 1.0).abs() < f64::EPSILON);
     assert!((score.atomicity - 1.0).abs() < f64::EPSILON);
     assert!((score.testability - 1.0).abs() < f64::EPSILON);
     assert!((score.memorability - 1.0).abs() < f64::EPSILON);
     assert!((score.accuracy - 1.0).abs() < f64::EPSILON);
+    // Without tags, relevance defaults to 0.5 (neutral)
+    assert!((score.relevance - 0.5).abs() < f64::EPSILON);
 }
 
 // ── Clarity ────────────────────────────────────────────────────────
@@ -402,6 +406,7 @@ fn all_dimensions_clamped_to_zero_one() {
     assert!(score.testability >= 0.0 && score.testability <= 1.0);
     assert!(score.memorability >= 0.0 && score.memorability <= 1.0);
     assert!(score.accuracy >= 0.0 && score.accuracy <= 1.0);
+    assert!(score.relevance >= 0.0 && score.relevance <= 1.0);
 }
 
 #[test]
@@ -419,10 +424,12 @@ fn quality_score_is_serializable() {
         testability: 0.8,
         memorability: 0.6,
         accuracy: 0.9,
+        relevance: 0.5,
     };
     let json = serde_json::to_string(&score).unwrap();
     assert!(json.contains("clarity"));
     assert!(json.contains("atomicity"));
+    assert!(json.contains("relevance"));
 }
 
 #[test]
