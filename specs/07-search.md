@@ -7,7 +7,7 @@ Historical rewrite input: `packages/search/` (fts.py, fusion.py, reranker.py, se
 
 ## Purpose
 
-Provides hybrid search over Anki notes by combining PostgreSQL full-text search (with fuzzy and autocomplete fallbacks) with semantic vector search, fusing results via Reciprocal Rank Fusion (RRF), and optionally reranking the top candidates with a cross-encoder model. The `SearchService` orchestrates the full pipeline.
+Provides hybrid note search and semantic chunk search over the chunk-aware Anki index. The crate combines PostgreSQL full-text search (with fuzzy and autocomplete fallbacks) with semantic vector search, fuses note-level results via Reciprocal Rank Fusion (RRF), attaches best semantic chunk metadata to note hits, and optionally reranks the top candidates with a cross-encoder model.
 
 ## Dependencies
 
@@ -113,6 +113,11 @@ pub struct SearchResult {
     pub headline: Option<String>,
     pub rerank_score: Option<f64>,
     pub rerank_rank: Option<usize>,
+    pub match_modality: Option<String>,
+    pub match_chunk_kind: Option<String>,
+    pub match_source_field: Option<String>,
+    pub match_asset_rel_path: Option<String>,
+    pub match_preview_label: Option<String>,
 }
 
 impl SearchResult {
@@ -181,6 +186,26 @@ impl CrossEncoderReranker {
 use std::collections::HashMap;
 use serde::Serialize;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchParams {
+    pub query: String,
+    pub filters: Option<SearchFilters>,
+    pub limit: usize,
+    pub semantic_weight: f64,
+    pub fts_weight: f64,
+    pub semantic_only: bool,
+    pub fts_only: bool,
+    pub rerank_override: Option<bool>,
+    pub rerank_top_n_override: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkSearchParams {
+    pub query: String,
+    pub filters: Option<SearchFilters>,
+    pub limit: usize,
+}
+
 /// Complete hybrid search result.
 #[derive(Debug, Clone, Serialize)]
 pub struct HybridSearchResult {
@@ -195,6 +220,25 @@ pub struct HybridSearchResult {
     pub rerank_applied: bool,
     pub rerank_model: Option<String>,
     pub rerank_top_n: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChunkSearchHit {
+    pub note_id: i64,
+    pub chunk_id: String,
+    pub chunk_kind: String,
+    pub modality: String,
+    pub source_field: Option<String>,
+    pub asset_rel_path: Option<String>,
+    pub mime_type: Option<String>,
+    pub preview_label: Option<String>,
+    pub score: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChunkSearchResult {
+    pub query: String,
+    pub results: Vec<ChunkSearchHit>,
 }
 
 /// Detailed note information for result enrichment.
@@ -254,18 +298,13 @@ where
     ) -> Self;
 
     /// Execute hybrid search: semantic + FTS -> RRF fusion -> optional rerank.
-    pub async fn search(
+    pub async fn search(&self, params: &SearchParams) -> Result<HybridSearchResult, SearchError>;
+
+    /// Execute semantic-only raw chunk search.
+    pub async fn search_chunks(
         &self,
-        query: &str,
-        filters: Option<&SearchFilters>,
-        limit: usize,
-        semantic_weight: f64,
-        fts_weight: f64,
-        semantic_only: bool,
-        fts_only: bool,
-        rerank_override: Option<bool>,
-        rerank_top_n_override: Option<usize>,
-    ) -> Result<HybridSearchResult, SearchError>;
+        params: &ChunkSearchParams,
+    ) -> Result<ChunkSearchResult, SearchError>;
 
     /// Fetch note details for a list of IDs (for reranking / enrichment).
     pub async fn get_notes_details(
@@ -295,6 +334,13 @@ where
 - Ranks are 1-indexed from the sorted input lists.
 - Sort by `rrf_score` descending, take top `limit`.
 
+### Semantic chunk retrieval
+- Semantic retrieval embeds queries with `EmbeddingTask::RetrievalQuery`.
+- Qdrant returns chunk-level hits first.
+- Note-level hybrid search collapses those hits to the best-scoring chunk per note before RRF.
+- The winning chunk metadata is attached to each note result via `match_modality`, `match_chunk_kind`, `match_source_field`, `match_asset_rel_path`, and `match_preview_label`.
+- `search_chunks` skips FTS and reranking completely and returns raw chunk hits.
+
 ### Reranking
 - If enabled, over-fetch candidates: `candidate_limit = max(limit, rerank_top_n) * 2`.
 - Fetch `NoteDetail.normalized_text` for top-N candidates from PostgreSQL.
@@ -320,5 +366,7 @@ where
 - [ ] FTS fallback chain: FTS -> fuzzy -> autocomplete tested with mock DB
 - [ ] `SearchService` is generic over `EmbeddingProvider + VectorRepository + Reranker`
 - [ ] `semantic_only = true` skips FTS; `fts_only = true` skips semantic
+- [ ] hybrid note search attaches best semantic chunk metadata when semantic hits exist
+- [ ] chunk search returns raw chunk hits and stays semantic-only
 - [ ] Reranker failure degrades gracefully (returns RRF results with `rerank_applied = false`)
 - [ ] SQL filter builder produces correct parameterized queries (no string interpolation of user input)

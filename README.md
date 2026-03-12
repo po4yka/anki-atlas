@@ -105,6 +105,8 @@ If `ANKIATLAS_API_KEY` is configured, all routes except `/health` and `/ready` r
 
 `/ready` currently reports process readiness only. It is not a deep dependency probe for PostgreSQL, Qdrant, or Redis.
 
+`/search` remains the note-level hybrid endpoint. It now includes best semantic match metadata from the winning chunk on each note result. `/search/chunks` is a semantic-only raw chunk endpoint for multimodal hits.
+
 ## CLI Surface
 
 The CLI currently supports:
@@ -137,6 +139,8 @@ cargo run --bin anki-atlas -- search "diagram" --chunks -n 10
 cargo run --bin anki-atlas -- obsidian-sync /path/to/vault --dry-run
 cargo run --bin anki-atlas -- tui
 ```
+
+`search --chunks` returns raw chunk hits and stays semantic-only. `--fts` is not supported with `--chunks`.
 
 ### TUI
 
@@ -180,6 +184,8 @@ The MCP server registers 15 tools:
 
 Every tool accepts `output_mode = "markdown" | "json"`, defaulting to `markdown`.
 
+`ankiatlas_search` stays note-oriented and includes best semantic match metadata on each result. `ankiatlas_search_chunks` returns raw multimodal chunk hits only.
+
 ## Configuration
 
 Core environment variables come from [config.rs](/Users/po4yka/GitRep/anki-atlas/crates/common/src/config.rs):
@@ -212,6 +218,9 @@ Gemini Embedding 2 notes:
 - Use `ANKIATLAS_EMBEDDING_PROVIDER=google`.
 - Use `ANKIATLAS_EMBEDDING_MODEL=gemini-embedding-2-preview`.
 - `ANKIATLAS_EMBEDDING_DIMENSION` accepts any positive value up to `3072`; `3072`, `1536`, and `768` are the recommended sizes.
+- Anki indexing stores one `text_primary` chunk plus supported local asset chunks for images, audio, video, and PDFs referenced from note fields.
+- The media root resolves from `ANKIATLAS_ANKI_MEDIA_ROOT`, then sync metadata `last_collection_path`, then `ANKIATLAS_ANKI_COLLECTION_PATH`, with sibling `collection.media` as the derived default.
+- Explicit `index` or `sync --force-reindex` work can recreate an incompatible Qdrant collection automatically. API and MCP startup stay read-only and return a `reindex required` error instead of mutating storage.
 
 ## Development
 

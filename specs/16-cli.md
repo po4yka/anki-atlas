@@ -43,7 +43,7 @@ anki-atlas migrate
 anki-atlas tui
 anki-atlas sync <source> [--no-migrate] [--no-index] [--force-reindex]
 anki-atlas index [--force]
-anki-atlas search <query> [--deck <name>]... [--tag <tag>]... [-n <limit>] [--semantic] [--fts] [--verbose]
+anki-atlas search <query> [--deck <name>]... [--tag <tag>]... [-n <limit>] [--chunks] [--semantic] [--fts] [--verbose]
 anki-atlas topics tree [--root-path <path>]
 anki-atlas topics load --file <path>
 anki-atlas topics label [--file <path>] [--min-confidence <float>]
@@ -70,7 +70,9 @@ anki-atlas tag-audit <file> [--fix]
 - `index`
   - runs direct indexing over PostgreSQL notes
 - `search`
-  - maps onto `search::service::SearchParams`
+  - default mode maps onto `search::service::SearchParams`
+  - `--chunks` maps onto `search::service::ChunkSearchParams`
+  - `--chunks` is semantic-only and rejects `--fts`
 - `topics tree`
   - prints taxonomy tree data
 - `topics load`
@@ -123,6 +125,7 @@ Current output categories:
 - `generate` does not persist cards
 - `obsidian-sync` does not persist non-preview results yet
 - CLI direct sync/index require PostgreSQL and Qdrant availability
+- CLI direct sync/index may recreate an incompatible vector collection when the embedding model, dimension, or vector schema has changed
 - the CLI should reuse shared runtime services rather than rewire dependencies ad hoc inside commands
 
 ## Module Layout

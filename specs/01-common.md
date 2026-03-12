@@ -70,6 +70,14 @@ pub struct DeckName(pub String);
 ```rust
 use serde::Deserialize;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EmbeddingProviderKind {
+    OpenAi,
+    Google,
+    Mock,
+}
+
 /// Qdrant quantization mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -107,7 +115,7 @@ pub struct Settings {
 
     // -- Embeddings --
     #[serde(default = "defaults::embedding_provider")]
-    pub embedding_provider: String,
+    pub embedding_provider: EmbeddingProviderKind,
     #[serde(default = "defaults::embedding_model")]
     pub embedding_model: String,
     #[serde(default = "defaults::embedding_dimension")]
@@ -132,6 +140,7 @@ pub struct Settings {
 
     // -- Anki source --
     pub anki_collection_path: Option<String>,
+    pub anki_media_root: Option<String>,
 }
 
 impl Settings {
@@ -150,12 +159,15 @@ pub fn get_settings() -> &'static Settings;
 ```
 
 Validation rules (enforced in `validate()`):
-- `embedding_dimension` must be in `{384, 768, 1024, 1536, 3072}` unless `embedding_provider == "mock"`
+- `embedding_dimension` must be > 0
+- when `embedding_provider == "mock"`, any positive dimension is accepted
+- when `embedding_provider == "google"` and `embedding_model == "gemini-embedding-2-preview"`, any positive dimension up to `3072` is accepted
+- Gemini Embedding 2 warns when the chosen dimension is not one of `3072`, `1536`, or `768`
+- all other non-mock providers require `embedding_dimension` to be in `{384, 768, 1024, 1536, 3072}`
 - `postgres_url` must start with `postgresql://` or `postgres://`
 - `qdrant_url` must start with `http://` or `https://`
 - `redis_url` must start with `redis://` or `rediss://`
 - `job_result_ttl_seconds`, `job_max_retries`, `rerank_top_n`, `rerank_batch_size` must be > 0
-- `embedding_dimension` must be > 0
 
 ### Errors (`src/error.rs`)
 
@@ -318,8 +330,10 @@ Use the `config` crate with this source chain (last wins):
 
 The `get_settings()` function uses `once_cell::sync::Lazy` to cache the first successful load. Tests should use `Settings::load()` directly with `temp_env` to override env vars.
 
-### Dimension validation edge case
-When `embedding_provider` is `"mock"`, any positive dimension is accepted. For all other providers, only `{384, 768, 1024, 1536, 3072}` are valid.
+### Dimension validation edge cases
+- When `embedding_provider` is `"mock"`, any positive dimension is accepted.
+- When `embedding_provider` is `"google"` and `embedding_model` is `"gemini-embedding-2-preview"`, any positive dimension up to `3072` is accepted.
+- For all other non-mock providers, only `{384, 768, 1024, 1536, 3072}` are valid.
 
 ### Error context pattern
 The `ErrorContext` (`HashMap<String, String>`) is optional metadata for debugging. It is not part of the Display output but is available via the struct field. Structured logging should emit it.

@@ -9,7 +9,8 @@ This guide is for the current Rust workspace on `main`.
 - PostgreSQL, Qdrant, and Redis
 - Optional:
   - An Anki collection if you want to run sync
-  - `OPENAI_API_KEY` or `GOOGLE_API_KEY` for real embedding providers
+  - `OPENAI_API_KEY` for OpenAI embeddings
+  - `GEMINI_API_KEY` for Google embeddings (`GOOGLE_API_KEY` still works)
 
 ## 1. Clone and Build
 
@@ -60,9 +61,9 @@ Or:
 
 ```bash
 export ANKIATLAS_EMBEDDING_PROVIDER=google
-export ANKIATLAS_EMBEDDING_MODEL=text-embedding-004
-export ANKIATLAS_EMBEDDING_DIMENSION=768
-export GOOGLE_API_KEY=...
+export ANKIATLAS_EMBEDDING_MODEL=gemini-embedding-2-preview
+export ANKIATLAS_EMBEDDING_DIMENSION=3072
+export GEMINI_API_KEY=...
 ```
 
 Shared runtime variables:
@@ -94,6 +95,19 @@ ls \"$env:APPDATA\\Anki2\\*\\collection.anki2\"
 ```
 
 Close Anki before using the SQLite collection file directly.
+
+For multimodal Anki indexing, media files resolve in this order:
+
+- `ANKIATLAS_ANKI_MEDIA_ROOT`
+- `last_collection_path` saved in `sync_metadata`
+- `ANKIATLAS_ANKI_COLLECTION_PATH`
+- sibling `collection.media` next to the collection file
+
+If your media lives outside the usual Anki layout, set:
+
+```bash
+export ANKIATLAS_ANKI_MEDIA_ROOT=/path/to/collection.media
+```
 
 ## 6. Start the API
 
@@ -145,6 +159,10 @@ curl -X POST http://localhost:8000/search \
   -H "Content-Type: application/json" \
   -d '{"query":"ownership","limit":5}'
 
+curl -X POST http://localhost:8000/search/chunks \
+  -H "Content-Type: application/json" \
+  -d '{"query":"diagram","limit":5}'
+
 curl http://localhost:8000/topics
 curl "http://localhost:8000/topic-coverage?topic_path=rust/ownership"
 curl "http://localhost:8000/topic-gaps?topic_path=rust&min_coverage=1"
@@ -167,6 +185,7 @@ cargo run --bin anki-atlas -- weak-notes rust/ownership -n 10
 cargo run --bin anki-atlas -- duplicates --threshold 0.92 --max 10
 cargo run --bin anki-atlas -- generate /path/to/note.md --dry-run
 cargo run --bin anki-atlas -- validate /path/to/cards.txt --quality
+cargo run --bin anki-atlas -- search "diagram" --chunks -n 10
 cargo run --bin anki-atlas -- obsidian-sync /path/to/vault --dry-run
 cargo run --bin anki-atlas -- tag-audit /path/to/tags.txt --fix
 ```
@@ -176,6 +195,8 @@ Behavioral notes:
 - `generate` previews parsed cards; it does not persist them.
 - `obsidian-sync` requires `--dry-run` today.
 - CLI sync/index need PostgreSQL and Qdrant available.
+- `search --chunks` is semantic-only raw chunk search. `--fts` is not supported with `--chunks`.
+- Explicit CLI `index --force` or sync/index work recreates an incompatible vector collection automatically. API and MCP startup stay read-only and return `reindex required` until you reindex.
 
 ## 11. Set Up MCP
 
@@ -196,6 +217,7 @@ Example MCP configuration:
 Current tool set:
 
 - `ankiatlas_search`
+- `ankiatlas_search_chunks`
 - `ankiatlas_topics`
 - `ankiatlas_topic_coverage`
 - `ankiatlas_topic_gaps`

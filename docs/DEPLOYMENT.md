@@ -54,12 +54,20 @@ Settings are loaded from [config.rs](/Users/po4yka/GitRep/anki-atlas/crates/comm
 | `ANKIATLAS_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
 | `ANKIATLAS_EMBEDDING_DIMENSION` | `1536` | Must match provider |
 | `OPENAI_API_KEY` | unset | Required for OpenAI embeddings |
-| `GOOGLE_API_KEY` | unset | Required for Google embeddings |
+| `GEMINI_API_KEY` | unset | Preferred for Google embeddings |
+| `GOOGLE_API_KEY` | unset | Backward-compatible fallback for Google embeddings |
+| `ANKIATLAS_ANKI_MEDIA_ROOT` | unset | Optional explicit Anki media directory for multimodal indexing |
 | `ANKIATLAS_RERANK_ENABLED` | `false` | Enables reranking |
 | `ANKIATLAS_RERANK_ENDPOINT` | unset | Required when reranking is enabled |
 | `ANKIATLAS_RERANK_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Reranker label |
 | `ANKIATLAS_RERANK_TOP_N` | `50` | Candidate count |
 | `ANKIATLAS_RERANK_BATCH_SIZE` | `32` | Batch size |
+
+Gemini Embedding 2 deployment notes:
+
+- Set `ANKIATLAS_EMBEDDING_PROVIDER=google` and `ANKIATLAS_EMBEDDING_MODEL=gemini-embedding-2-preview`.
+- `ANKIATLAS_EMBEDDING_DIMENSION` accepts any positive value up to `3072`; `3072`, `1536`, and `768` are the recommended sizes.
+- Anki indexing stores one text chunk plus supported local media chunks for images, audio, video, and PDFs referenced from note content.
 
 ## Example Compose Stack
 
@@ -166,6 +174,8 @@ curl -X POST http://localhost:8000/jobs/sync \
   -d '{"source":"/data/collection.anki2","force_reindex":true}'
 ```
 
+Explicit indexing runs may recreate the Qdrant collection automatically when the stored embedding model, embedding dimension, or vector schema is incompatible with the current runtime.
+
 ## Security Notes
 
 - Set `ANKIATLAS_API_KEY` if the API is reachable outside a trusted network.
@@ -176,6 +186,7 @@ curl -X POST http://localhost:8000/jobs/sync \
 ## Operational Caveats
 
 - API write-side work is job-based only.
+- API and MCP read-only bootstrap validate the vector collection but do not mutate it. If the collection dimension, stored model, or stored vector schema is incompatible, startup fails with `reindex required`.
 - MCP is not covered by the root Dockerfile.
 - Worker execution is intentionally gated.
 - Reranking silently disables itself if `ANKIATLAS_RERANK_ENABLED=true` but `ANKIATLAS_RERANK_ENDPOINT` is missing; watch logs for that warning.

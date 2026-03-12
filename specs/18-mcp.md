@@ -50,6 +50,7 @@ anyhow.workspace = true
 Read tools:
 
 - `ankiatlas_search`
+- `ankiatlas_search_chunks`
 - `ankiatlas_topics`
 - `ankiatlas_topic_coverage`
 - `ankiatlas_topic_gaps`
@@ -95,6 +96,7 @@ Each tool has one canonical typed result struct. Markdown mode renders that resu
 Representative result families:
 
 - `SearchToolResult`
+- `ChunkSearchToolResult`
 - `TopicsToolResult`
 - `TopicCoverageToolResult`
 - `TopicGapsToolResult`
@@ -108,6 +110,8 @@ Representative result families:
 
 - MCP uses [surface-runtime](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) with direct execution disabled
 - read tools call the shared search and analytics facades
+- `ankiatlas_search` stays note-oriented and includes best semantic chunk metadata when semantic retrieval contributes
+- `ankiatlas_search_chunks` is semantic-only and returns raw multimodal chunk hits
 - sync/index tools enqueue jobs rather than executing directly
 - preview workflow tools must fail explicitly for unsupported persistence paths
 - logging must stay off stdout to avoid corrupting the MCP protocol stream
@@ -136,4 +140,5 @@ bins/mcp/src/
 - every tool supports both output modes
 - JSON mode returns structured results, not markdown-in-a-string
 - sync/index remain async-only in MCP
+- `ankiatlas_search_chunks` remains semantic-only
 - docs do not describe removed or placeholder MCP tools

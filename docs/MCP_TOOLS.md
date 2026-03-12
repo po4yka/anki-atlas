@@ -24,7 +24,8 @@ The server reads the same environment variables as the rest of the workspace:
 - `ANKIATLAS_EMBEDDING_PROVIDER`
 - `ANKIATLAS_EMBEDDING_MODEL`
 - `ANKIATLAS_EMBEDDING_DIMENSION`
-- `OPENAI_API_KEY` or `GOOGLE_API_KEY` when using those providers
+- `OPENAI_API_KEY` or `GEMINI_API_KEY` when using those providers (`GOOGLE_API_KEY` is still accepted for Google compatibility)
+- `ANKIATLAS_ANKI_MEDIA_ROOT` when multimodal Anki indexing should use an explicit media directory
 - `ANKIATLAS_RERANK_ENABLED`
 - `ANKIATLAS_RERANK_ENDPOINT` when reranking is enabled
 
@@ -50,6 +51,7 @@ Markdown does not invent a different schema. It is only a rendering of the same 
 | Tool | Purpose | Key inputs |
 |---|---|---|
 | `ankiatlas_search` | Hybrid note retrieval | `query`, `deck_names[]`, `tags[]`, `limit`, `semantic_only`, `fts_only` |
+| `ankiatlas_search_chunks` | Semantic-only raw chunk retrieval | `query`, `deck_names[]`, `tags[]`, `limit` |
 | `ankiatlas_topics` | Taxonomy tree inspection | `root_path` |
 | `ankiatlas_topic_coverage` | Topic coverage metrics | `topic_path`, `include_subtree` |
 | `ankiatlas_topic_gaps` | Missing or undercovered topics | `topic_path`, `min_coverage` |
@@ -79,6 +81,8 @@ Write-side behavior is async-only here. MCP does not run sync or index directly.
 ## Behavioral Rules
 
 - Read tools use the same search and analytics facades as the API and CLI.
+- `ankiatlas_search` returns note results and includes best semantic chunk metadata when semantic retrieval contributes.
+- `ankiatlas_search_chunks` is semantic-only in phase 1 and returns raw chunk hits with `chunk_id`, `chunk_kind`, `modality`, `source_field`, `asset_rel_path`, `mime_type`, and `preview_label`.
 - Job tools enqueue Redis-backed work and return job-oriented results with poll and cancel hints.
 - `ankiatlas_generate` is preview-only.
 - `ankiatlas_obsidian_sync` rejects non-dry-run requests until a persistence sink exists.
@@ -104,6 +108,17 @@ Write-side behavior is async-only here. MCP does not run sync or index directly.
   "deck_names": ["Rust"],
   "limit": 5,
   "output_mode": "json"
+}
+```
+
+### Chunk search in markdown mode
+
+```json
+{
+  "query": "diagram",
+  "deck_names": ["Rust"],
+  "limit": 5,
+  "output_mode": "markdown"
 }
 ```
 

@@ -32,11 +32,21 @@ export ANKIATLAS_REDIS_URL=redis://localhost:6379/0
 
 ### Invalid embedding dimension
 
-Non-mock providers only accept a fixed dimension set. If you want a lightweight local setup, switch to mock embeddings:
+Most non-mock providers accept a fixed dimension set. Gemini Embedding 2 is the exception: it accepts any positive value up to `3072`, though `3072`, `1536`, and `768` are the recommended sizes.
+
+If you want a lightweight local setup, switch to mock embeddings:
 
 ```bash
 export ANKIATLAS_EMBEDDING_PROVIDER=mock
 export ANKIATLAS_EMBEDDING_DIMENSION=384
+```
+
+For Gemini Embedding 2:
+
+```bash
+export ANKIATLAS_EMBEDDING_PROVIDER=google
+export ANKIATLAS_EMBEDDING_MODEL=gemini-embedding-2-preview
+export ANKIATLAS_EMBEDDING_DIMENSION=3072
 ```
 
 ## Provider and Search Issues
@@ -48,6 +58,23 @@ Fix either the credential or the provider mode:
 ```bash
 export ANKIATLAS_EMBEDDING_PROVIDER=openai
 export OPENAI_API_KEY=sk-...
+```
+
+Or:
+
+```bash
+export ANKIATLAS_EMBEDDING_PROVIDER=mock
+export ANKIATLAS_EMBEDDING_DIMENSION=384
+```
+
+### `GEMINI_API_KEY or GOOGLE_API_KEY must be set for the Google embedding provider`
+
+Fix either the credential or the provider mode:
+
+```bash
+export ANKIATLAS_EMBEDDING_PROVIDER=google
+export ANKIATLAS_EMBEDDING_MODEL=gemini-embedding-2-preview
+export GEMINI_API_KEY=...
 ```
 
 Or:
@@ -150,7 +177,7 @@ ls ~/.local/share/Anki2/*/collection.anki2
 
 ### Collection dimension mismatch
 
-This happens when your Qdrant collection was created for a different embedding dimension.
+This happens when your Qdrant collection was created for a different embedding dimension. With multimodal indexing enabled, the same class of failure also happens when the stored embedding model or stored vector schema no longer matches the runtime.
 
 Fix options:
 
@@ -160,10 +187,34 @@ curl -X POST http://localhost:8000/jobs/sync \
   -d '{"source":"/path/to/collection.anki2","force_reindex":true}'
 ```
 
+Or run an explicit CLI reindex:
+
+```bash
+cargo run --bin anki-atlas -- index --force
+```
+
 Or recreate the Qdrant collection:
 
 ```bash
 curl -X DELETE "$ANKIATLAS_QDRANT_URL/collections/anki_notes"
+```
+
+### API or MCP startup fails with `reindex required: ...`
+
+That is expected read-only behavior when the current runtime does not match the stored vector collection.
+
+Fix by running an explicit indexing path that is allowed to mutate storage:
+
+```bash
+cargo run --bin anki-atlas -- index --force
+```
+
+or:
+
+```bash
+curl -X POST http://localhost:8000/jobs/index \
+  -H "Content-Type: application/json" \
+  -d '{"force_reindex":true}'
 ```
 
 ### Search, duplicates, or analytics return empty results
@@ -200,6 +251,16 @@ or MCP:
   "vault_path": "/path/to/vault",
   "dry_run": true
 }
+```
+
+### `--fts is not supported with --chunks`
+
+Chunk search is semantic-only in phase 1.
+
+Use:
+
+```bash
+cargo run --bin anki-atlas -- search "diagram" --chunks -n 10
 ```
 
 ### Validation fails on your input file

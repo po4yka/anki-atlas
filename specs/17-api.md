@@ -58,6 +58,7 @@ uuid.workspace = true
 | `GET` | `/jobs/{job_id}` | inspect job |
 | `POST` | `/jobs/{job_id}/cancel` | request cancellation |
 | `POST` | `/search` | typed hybrid search |
+| `POST` | `/search/chunks` | semantic-only raw chunk search |
 | `GET` | `/topics` | taxonomy tree |
 | `GET` | `/topic-coverage` | topic coverage |
 | `GET` | `/topic-gaps` | topic gaps |
@@ -86,6 +87,7 @@ Current request DTO families:
 - `AsyncSyncRequest`
 - `AsyncIndexRequest`
 - `SearchRequest`
+- `ChunkSearchRequest`
 - query DTOs for topics, coverage, gaps, weak notes, and duplicates
 
 Important `SearchRequest` fields:
@@ -100,6 +102,12 @@ Important `SearchRequest` fields:
 - `rerank_override`
 - `rerank_top_n_override`
 
+Important `ChunkSearchRequest` fields:
+
+- `query`
+- `filters`
+- `limit`
+
 ### Response DTOs
 
 Current response DTO families:
@@ -109,6 +117,7 @@ Current response DTO families:
 - `JobAcceptedResponse`
 - `JobStatusResponse`
 - `SearchResponse`
+- `ChunkSearchResponse`
 - `TopicsTreeResponse`
 - `TopicCoverageResponse`
 - `TopicGapsResponse`
@@ -138,9 +147,12 @@ Status mapping:
 ## Runtime Rules
 
 - API read endpoints call shared search and analytics facades
+- `/search` stays note-level hybrid search and attaches best semantic match metadata (`match_modality`, `match_chunk_kind`, `match_source_field`, `match_asset_rel_path`, `match_preview_label`) when semantic retrieval contributes
+- `/search/chunks` is semantic-only and returns raw chunk hits with `chunk_id`, `chunk_kind`, `modality`, `source_field`, `asset_rel_path`, `mime_type`, `preview_label`, and `score`
 - API write-side work is job-based only
 - handlers should translate DTOs only and not construct service dependencies
 - `/ready` does not perform deep dependency checks
+- API bootstrap is read-only with respect to vector storage; when the collection model, dimension, or vector schema is incompatible, startup fails with a clear `reindex required` error
 
 ## Module Layout
 

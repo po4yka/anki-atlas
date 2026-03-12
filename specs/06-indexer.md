@@ -7,7 +7,7 @@ Historical rewrite input: `packages/indexer/` (embeddings.py, qdrant.py, service
 
 ## Purpose
 
-Provides text embedding via multiple providers (OpenAI, Google, local, mock) and manages the Qdrant vector database lifecycle -- upserting, deleting, and searching dense+sparse vectors for Anki notes. The `IndexService` orchestrates embedding and storage, tracking content hashes to skip unchanged notes and supporting batch operations from PostgreSQL.
+Provides embedding via multiple providers (OpenAI, Google, mock) and manages the Qdrant vector database lifecycle for chunk-aware Anki note indexing. The crate now supports multimodal Gemini Embedding 2 requests, chunk-level Qdrant payloads, note-level content hash tracking, and semantic retrieval over both note-level and raw chunk results.
 
 ## Dependencies
 
@@ -44,38 +44,62 @@ use async_trait::async_trait;
 pub enum EmbeddingError {
     #[error("provider not configured: {0}")]
     NotConfigured(String),
+    #[error("http {status}: {body}")]
+    Http { status: u16, body: String },
+    #[error("unsupported input for provider: {message}")]
+    UnsupportedInput { message: String },
+    #[error("protocol error: {message}")]
+    Protocol { message: String },
     #[error("batch embedding failed: {source}")]
     BatchFailed { source: Box<dyn std::error::Error + Send + Sync> },
     #[error("rate limited, retry after {retry_after_secs}s")]
     RateLimited { retry_after_secs: u64 },
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EmbeddingTask {
+    #[default]
+    Default,
+    RetrievalDocument,
+    RetrievalQuery,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum EmbeddingPart {
+    Text { text: String },
+    InlineBytes { mime_type: String, data: Vec<u8>, display_name: Option<String> },
+    FileUri { mime_type: String, uri: String, display_name: Option<String> },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmbeddingInput {
+    pub parts: Vec<EmbeddingPart>,
+    #[serde(default)]
+    pub task: EmbeddingTask,
+    pub title: Option<String>,
+    pub output_dimensionality: Option<usize>,
+}
+
 /// Trait for embedding providers. All impls must be Send + Sync.
 #[async_trait]
 #[cfg_attr(test, mockall::automock)]
 pub trait EmbeddingProvider: Send + Sync {
-    /// Model identifier for version tracking (e.g. "openai/text-embedding-3-small").
+    /// Model identifier for version tracking.
     fn model_name(&self) -> &str;
 
     /// Dimensionality of output vectors.
     fn dimension(&self) -> usize;
 
+    /// Embed a batch of multimodal inputs. Returns one vector per input.
+    async fn embed_inputs(
+        &self,
+        inputs: &[EmbeddingInput],
+    ) -> Result<Vec<Vec<f32>>, EmbeddingError>;
+
     /// Embed a batch of texts. Returns one vector per input text.
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError>;
-
-    /// Embed a single text. Default delegates to `embed`.
-    async fn embed_single(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
-        let results = self.embed(&[text.to_owned()]).await?;
-        Ok(results.into_iter().next().unwrap_or_default())
-    }
-
-    /// SHA-256[:16] hash of "{model_name}:{text}" for change detection.
-    fn content_hash(&self, text: &str) -> String {
-        use sha2::{Sha256, Digest};
-        let input = format!("{}:{}", self.model_name(), text);
-        let hash = Sha256::digest(input.as_bytes());
-        hex::encode(&hash[..8]) // 16 hex chars = 8 bytes
-    }
 }
 ```
 
@@ -109,8 +133,15 @@ impl GoogleEmbeddingProvider {
 }
 ```
 
+Implementation notes:
+
+- `gemini-embedding-001` stays on the legacy text batch path.
+- `gemini-embedding-2-preview` uses `embedContent` with multimodal `EmbeddingInput` values.
+- Gemini Embedding 2 may upload large assets through the Google Files API and then reference them by file URI.
+- Google provider bootstrap prefers `GEMINI_API_KEY`, with `GOOGLE_API_KEY` as a backward-compatible fallback.
+
 ```rust
-/// Mock embedding provider for tests. Returns deterministic vectors from MD5 hash.
+/// Mock embedding provider for tests. Returns deterministic vectors from SHA-256-derived bytes.
 #[derive(Debug, Clone)]
 pub struct MockEmbeddingProvider {
     dimension: usize,
@@ -126,8 +157,8 @@ impl MockEmbeddingProvider {
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EmbeddingProviderConfig {
-    OpenAi { model: String, dimension: usize, batch_size: Option<usize> },
-    Google { model: String, dimension: usize, batch_size: Option<usize> },
+    OpenAi { model: String, dimension: usize, batch_size: Option<usize>, api_key: String },
+    Google { model: String, dimension: usize, batch_size: Option<usize>, api_key: String },
     Mock { dimension: usize },
 }
 
@@ -157,6 +188,33 @@ pub struct NotePayload {
     pub reps: i32,
     #[serde(default)]
     pub fail_rate: Option<f64>,
+    #[serde(default)]
+    pub chunk_id: String,
+    #[serde(default)]
+    pub chunk_kind: String,
+    #[serde(default)]
+    pub modality: String,
+    #[serde(default)]
+    pub source_field: Option<String>,
+    #[serde(default)]
+    pub asset_rel_path: Option<String>,
+    #[serde(default)]
+    pub mime_type: Option<String>,
+    #[serde(default)]
+    pub preview_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SemanticSearchHit {
+    pub note_id: i64,
+    pub chunk_id: String,
+    pub chunk_kind: String,
+    pub modality: String,
+    pub source_field: Option<String>,
+    pub asset_rel_path: Option<String>,
+    pub mime_type: Option<String>,
+    pub preview_label: Option<String>,
+    pub score: f32,
 }
 
 /// Sparse vector (indices + values) for BM25-style retrieval.
@@ -175,6 +233,8 @@ pub enum VectorStoreError {
     Client(String),
     #[error("connection failed: {0}")]
     Connection(String),
+    #[error("reindex required: {reason}")]
+    ReindexRequired { reason: String },
 }
 
 /// Result of an upsert batch.
@@ -192,6 +252,12 @@ pub trait VectorRepository: Send + Sync {
     /// Returns true if newly created, false if already existed.
     async fn ensure_collection(&self, dimension: usize) -> Result<bool, VectorStoreError>;
 
+    /// Return the current collection dimension, or `None` if the collection does not exist.
+    async fn collection_dimension(&self) -> Result<Option<usize>, VectorStoreError>;
+
+    /// Drop and recreate the collection with the requested dimension.
+    async fn recreate_collection(&self, dimension: usize) -> Result<(), VectorStoreError>;
+
     /// Upsert dense vectors + payloads. Optional sparse vectors.
     async fn upsert_vectors(
         &self,
@@ -206,7 +272,16 @@ pub trait VectorRepository: Send + Sync {
     /// Get content hashes for existing note IDs. Returns note_id -> hash.
     async fn get_existing_hashes(&self, note_ids: &[i64]) -> Result<std::collections::HashMap<i64, String>, VectorStoreError>;
 
-    /// Semantic search. Returns (note_id, score) pairs.
+    /// Semantic search against chunk payloads.
+    async fn search_chunks(
+        &self,
+        query_vector: &[f32],
+        query_sparse: Option<&SparseVector>,
+        limit: usize,
+        filters: &SearchFilters,
+    ) -> Result<Vec<SemanticSearchHit>, VectorStoreError>;
+
+    /// Semantic search aggregated to note IDs. Returns (note_id, score) pairs.
     async fn search(
         &self,
         query_vector: &[f32],
@@ -280,6 +355,26 @@ pub struct NoteForIndexing {
     pub fail_rate: Option<f64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChunkForIndexing {
+    pub chunk_id: String,
+    pub chunk_kind: String,
+    pub modality: String,
+    pub embedding_input: EmbeddingInput,
+    pub sparse_text: Option<String>,
+    pub source_field: Option<String>,
+    pub asset_rel_path: Option<String>,
+    pub mime_type: Option<String>,
+    pub preview_label: Option<String>,
+    pub hash_component: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultimodalNoteForIndexing {
+    pub note: NoteForIndexing,
+    pub chunks: Vec<ChunkForIndexing>,
+}
+
 /// Statistics from an indexing operation.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct IndexStats {
@@ -305,13 +400,12 @@ pub enum IndexError {
 
 /// Index service. Generic over dependencies for testability.
 pub struct IndexService<E: EmbeddingProvider, V: VectorRepository> {
-    embedding: E,
-    vector_repo: V,
-    db: sqlx::PgPool,
+    embedding: Arc<E>,
+    vector_repo: Arc<V>,
 }
 
 impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
-    pub fn new(embedding: E, vector_repo: V, db: sqlx::PgPool) -> Self;
+    pub fn new(embedding: E, vector_repo: V) -> Self;
 
     /// Index a batch of notes. Skips notes whose content_hash is unchanged
     /// unless `force_reindex` is true.
@@ -321,15 +415,16 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         force_reindex: bool,
     ) -> Result<IndexStats, IndexError>;
 
+    /// Index a batch of multimodal notes with explicit chunk definitions.
+    pub async fn index_multimodal_notes_with_progress(
+        &self,
+        notes: &[MultimodalNoteForIndexing],
+        force_reindex: bool,
+        progress: Option<IndexProgressCallback>,
+    ) -> Result<IndexStats, IndexError>;
+
     /// Delete notes from the vector store by ID.
     pub async fn delete_notes(&self, note_ids: &[i64]) -> Result<usize, IndexError>;
-
-    /// Index all notes from the PostgreSQL database.
-    pub async fn index_from_database(
-        &self,
-        force_reindex: bool,
-        batch_size: usize,
-    ) -> Result<IndexStats, IndexError>;
 }
 ```
 
@@ -345,26 +440,20 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
 7. Sort by index ascending before returning.
 
 ### Content hash change detection
-- Hash = `sha256("{model_name}:{text}")[..16]` (16 hex chars).
+- Hash = `sha256(model_name + all chunk hash parts)[..16]` (16 hex chars).
+- Text-only notes use a default `text_primary` chunk.
+- Multimodal notes hash the text chunk plus every asset hash component, so changing an image/audio/video/PDF forces note re-embedding.
 - Before embedding a batch, fetch existing hashes from Qdrant via `get_existing_hashes`.
 - Skip notes where stored hash == computed hash (unless `force_reindex`).
 
-### Embedding model versioning
-- Version string: `"{normalization_version}:{model_name}:{dimension}"`.
-- Stored in `sync_metadata` table (key = `embedding_version`, value = JSONB string).
-- On mismatch: if `force_reindex` is false, return `IndexError::ModelChanged`; if true, recreate collection.
-
-### OpenAI provider batching
-- Process texts in chunks of `batch_size` (default 100).
-- Sort response by `index` to maintain input ordering.
-- Retry on 429 with exponential backoff (2, 4, 8, 16s, max 5 attempts).
-
-### Google provider rate-limit handling
-- 0.5s delay between batches.
-- Retry on 429 with exponential backoff (2, 4, 8, 16s, max 5 attempts).
+### Google provider behavior
+- `gemini-embedding-001` stays on the text-only `batchEmbedContents` path.
+- `gemini-embedding-2-preview` uses per-input multimodal requests, `EmbeddingTask`, optional `title`, and optional `output_dimensionality`.
+- Gemini Embedding 2 can send small assets inline and upload larger assets through the Files API.
+- Google retries rate limits with bounded backoff and bounded concurrency rather than one large text batch loop.
 
 ### Mock provider determinism
-- Uses MD5 of text to produce repeatable bytes.
+- Uses SHA-256 over task, title, requested output dimensionality, and all embedding parts.
 - Repeats hash bytes to fill the requested dimension.
 - Maps each byte to `[-1.0, 1.0]` via `(byte / 127.5) - 1.0`.
 
@@ -373,6 +462,13 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
 - Sparse vector: IDF modifier.
 - Optional scalar/binary quantization.
 - Payload indexes on: `note_id` (int), `deck_names` (keyword), `tags` (keyword), `model_id` (int), `mature` (bool).
+- One note may own many chunk payloads; deletes operate by payload `note_id` rather than one-point-per-note IDs.
+- Chunk point IDs are stable and derived from `note_id`, `chunk_kind`, and a hashed suffix.
+
+### Collection compatibility and rollout
+- Runtime stores `embedding_model`, `embedding_dimension`, and `embedding_vector_schema` in `sync_metadata`.
+- Explicit index flows may recreate the collection when model, dimension, or vector schema is incompatible.
+- Read-only surfaces use the same repository introspection to return `reindex required` instead of mutating Qdrant.
 
 ### Hybrid prefetch search
 - When sparse vectors are supported, use `query_points` with two prefetch branches (dense + sparse) fused via Qdrant-native RRF.
@@ -386,10 +482,12 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
 - [ ] `MockEmbeddingProvider` produces deterministic, dimension-correct vectors
 - [ ] `text_to_sparse_vector("")` returns empty indices/values
 - [ ] `text_to_sparse_vector` output is sorted by index and L2-normalized
-- [ ] `content_hash` includes model name (different model -> different hash)
+- [ ] `content_hash_parts` includes model name and all chunk hash parts
 - [ ] `index_notes` skips notes with matching hashes when `force_reindex = false`
 - [ ] `index_notes` re-embeds all notes when `force_reindex = true`
+- [ ] multimodal note indexing produces multiple chunk payloads for a single note when supported media is present
 - [ ] `IndexService` is generic over `EmbeddingProvider + VectorRepository` traits (mockable)
-- [ ] Upsert uses `note_id` as point ID for idempotent updates
+- [ ] delete-by-note removes all chunk payloads for the requested note IDs
+- [ ] Gemini Embedding 2 accepts `EmbeddingInput` values with text, inline bytes, and file URIs
 - [ ] `SearchFilters` correctly maps to Qdrant must/must_not conditions
-- [ ] Integration test with `MockEmbeddingProvider` + `MockVectorRepository` covers full index-search roundtrip
+- [ ] collection mismatch handling covers model, dimension, and vector schema compatibility

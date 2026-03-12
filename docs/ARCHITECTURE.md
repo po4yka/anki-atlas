@@ -2,7 +2,7 @@
 
 ## Mission
 
-Anki Atlas is a Rust workspace for syncing Anki collections, indexing note content for hybrid retrieval, analyzing topic coverage, previewing Obsidian-driven workflows, and exposing those capabilities consistently through API, CLI, MCP, and worker processes.
+Anki Atlas is a Rust workspace for syncing Anki collections, indexing note content and supported Anki media for hybrid and chunk retrieval, analyzing topic coverage, previewing Obsidian-driven workflows, and exposing those capabilities consistently through API, CLI, MCP, and worker processes.
 
 The core architecture rule on `main` is simple:
 
@@ -95,6 +95,7 @@ Infrastructure
 - PostgreSQL pool
 - embedding provider
 - Qdrant-backed vector repository
+- read-only vector compatibility validation for API and MCP bootstrap
 - optional reranker
 - Redis-backed `JobManager`
 - `SearchFacade`
@@ -117,6 +118,7 @@ The API exposes:
 - `GET /jobs/{job_id}`
 - `POST /jobs/{job_id}/cancel`
 - `POST /search`
+- `POST /search/chunks`
 - `GET /topics`
 - `GET /topic-coverage`
 - `GET /topic-gaps`
@@ -126,6 +128,8 @@ The API exposes:
 Important behavior:
 
 - Direct `/sync` and `/index` mutations are intentionally absent.
+- `/search` remains note-level hybrid retrieval and attaches best semantic chunk metadata when semantic matches are present.
+- `/search/chunks` is semantic-only and returns raw chunk hits for multimodal search.
 - If `ANKIATLAS_API_KEY` is set, all routes except `/health` and `/ready` require `X-API-Key`.
 - `X-Request-ID` is added to every response.
 - `/ready` currently signals process readiness only. It is not a deep dependency check.
@@ -163,6 +167,8 @@ The CLI exposes:
 Important behavior:
 
 - `sync` and `index` execute directly through the shared runtime.
+- explicit `index` and sync+index runs may recreate an incompatible vector collection when the embedding model, dimension, or vector schema has changed
+- `search --chunks` exposes semantic-only raw chunk search; standard `search` remains note-level hybrid search
 - `generate` is preview-only.
 - `obsidian-sync` requires `--dry-run` today because persistence is not implemented.
 
@@ -171,6 +177,7 @@ Important behavior:
 The MCP server exposes:
 
 - `ankiatlas_search`
+- `ankiatlas_search_chunks`
 - `ankiatlas_topics`
 - `ankiatlas_topic_coverage`
 - `ankiatlas_topic_gaps`
@@ -191,6 +198,7 @@ Important behavior:
 - Markdown is the default.
 - JSON returns the same canonical structured payload as markdown mode.
 - Sync and index are async job tools only.
+- `ankiatlas_search_chunks` is semantic-only and returns raw multimodal chunk hits.
 
 ### Worker
 
@@ -219,6 +227,23 @@ CLI
   -> PostgreSQL + Qdrant
 ```
 
+### Multimodal indexing model
+
+```text
+Anki note
+  -> normalized_text
+  -> text_primary chunk
+  -> media refs from fields_json/raw_fields
+  -> asset chunks (image/audio/video/document)
+  -> Qdrant payloads keyed by stable chunk IDs
+```
+
+Important behavior:
+
+- text and asset chunks share a note-level content hash derived from the embedding model and all chunk hash parts
+- media root resolution uses `ANKIATLAS_ANKI_MEDIA_ROOT`, then sync metadata `last_collection_path`, then the configured collection path, deriving sibling `collection.media`
+- duplicate detection and note-to-note similarity stay filtered to `text_primary` chunks
+
 ### Local preview flow
 
 ```text
@@ -235,5 +260,6 @@ These are intentional today, not accidental omissions:
 - no direct sync/index execution from MCP
 - no Obsidian persistence path outside preview mode
 - no worker execution unless explicitly enabled
+- API and MCP bootstrap do not auto-recreate incompatible vector collections; they fail with `reindex required` until an explicit index path runs
 
 If any of those constraints change, the code, tests, and docs should change together.
