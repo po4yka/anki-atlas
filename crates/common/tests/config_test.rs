@@ -62,6 +62,7 @@ fn settings_load_returns_defaults_when_no_env_vars() {
             "ANKIATLAS_API_KEY",
             "ANKIATLAS_DEBUG",
             "ANKIATLAS_ANKI_COLLECTION_PATH",
+            "ANKIATLAS_ANKI_MEDIA_ROOT",
         ],
         || {
             let settings = Settings::load().expect("load with defaults should succeed");
@@ -97,6 +98,7 @@ fn settings_load_returns_defaults_when_no_env_vars() {
 
             // Anki source
             assert!(settings.anki_collection_path.is_none());
+            assert!(settings.anki_media_root.is_none());
         },
     );
 }
@@ -123,6 +125,10 @@ fn settings_load_reads_ankiatlas_prefixed_env_vars() {
                 "ANKIATLAS_ANKI_COLLECTION_PATH",
                 Some("/path/to/collection.anki2"),
             ),
+            (
+                "ANKIATLAS_ANKI_MEDIA_ROOT",
+                Some("/path/to/collection.media"),
+            ),
             ("ANKIATLAS_EMBEDDING_DIMENSION", Some("768")),
         ],
         || {
@@ -137,6 +143,10 @@ fn settings_load_reads_ankiatlas_prefixed_env_vars() {
             assert_eq!(
                 settings.anki_collection_path,
                 Some("/path/to/collection.anki2".to_string())
+            );
+            assert_eq!(
+                settings.anki_media_root,
+                Some("/path/to/collection.media".to_string())
             );
             assert_eq!(settings.embedding_dimension, 768);
             assert_eq!(settings.embedding_provider, EmbeddingProviderKind::OpenAi);
@@ -261,6 +271,42 @@ fn validate_accepts_all_valid_embedding_dimensions() {
             },
         );
     }
+}
+
+#[test]
+fn validate_accepts_gemini_embedding_2_custom_dimension_up_to_3072() {
+    temp_env::with_vars(
+        vec![
+            ("ANKIATLAS_EMBEDDING_PROVIDER", Some("google")),
+            (
+                "ANKIATLAS_EMBEDDING_MODEL",
+                Some("gemini-embedding-2-preview"),
+            ),
+            ("ANKIATLAS_EMBEDDING_DIMENSION", Some("2048")),
+        ],
+        || {
+            let settings = Settings::load().expect("Gemini Embedding 2 should accept 2048");
+            assert_eq!(settings.embedding_dimension, 2048);
+        },
+    );
+}
+
+#[test]
+fn validate_rejects_gemini_embedding_2_dimension_above_3072() {
+    temp_env::with_vars(
+        vec![
+            ("ANKIATLAS_EMBEDDING_PROVIDER", Some("google")),
+            (
+                "ANKIATLAS_EMBEDDING_MODEL",
+                Some("gemini-embedding-2-preview"),
+            ),
+            ("ANKIATLAS_EMBEDDING_DIMENSION", Some("4096")),
+        ],
+        || {
+            let result = Settings::load();
+            assert!(result.is_err(), "Gemini Embedding 2 should reject 4096");
+        },
+    );
 }
 
 #[test]

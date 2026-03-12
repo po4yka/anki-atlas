@@ -2281,6 +2281,11 @@ mod tests {
                 headline: Some("Rust ownership".to_string()),
                 rerank_score: Some(0.88),
                 rerank_rank: Some(1),
+                match_modality: Some("text".to_string()),
+                match_chunk_kind: Some("text_primary".to_string()),
+                match_source_field: None,
+                match_asset_rel_path: None,
+                match_preview_label: Some("Rust ownership".to_string()),
             }],
             stats: FusionStats {
                 both: 1,

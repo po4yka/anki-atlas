@@ -8,7 +8,7 @@ use analytics::taxonomy::Taxonomy;
 use common::config::{EmbeddingProviderKind, Settings};
 use database::MigrationResult;
 use search::fts::SearchFilters;
-use search::service::{HybridSearchResult, SearchParams};
+use search::service::{ChunkSearchParams, ChunkSearchResult, HybridSearchResult, SearchParams};
 use surface_runtime::{
     AnalyticsFacade, BuildSurfaceServicesOptions, GeneratePreview, GeneratePreviewService,
     IndexExecutionSummary, IndexExecutor, ObsidianScanPreview, ObsidianScanService, SearchFacade,
@@ -68,6 +68,14 @@ pub struct SearchRequest {
     pub limit: usize,
     pub semantic_only: bool,
     pub fts_only: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChunkSearchRequest {
+    pub query: String,
+    pub deck_names: Vec<String>,
+    pub tags: Vec<String>,
+    pub limit: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -217,6 +225,28 @@ pub async fn search(
         rerank_top_n_override: None,
     };
     handles.search.search(&params).await.map_err(Into::into)
+}
+
+pub async fn search_chunks(
+    handles: RuntimeHandles,
+    request: ChunkSearchRequest,
+) -> anyhow::Result<ChunkSearchResult> {
+    let filters =
+        (!request.deck_names.is_empty() || !request.tags.is_empty()).then(|| SearchFilters {
+            deck_names: (!request.deck_names.is_empty()).then(|| request.deck_names.clone()),
+            tags: (!request.tags.is_empty()).then(|| request.tags.clone()),
+            ..Default::default()
+        });
+    let params = ChunkSearchParams {
+        query: request.query,
+        filters,
+        limit: request.limit,
+    };
+    handles
+        .search
+        .search_chunks(&params)
+        .await
+        .map_err(Into::into)
 }
 
 pub async fn topics_tree(

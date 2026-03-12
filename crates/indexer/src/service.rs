@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::instrument;
 
-use crate::embeddings::{self, EmbeddingProvider};
+use crate::embeddings::{self, EmbeddingInput, EmbeddingProvider, EmbeddingTask};
 use crate::qdrant::{NotePayload, QdrantRepository, VectorRepository};
 
 /// A note prepared for indexing.
@@ -21,6 +21,34 @@ pub struct NoteForIndexing {
     pub reps: i32,
     #[serde(default)]
     pub fail_rate: Option<f64>,
+}
+
+/// A multimodal chunk prepared for indexing.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChunkForIndexing {
+    pub chunk_id: String,
+    pub chunk_kind: String,
+    pub modality: String,
+    pub embedding_input: EmbeddingInput,
+    #[serde(default)]
+    pub sparse_text: Option<String>,
+    #[serde(default)]
+    pub source_field: Option<String>,
+    #[serde(default)]
+    pub asset_rel_path: Option<String>,
+    #[serde(default)]
+    pub mime_type: Option<String>,
+    #[serde(default)]
+    pub preview_label: Option<String>,
+    pub hash_component: String,
+}
+
+/// A note prepared for multimodal indexing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultimodalNoteForIndexing {
+    pub note: NoteForIndexing,
+    #[serde(default)]
+    pub chunks: Vec<ChunkForIndexing>,
 }
 
 /// Progress callback for indexing work.
@@ -132,6 +160,25 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         force_reindex: bool,
         progress: Option<IndexProgressCallback>,
     ) -> Result<IndexStats, IndexError> {
+        let multimodal_notes: Vec<_> = notes
+            .iter()
+            .cloned()
+            .map(|note| MultimodalNoteForIndexing {
+                chunks: vec![default_text_chunk(&note.normalized_text, note.note_id)],
+                note,
+            })
+            .collect();
+        self.index_multimodal_notes_with_progress(&multimodal_notes, force_reindex, progress)
+            .await
+    }
+
+    #[instrument(skip(self, notes, progress), fields(note_count = notes.len()))]
+    pub async fn index_multimodal_notes_with_progress(
+        &self,
+        notes: &[MultimodalNoteForIndexing],
+        force_reindex: bool,
+        progress: Option<IndexProgressCallback>,
+    ) -> Result<IndexStats, IndexError> {
         emit_progress(
             progress.as_ref(),
             IndexProgressStage::Starting,
@@ -158,7 +205,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
             1,
             "loading stored content hashes",
         );
-        let note_ids: Vec<i64> = notes.iter().map(|n| n.note_id).collect();
+        let note_ids: Vec<i64> = notes.iter().map(|n| n.note.note_id).collect();
         let existing_hashes = self.vector_repo.get_existing_hashes(&note_ids).await?;
         emit_progress(
             progress.as_ref(),
@@ -171,13 +218,19 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         let model_name = self.embedding.model_name();
 
         // Compute hashes once and determine which notes need embedding
-        let mut to_embed: Vec<(&NoteForIndexing, String)> = Vec::new();
+        let mut to_embed: Vec<(&MultimodalNoteForIndexing, String)> = Vec::new();
         let mut skipped = 0usize;
 
         for (idx, note) in notes.iter().enumerate() {
-            let new_hash = embeddings::content_hash(model_name, &note.normalized_text);
+            let effective_chunks = note_effective_chunks(note);
+            let new_hash = embeddings::content_hash_parts(
+                model_name,
+                effective_chunks
+                    .iter()
+                    .map(|chunk| chunk.hash_component.as_str()),
+            );
             if !force_reindex {
-                if let Some(existing) = existing_hashes.get(&note.note_id) {
+                if let Some(existing) = existing_hashes.get(&note.note.note_id) {
                     if *existing == new_hash {
                         skipped += 1;
                         emit_progress(
@@ -185,7 +238,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
                             IndexProgressStage::Diffing,
                             idx + 1,
                             notes.len(),
-                            format!("skipped unchanged note {}", note.note_id),
+                            format!("skipped unchanged note {}", note.note.note_id),
                         );
                         continue;
                     }
@@ -197,7 +250,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
                 IndexProgressStage::Diffing,
                 idx + 1,
                 notes.len(),
-                format!("queued note {} for embedding", note.note_id),
+                format!("queued note {} for embedding", note.note.note_id),
             );
         }
 
@@ -219,67 +272,103 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         }
 
         // Embed texts
+        let chunk_count: usize = to_embed
+            .iter()
+            .map(|(note, _)| note_effective_chunks(note).len())
+            .sum();
         emit_progress(
             progress.as_ref(),
             IndexProgressStage::Embedding,
             0,
-            to_embed.len(),
-            format!("embedding {} notes", to_embed.len()),
+            chunk_count.max(1),
+            format!(
+                "embedding {chunk_count} chunks across {} notes",
+                to_embed.len()
+            ),
         );
-        let texts: Vec<String> = to_embed
+        let embedding_inputs: Vec<EmbeddingInput> = to_embed
             .iter()
-            .map(|(n, _)| n.normalized_text.clone())
+            .flat_map(|(note, _)| note_effective_chunks(note))
+            .map(|chunk| chunk.embedding_input)
             .collect();
-        let vectors = self.embedding.embed(&texts).await?;
+        let vectors = self.embedding.embed_inputs(&embedding_inputs).await?;
         emit_progress(
             progress.as_ref(),
             IndexProgressStage::Embedding,
-            to_embed.len(),
-            to_embed.len(),
-            format!("embedded {} notes", to_embed.len()),
+            chunk_count.max(1),
+            chunk_count.max(1),
+            format!(
+                "embedded {chunk_count} chunks across {} notes",
+                to_embed.len()
+            ),
         );
 
-        // Build payloads using cached hashes
         let payloads: Vec<NotePayload> = to_embed
             .iter()
-            .map(|(n, hash)| NotePayload {
-                note_id: n.note_id,
-                model_id: n.model_id,
-                deck_names: n.deck_names.clone(),
-                tags: n.tags.clone(),
-                content_hash: hash.clone(),
-                mature: n.mature,
-                lapses: n.lapses,
-                reps: n.reps,
-                fail_rate: n.fail_rate,
+            .flat_map(|(note, hash)| {
+                note_effective_chunks(note)
+                    .into_iter()
+                    .map(move |chunk| NotePayload {
+                        note_id: note.note.note_id,
+                        model_id: note.note.model_id,
+                        deck_names: note.note.deck_names.clone(),
+                        tags: note.note.tags.clone(),
+                        content_hash: hash.clone(),
+                        mature: note.note.mature,
+                        lapses: note.note.lapses,
+                        reps: note.note.reps,
+                        fail_rate: note.note.fail_rate,
+                        chunk_id: chunk.chunk_id,
+                        chunk_kind: chunk.chunk_kind,
+                        modality: chunk.modality,
+                        source_field: chunk.source_field,
+                        asset_rel_path: chunk.asset_rel_path,
+                        mime_type: chunk.mime_type,
+                        preview_label: chunk.preview_label,
+                    })
             })
             .collect();
 
-        // Generate sparse vectors
+        // Generate sparse vectors.
         let sparse_vectors: Vec<_> = to_embed
             .iter()
-            .map(|(n, _)| QdrantRepository::text_to_sparse_vector(&n.normalized_text))
+            .flat_map(|(note, _)| note_effective_chunks(note))
+            .map(|chunk| {
+                chunk
+                    .sparse_text
+                    .as_deref()
+                    .map(QdrantRepository::text_to_sparse_vector)
+                    .unwrap_or_default()
+            })
             .collect();
 
         emit_progress(
             progress.as_ref(),
             IndexProgressStage::Upserting,
             0,
-            to_embed.len(),
-            format!("upserting {} note vectors", to_embed.len()),
+            payloads.len().max(1),
+            format!(
+                "upserting {} chunk vectors for {} notes",
+                payloads.len(),
+                to_embed.len()
+            ),
         );
-        let upserted = self
+        let _upserted = self
             .vector_repo
             .upsert_vectors(&vectors, &payloads, Some(&sparse_vectors))
             .await?;
 
-        stats.notes_embedded = upserted;
+        stats.notes_embedded = to_embed.len();
         emit_progress(
             progress.as_ref(),
             IndexProgressStage::Upserting,
-            upserted,
-            to_embed.len(),
-            format!("upserted {upserted} note vectors"),
+            payloads.len().max(1),
+            payloads.len().max(1),
+            format!(
+                "upserted {} chunk vectors for {} notes",
+                payloads.len(),
+                stats.notes_embedded
+            ),
         );
         emit_progress(
             progress.as_ref(),
@@ -299,6 +388,36 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
     #[instrument(skip(self), fields(note_count = note_ids.len()))]
     pub async fn delete_notes(&self, note_ids: &[i64]) -> Result<usize, IndexError> {
         Ok(self.vector_repo.delete_vectors(note_ids).await?)
+    }
+}
+
+fn default_text_chunk(normalized_text: &str, note_id: i64) -> ChunkForIndexing {
+    let preview = normalized_text.chars().take(80).collect::<String>();
+    ChunkForIndexing {
+        chunk_id: format!("{note_id}:text_primary"),
+        chunk_kind: "text_primary".to_string(),
+        modality: "text".to_string(),
+        embedding_input: EmbeddingInput::text_with_task(
+            normalized_text.to_string(),
+            EmbeddingTask::RetrievalDocument,
+        ),
+        sparse_text: Some(normalized_text.to_string()),
+        source_field: None,
+        asset_rel_path: None,
+        mime_type: Some("text/plain".to_string()),
+        preview_label: Some(preview),
+        hash_component: normalized_text.to_string(),
+    }
+}
+
+fn note_effective_chunks(note: &MultimodalNoteForIndexing) -> Vec<ChunkForIndexing> {
+    if note.chunks.is_empty() {
+        vec![default_text_chunk(
+            &note.note.normalized_text,
+            note.note.note_id,
+        )]
+    } else {
+        note.chunks.clone()
     }
 }
 
@@ -725,6 +844,14 @@ mod tests {
             }
             fn dimension(&self) -> usize {
                 4
+            }
+            async fn embed_inputs(
+                &self,
+                _inputs: &[EmbeddingInput],
+            ) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+                Err(EmbeddingError::BatchFailed {
+                    source: "test error".into(),
+                })
             }
             async fn embed(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
                 Err(EmbeddingError::BatchFailed {

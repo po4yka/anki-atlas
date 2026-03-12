@@ -19,7 +19,7 @@ use mockall::{Sequence, mock};
 use search::error::SearchError;
 use search::fts::LexicalMode;
 use search::fusion::{FusionStats, SearchResult};
-use search::service::{HybridSearchResult, SearchParams};
+use search::service::{ChunkSearchParams, ChunkSearchResult, HybridSearchResult, SearchParams};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -60,6 +60,11 @@ mock! {
             &self,
             params: &SearchParams,
         ) -> Result<HybridSearchResult, SearchError>;
+
+        async fn search_chunks(
+            &self,
+            params: &ChunkSearchParams,
+        ) -> Result<ChunkSearchResult, SearchError>;
     }
 }
 
@@ -134,6 +139,7 @@ fn test_settings() -> Settings {
         api_key: None,
         debug: false,
         anki_collection_path: None,
+        anki_media_root: None,
     }
 }
 
@@ -201,6 +207,11 @@ fn sample_search_result() -> HybridSearchResult {
             headline: Some("ownership".into()),
             rerank_score: Some(0.97),
             rerank_rank: Some(1),
+            match_modality: Some("text".into()),
+            match_chunk_kind: Some("text_primary".into()),
+            match_source_field: None,
+            match_asset_rel_path: None,
+            match_preview_label: Some("ownership".into()),
         }],
         stats: FusionStats {
             semantic_only: 0,

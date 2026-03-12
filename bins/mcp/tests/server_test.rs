@@ -9,7 +9,7 @@ use analytics::taxonomy::Taxonomy;
 use anki_atlas_mcp::server::AnkiAtlasServer;
 use jobs::{IndexJobPayload, JobError, JobManager, JobRecord, SyncJobPayload};
 use search::error::SearchError;
-use search::service::{HybridSearchResult, SearchParams};
+use search::service::{ChunkSearchParams, ChunkSearchResult, HybridSearchResult, SearchParams};
 use surface_runtime::{AnalyticsFacade, SearchFacade, SurfaceServices};
 
 struct NoopJobs;
@@ -58,6 +58,13 @@ struct NoopSearch;
 #[async_trait::async_trait]
 impl SearchFacade for NoopSearch {
     async fn search(&self, _params: &SearchParams) -> Result<HybridSearchResult, SearchError> {
+        Err(SearchError::Database(sqlx::Error::PoolTimedOut))
+    }
+
+    async fn search_chunks(
+        &self,
+        _params: &ChunkSearchParams,
+    ) -> Result<ChunkSearchResult, SearchError> {
         Err(SearchError::Database(sqlx::Error::PoolTimedOut))
     }
 }
@@ -144,7 +151,7 @@ async fn server_name_and_version_are_set() {
 async fn server_registers_expected_tool_set() {
     let server = test_server();
     let names = server.tool_names();
-    assert_eq!(server.tool_count(), 14);
+    assert_eq!(server.tool_count(), 15);
     assert_eq!(
         names,
         vec![
@@ -155,6 +162,7 @@ async fn server_registers_expected_tool_set() {
             "ankiatlas_job_status",
             "ankiatlas_obsidian_sync",
             "ankiatlas_search",
+            "ankiatlas_search_chunks",
             "ankiatlas_sync_job",
             "ankiatlas_tag_audit",
             "ankiatlas_topic_coverage",

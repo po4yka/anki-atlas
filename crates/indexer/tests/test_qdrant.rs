@@ -16,6 +16,13 @@ fn note_payload_serialize_roundtrip() {
         lapses: 3,
         reps: 15,
         fail_rate: Some(0.2),
+        chunk_id: "42:text_primary".to_string(),
+        chunk_kind: "text_primary".to_string(),
+        modality: "text".to_string(),
+        source_field: None,
+        asset_rel_path: None,
+        mime_type: Some("text/plain".to_string()),
+        preview_label: Some("payload preview".to_string()),
     };
     let json = serde_json::to_string(&payload).unwrap();
     let deserialized: NotePayload = serde_json::from_str(&json).unwrap();

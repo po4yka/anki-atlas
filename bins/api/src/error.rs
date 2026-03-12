@@ -92,6 +92,13 @@ impl IntoResponse for AppError {
 impl From<SearchError> for AppError {
     fn from(error: SearchError) -> Self {
         match error {
+            SearchError::InvalidRequest(message) => Self(
+                AnkiAtlasError::Configuration {
+                    message,
+                    context: HashMap::new(),
+                }
+                .into(),
+            ),
             SearchError::Database(source) => Self(
                 AnkiAtlasError::DatabaseConnection {
                     message: source.to_string(),

@@ -25,6 +25,10 @@ fn search_formatter_includes_query_and_results() {
             rerank_score: Some(0.97),
             headline: Some("Ownership".to_string()),
             sources: vec!["semantic".to_string(), "fts".to_string()],
+            match_modality: Some("text".to_string()),
+            match_chunk_kind: Some("text_primary".to_string()),
+            match_source_field: None,
+            match_asset_rel_path: None,
         }],
     });
     assert!(formatted.contains("ownership"));

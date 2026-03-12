@@ -259,6 +259,13 @@ async fn reset_qdrant(settings: &Settings, notes: &[SeededNote]) -> Result<()> {
             lapses: note.lapses,
             reps: note.reps,
             fail_rate: note.fail_rate,
+            chunk_id: format!("{}:text_primary", note.note_id),
+            chunk_kind: "text_primary".to_string(),
+            modality: "text".to_string(),
+            source_field: None,
+            asset_rel_path: None,
+            mime_type: Some("text/plain".to_string()),
+            preview_label: Some(note.normalized_text.chars().take(80).collect()),
         })
         .collect::<Vec<_>>();
 

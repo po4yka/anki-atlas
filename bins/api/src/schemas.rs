@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use jobs::types::{IndexJobPayload, JobResultData, JobStatus, JobType, SyncJobPayload};
 use search::fts::{LexicalMode, SearchFilters};
 use search::fusion::{FusionStats, SearchResult};
-use search::service::{HybridSearchResult, SearchParams};
+use search::service::{ChunkSearchParams, ChunkSearchResult, HybridSearchResult, SearchParams};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -194,6 +194,33 @@ impl From<SearchRequest> for SearchParams {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ChunkSearchRequest {
+    pub query: String,
+    pub filters: Option<SearchFiltersDto>,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+}
+
+impl ChunkSearchRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.limit == 0 {
+            return Err("limit must be greater than 0".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl From<ChunkSearchRequest> for ChunkSearchParams {
+    fn from(request: ChunkSearchRequest) -> Self {
+        Self {
+            query: request.query,
+            filters: request.filters.map(Into::into),
+            limit: request.limit,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct SearchResultItem {
     pub note_id: i64,
@@ -206,6 +233,11 @@ pub struct SearchResultItem {
     pub rerank_score: Option<f64>,
     pub rerank_rank: Option<usize>,
     pub sources: Vec<String>,
+    pub match_modality: Option<String>,
+    pub match_chunk_kind: Option<String>,
+    pub match_source_field: Option<String>,
+    pub match_asset_rel_path: Option<String>,
+    pub match_preview_label: Option<String>,
 }
 
 impl From<SearchResult> for SearchResultItem {
@@ -223,6 +255,11 @@ impl From<SearchResult> for SearchResultItem {
             rerank_score: result.rerank_score,
             rerank_rank: result.rerank_rank,
             sources,
+            match_modality: result.match_modality,
+            match_chunk_kind: result.match_chunk_kind,
+            match_source_field: result.match_source_field,
+            match_asset_rel_path: result.match_asset_rel_path,
+            match_preview_label: result.match_preview_label,
         }
     }
 }
@@ -256,6 +293,48 @@ impl From<HybridSearchResult> for SearchResponse {
             rerank_applied: result.rerank_applied,
             rerank_model: result.rerank_model,
             rerank_top_n: result.rerank_top_n,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChunkSearchHitItem {
+    pub note_id: i64,
+    pub chunk_id: String,
+    pub chunk_kind: String,
+    pub modality: String,
+    pub source_field: Option<String>,
+    pub asset_rel_path: Option<String>,
+    pub mime_type: Option<String>,
+    pub preview_label: Option<String>,
+    pub score: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChunkSearchResponse {
+    pub query: String,
+    pub results: Vec<ChunkSearchHitItem>,
+}
+
+impl From<ChunkSearchResult> for ChunkSearchResponse {
+    fn from(result: ChunkSearchResult) -> Self {
+        Self {
+            query: result.query,
+            results: result
+                .results
+                .into_iter()
+                .map(|hit| ChunkSearchHitItem {
+                    note_id: hit.note_id,
+                    chunk_id: hit.chunk_id,
+                    chunk_kind: hit.chunk_kind,
+                    modality: hit.modality,
+                    source_field: hit.source_field,
+                    asset_rel_path: hit.asset_rel_path,
+                    mime_type: hit.mime_type,
+                    preview_label: hit.preview_label,
+                    score: hit.score,
+                })
+                .collect(),
         }
     }
 }

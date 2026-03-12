@@ -1,6 +1,6 @@
 use analytics::coverage::{TopicCoverage, TopicGap, WeakNote};
 use analytics::duplicates::{DuplicateCluster, DuplicateStats};
-use search::service::HybridSearchResult;
+use search::service::{ChunkSearchResult, HybridSearchResult};
 use surface_runtime::{
     GeneratePreview, IndexExecutionSummary, ObsidianScanPreview, SyncExecutionSummary,
     TagAuditSummary, ValidationSummary,
@@ -20,8 +20,14 @@ pub fn print_search_result(result: &HybridSearchResult, verbose: bool) {
         );
         if verbose {
             println!(
-                "  semantic={:?} fts={:?} rerank={:?}",
-                item.semantic_score, item.fts_score, item.rerank_score
+                "  semantic={:?} fts={:?} rerank={:?} match_modality={:?} match_chunk_kind={:?} match_source_field={:?} match_asset_rel_path={:?}",
+                item.semantic_score,
+                item.fts_score,
+                item.rerank_score,
+                item.match_modality,
+                item.match_chunk_kind,
+                item.match_source_field,
+                item.match_asset_rel_path
             );
         }
     }
@@ -41,6 +47,23 @@ pub fn print_search_result(result: &HybridSearchResult, verbose: bool) {
             println!(
                 "autocomplete_suggestions: {}",
                 result.autocomplete_suggestions.join(", ")
+            );
+        }
+    }
+}
+
+pub fn print_chunk_search_result(result: &ChunkSearchResult, verbose: bool) {
+    println!("query: {}", result.query);
+    println!("results: {}", result.results.len());
+    for item in &result.results {
+        println!(
+            "- note={} chunk={} kind={} modality={} score={:.4}",
+            item.note_id, item.chunk_id, item.chunk_kind, item.modality, item.score
+        );
+        if verbose {
+            println!(
+                "  source_field={:?} asset_rel_path={:?} mime_type={:?} preview_label={:?}",
+                item.source_field, item.asset_rel_path, item.mime_type, item.preview_label
             );
         }
     }

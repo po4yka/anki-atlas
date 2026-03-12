@@ -26,6 +26,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/jobs/{job_id}/cancel", post(handlers::cancel_job))
         // Search and analytics
         .route("/search", post(handlers::search))
+        .route("/search/chunks", post(handlers::search_chunks))
         .route("/topics", get(handlers::topics))
         .route("/topic-coverage", get(handlers::topic_coverage))
         .route("/topic-gaps", get(handlers::topic_gaps))

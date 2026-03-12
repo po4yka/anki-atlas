@@ -1,7 +1,7 @@
 use crate::tools::{
-    DuplicatesToolResult, JobAcceptedToolResult, JobStatusToolResult, SearchToolResult,
-    TopicCoverageToolResult, TopicGapsToolResult, TopicWeakNotesToolResult, TopicsToolResult,
-    WorkflowToolResult,
+    ChunkSearchToolResult, DuplicatesToolResult, JobAcceptedToolResult, JobStatusToolResult,
+    SearchToolResult, TopicCoverageToolResult, TopicGapsToolResult, TopicWeakNotesToolResult,
+    TopicsToolResult, WorkflowToolResult,
 };
 
 pub fn format_search(result: &SearchToolResult) -> String {
@@ -22,6 +22,20 @@ pub fn format_search(result: &SearchToolResult) -> String {
         out.push_str(&format!(
             "\nSuggestions: {}\n",
             result.query_suggestions.join(", ")
+        ));
+    }
+    out
+}
+
+pub fn format_chunk_search(result: &ChunkSearchToolResult) -> String {
+    let mut out = format!(
+        "## Chunk Search\n\nQuery: `{}`\nResults: {}\n",
+        result.query, result.total_results
+    );
+    for item in &result.results {
+        out.push_str(&format!(
+            "- note `{}` chunk `{}` kind `{}` modality `{}` score `{:.4}`\n",
+            item.note_id, item.chunk_id, item.chunk_kind, item.modality, item.score
         ));
     }
     out

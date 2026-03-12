@@ -13,6 +13,8 @@ pub enum RerankError {
 /// Search errors.
 #[derive(Debug, Error)]
 pub enum SearchError {
+    #[error("invalid search request: {0}")]
+    InvalidRequest(String),
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),
     #[error("embedding error: {0}")]

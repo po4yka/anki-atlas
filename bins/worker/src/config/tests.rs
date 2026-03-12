@@ -24,6 +24,7 @@ fn test_settings() -> common::config::Settings {
         api_key: None,
         debug: false,
         anki_collection_path: None,
+        anki_media_root: None,
     }
 }
 

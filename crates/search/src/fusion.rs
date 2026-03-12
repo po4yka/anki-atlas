@@ -14,6 +14,11 @@ pub struct SearchResult {
     pub headline: Option<String>,
     pub rerank_score: Option<f64>,
     pub rerank_rank: Option<usize>,
+    pub match_modality: Option<String>,
+    pub match_chunk_kind: Option<String>,
+    pub match_source_field: Option<String>,
+    pub match_asset_rel_path: Option<String>,
+    pub match_preview_label: Option<String>,
 }
 
 impl SearchResult {
@@ -67,6 +72,11 @@ pub fn reciprocal_rank_fusion(
                 headline: None,
                 rerank_score: None,
                 rerank_rank: None,
+                match_modality: None,
+                match_chunk_kind: None,
+                match_source_field: None,
+                match_asset_rel_path: None,
+                match_preview_label: None,
             },
         );
     }
@@ -94,6 +104,11 @@ pub fn reciprocal_rank_fusion(
                     headline: headline.clone(),
                     rerank_score: None,
                     rerank_rank: None,
+                    match_modality: None,
+                    match_chunk_kind: None,
+                    match_source_field: None,
+                    match_asset_rel_path: None,
+                    match_preview_label: None,
                 },
             );
         }
@@ -148,6 +163,11 @@ mod tests {
             headline: None,
             rerank_score: None,
             rerank_rank: None,
+            match_modality: None,
+            match_chunk_kind: None,
+            match_source_field: None,
+            match_asset_rel_path: None,
+            match_preview_label: None,
         };
         assert_eq!(result.sources(), vec!["semantic"]);
     }
@@ -164,6 +184,11 @@ mod tests {
             headline: Some("test".to_string()),
             rerank_score: None,
             rerank_rank: None,
+            match_modality: None,
+            match_chunk_kind: None,
+            match_source_field: None,
+            match_asset_rel_path: None,
+            match_preview_label: None,
         };
         assert_eq!(result.sources(), vec!["fts"]);
     }
@@ -180,6 +205,11 @@ mod tests {
             headline: None,
             rerank_score: None,
             rerank_rank: None,
+            match_modality: None,
+            match_chunk_kind: None,
+            match_source_field: None,
+            match_asset_rel_path: None,
+            match_preview_label: None,
         };
         assert_eq!(result.sources(), vec!["semantic", "fts"]);
     }
@@ -196,6 +226,11 @@ mod tests {
             headline: None,
             rerank_score: None,
             rerank_rank: None,
+            match_modality: None,
+            match_chunk_kind: None,
+            match_source_field: None,
+            match_asset_rel_path: None,
+            match_preview_label: None,
         };
         let sources: Vec<&str> = result.sources();
         assert!(sources.is_empty());

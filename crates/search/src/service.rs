@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use indexer::embeddings::{EmbeddingInput, EmbeddingTask};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use tracing::instrument;
@@ -26,6 +27,25 @@ pub struct SearchParams {
     pub fts_only: bool,
     pub rerank_override: Option<bool>,
     pub rerank_top_n_override: Option<usize>,
+}
+
+/// Parameters for semantic chunk search.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkSearchParams {
+    pub query: String,
+    pub filters: Option<SearchFilters>,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+}
+
+impl Default for ChunkSearchParams {
+    fn default() -> Self {
+        Self {
+            query: String::new(),
+            filters: None,
+            limit: default_limit(),
+        }
+    }
 }
 
 fn default_limit() -> usize {
@@ -65,6 +85,27 @@ pub struct HybridSearchResult {
     pub rerank_applied: bool,
     pub rerank_model: Option<String>,
     pub rerank_top_n: Option<usize>,
+}
+
+/// Single semantic chunk hit.
+#[derive(Debug, Clone, Serialize)]
+pub struct ChunkSearchHit {
+    pub note_id: i64,
+    pub chunk_id: String,
+    pub chunk_kind: String,
+    pub modality: String,
+    pub source_field: Option<String>,
+    pub asset_rel_path: Option<String>,
+    pub mime_type: Option<String>,
+    pub preview_label: Option<String>,
+    pub score: f64,
+}
+
+/// Semantic-only chunk search result.
+#[derive(Debug, Clone, Serialize)]
+pub struct ChunkSearchResult {
+    pub query: String,
+    pub results: Vec<ChunkSearchHit>,
 }
 
 /// Detailed note information for result enrichment.
@@ -163,6 +204,49 @@ where
             .collect())
     }
 
+    fn to_vector_filters(filters: Option<&SearchFilters>) -> indexer::qdrant::SearchFilters {
+        let Some(filters) = filters else {
+            return indexer::qdrant::SearchFilters::default();
+        };
+
+        indexer::qdrant::SearchFilters {
+            deck_names: filters.deck_names.clone(),
+            deck_names_exclude: filters.deck_names_exclude.clone(),
+            tags: filters.tags.clone(),
+            tags_exclude: filters.tags_exclude.clone(),
+            model_ids: filters.model_ids.clone(),
+            mature_only: filters.min_ivl.is_some_and(|min_ivl| min_ivl >= 21),
+            max_lapses: filters.max_lapses,
+            min_reps: filters.min_reps,
+        }
+    }
+
+    async fn run_semantic_chunk_search(
+        &self,
+        query: &str,
+        filters: Option<&SearchFilters>,
+        limit: usize,
+    ) -> Result<Vec<indexer::qdrant::SemanticSearchHit>, SearchError> {
+        let embedded = self
+            .embedding
+            .embed_inputs(&[EmbeddingInput::text_with_task(
+                query.to_string(),
+                EmbeddingTask::RetrievalQuery,
+            )])
+            .await?;
+        let query_vector = &embedded[0];
+        let vector_filters = Self::to_vector_filters(filters);
+        self.vector_repo
+            .search_chunks(
+                query_vector,
+                None,
+                limit.saturating_mul(4).max(limit),
+                &vector_filters,
+            )
+            .await
+            .map_err(Into::into)
+    }
+
     /// Execute hybrid search: semantic + FTS -> RRF fusion -> optional rerank.
     #[instrument(skip(self))]
     pub async fn search(&self, params: &SearchParams) -> Result<HybridSearchResult, SearchError> {
@@ -196,23 +280,38 @@ where
         }
 
         // Semantic search
+        let mut semantic_matches = HashMap::<i64, indexer::qdrant::SemanticSearchHit>::new();
         let semantic_results = if fts_only {
             vec![]
         } else {
-            let embedded = self.embedding.embed(&[query.to_string()]).await?;
-            let query_vector = &embedded[0];
             let raw = self
-                .vector_repo
-                .search(
-                    query_vector,
-                    None,
-                    limit,
-                    &indexer::qdrant::SearchFilters::default(),
-                )
+                .run_semantic_chunk_search(query, params.filters.as_ref(), limit)
                 .await?;
-            raw.into_iter()
-                .map(|(id, score)| (id, score as f64))
-                .collect::<Vec<_>>()
+            let mut best_by_note = HashMap::<i64, f64>::new();
+            for hit in raw {
+                let score = f64::from(hit.score);
+                best_by_note
+                    .entry(hit.note_id)
+                    .and_modify(|best_score| {
+                        if score > *best_score {
+                            *best_score = score;
+                        }
+                    })
+                    .or_insert(score);
+                semantic_matches
+                    .entry(hit.note_id)
+                    .and_modify(|existing| {
+                        if hit.score > existing.score {
+                            *existing = hit.clone();
+                        }
+                    })
+                    .or_insert(hit);
+            }
+            let mut semantic_results: Vec<_> = best_by_note.into_iter().collect();
+            semantic_results
+                .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            semantic_results.truncate(limit);
+            semantic_results
         };
 
         // FTS search
@@ -251,6 +350,16 @@ where
             if fts_only { 0.0 } else { semantic_weight },
             if semantic_only { 0.0 } else { fts_weight },
         );
+
+        for result in &mut results {
+            if let Some(hit) = semantic_matches.get(&result.note_id) {
+                result.match_modality = Some(hit.modality.clone());
+                result.match_chunk_kind = Some(hit.chunk_kind.clone());
+                result.match_source_field = hit.source_field.clone();
+                result.match_asset_rel_path = hit.asset_rel_path.clone();
+                result.match_preview_label = hit.preview_label.clone();
+            }
+        }
 
         // Determine whether to rerank
         let should_rerank = rerank_override.unwrap_or(self.rerank_enabled);
@@ -307,6 +416,49 @@ where
             } else {
                 None
             },
+        })
+    }
+
+    /// Execute semantic-only chunk search.
+    #[instrument(skip(self))]
+    pub async fn search_chunks(
+        &self,
+        params: &ChunkSearchParams,
+    ) -> Result<ChunkSearchResult, SearchError> {
+        if params.query.trim().is_empty() {
+            return Ok(ChunkSearchResult {
+                query: params.query.clone(),
+                results: Vec::new(),
+            });
+        }
+
+        let raw = self
+            .run_semantic_chunk_search(&params.query, params.filters.as_ref(), params.limit)
+            .await?;
+        let mut results: Vec<_> = raw
+            .into_iter()
+            .map(|hit| ChunkSearchHit {
+                note_id: hit.note_id,
+                chunk_id: hit.chunk_id,
+                chunk_kind: hit.chunk_kind,
+                modality: hit.modality,
+                source_field: hit.source_field,
+                asset_rel_path: hit.asset_rel_path,
+                mime_type: hit.mime_type,
+                preview_label: hit.preview_label,
+                score: f64::from(hit.score),
+            })
+            .collect();
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        results.truncate(params.limit);
+
+        Ok(ChunkSearchResult {
+            query: params.query.clone(),
+            results,
         })
     }
 
@@ -408,6 +560,13 @@ mod tests {
             4
         }
 
+        async fn embed_inputs(
+            &self,
+            inputs: &[EmbeddingInput],
+        ) -> Result<Vec<Vec<f32>>, indexer::embeddings::EmbeddingError> {
+            Ok(inputs.iter().map(|_| vec![0.1, 0.2, 0.3, 0.4]).collect())
+        }
+
         async fn embed(
             &self,
             texts: &[String],
@@ -418,12 +577,27 @@ mod tests {
 
     /// Simple mock vector repository for service tests.
     struct FakeVectorRepo {
-        results: Vec<(i64, f32)>,
+        results: Vec<indexer::qdrant::SemanticSearchHit>,
     }
 
     impl FakeVectorRepo {
         fn new(results: Vec<(i64, f32)>) -> Self {
-            Self { results }
+            Self {
+                results: results
+                    .into_iter()
+                    .map(|(note_id, score)| indexer::qdrant::SemanticSearchHit {
+                        note_id,
+                        chunk_id: format!("{note_id}:text_primary"),
+                        chunk_kind: "text_primary".to_string(),
+                        modality: "text".to_string(),
+                        source_field: None,
+                        asset_rel_path: None,
+                        mime_type: Some("text/plain".to_string()),
+                        preview_label: Some(format!("note {note_id}")),
+                        score,
+                    })
+                    .collect(),
+            }
         }
 
         fn empty() -> Self {
@@ -438,6 +612,19 @@ mod tests {
             _dimension: usize,
         ) -> Result<bool, indexer::qdrant::VectorStoreError> {
             Ok(false)
+        }
+
+        async fn collection_dimension(
+            &self,
+        ) -> Result<Option<usize>, indexer::qdrant::VectorStoreError> {
+            Ok(Some(4))
+        }
+
+        async fn recreate_collection(
+            &self,
+            _dimension: usize,
+        ) -> Result<(), indexer::qdrant::VectorStoreError> {
+            Ok(())
         }
 
         async fn upsert_vectors(
@@ -463,13 +650,14 @@ mod tests {
             Ok(HashMap::new())
         }
 
-        async fn search(
+        async fn search_chunks(
             &self,
             _query_vector: &[f32],
             _query_sparse: Option<&indexer::qdrant::SparseVector>,
             _limit: usize,
             _filters: &indexer::qdrant::SearchFilters,
-        ) -> Result<Vec<(i64, f32)>, indexer::qdrant::VectorStoreError> {
+        ) -> Result<Vec<indexer::qdrant::SemanticSearchHit>, indexer::qdrant::VectorStoreError>
+        {
             Ok(self.results.clone())
         }
 

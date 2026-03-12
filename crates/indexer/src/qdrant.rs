@@ -21,6 +21,50 @@ pub struct NotePayload {
     pub reps: i32,
     #[serde(default)]
     pub fail_rate: Option<f64>,
+    #[serde(default = "default_chunk_id")]
+    pub chunk_id: String,
+    #[serde(default = "default_chunk_kind")]
+    pub chunk_kind: String,
+    #[serde(default = "default_modality")]
+    pub modality: String,
+    #[serde(default)]
+    pub source_field: Option<String>,
+    #[serde(default)]
+    pub asset_rel_path: Option<String>,
+    #[serde(default)]
+    pub mime_type: Option<String>,
+    #[serde(default)]
+    pub preview_label: Option<String>,
+}
+
+fn default_chunk_id() -> String {
+    "legacy:text_primary".to_string()
+}
+
+fn default_chunk_kind() -> String {
+    "text_primary".to_string()
+}
+
+fn default_modality() -> String {
+    "text".to_string()
+}
+
+/// Semantic hit returned from chunk-aware vector search.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SemanticSearchHit {
+    pub note_id: i64,
+    pub chunk_id: String,
+    pub chunk_kind: String,
+    pub modality: String,
+    #[serde(default)]
+    pub source_field: Option<String>,
+    #[serde(default)]
+    pub asset_rel_path: Option<String>,
+    #[serde(default)]
+    pub mime_type: Option<String>,
+    #[serde(default)]
+    pub preview_label: Option<String>,
+    pub score: f32,
 }
 
 /// Sparse vector (indices + values) for BM25-style retrieval.
@@ -43,6 +87,8 @@ pub enum VectorStoreError {
     Client(String),
     #[error("connection failed: {0}")]
     Connection(String),
+    #[error("reindex required: {reason}")]
+    ReindexRequired { reason: String },
 }
 
 /// Result of an upsert batch.
@@ -73,6 +119,12 @@ pub trait VectorRepository: Send + Sync {
     /// Returns true if newly created, false if already existed.
     async fn ensure_collection(&self, dimension: usize) -> Result<bool, VectorStoreError>;
 
+    /// Return the current collection dimension, or `None` if the collection does not exist.
+    async fn collection_dimension(&self) -> Result<Option<usize>, VectorStoreError>;
+
+    /// Drop and recreate the collection with the requested dimension.
+    async fn recreate_collection(&self, dimension: usize) -> Result<(), VectorStoreError>;
+
     /// Upsert dense vectors + payloads. Optional sparse vectors.
     async fn upsert_vectors(
         &self,
@@ -90,6 +142,15 @@ pub trait VectorRepository: Send + Sync {
         note_ids: &[i64],
     ) -> Result<HashMap<i64, String>, VectorStoreError>;
 
+    /// Semantic search against chunk vectors.
+    async fn search_chunks(
+        &self,
+        query_vector: &[f32],
+        query_sparse: Option<&SparseVector>,
+        limit: usize,
+        filters: &SearchFilters,
+    ) -> Result<Vec<SemanticSearchHit>, VectorStoreError>;
+
     /// Semantic search. Returns (note_id, score) pairs.
     async fn search(
         &self,
@@ -97,7 +158,31 @@ pub trait VectorRepository: Send + Sync {
         query_sparse: Option<&SparseVector>,
         limit: usize,
         filters: &SearchFilters,
-    ) -> Result<Vec<(i64, f32)>, VectorStoreError>;
+    ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+        let mut by_note = HashMap::<i64, f32>::new();
+        for hit in self
+            .search_chunks(
+                query_vector,
+                query_sparse,
+                limit.saturating_mul(4).max(limit),
+                filters,
+            )
+            .await?
+        {
+            by_note
+                .entry(hit.note_id)
+                .and_modify(|score| {
+                    if hit.score > *score {
+                        *score = hit.score;
+                    }
+                })
+                .or_insert(hit.score);
+        }
+        let mut results: Vec<_> = by_note.into_iter().collect();
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        results.truncate(limit);
+        Ok(results)
+    }
 
     /// Find notes similar to a given note.
     async fn find_similar_to_note(
@@ -122,6 +207,14 @@ where
         (*self).ensure_collection(dimension).await
     }
 
+    async fn collection_dimension(&self) -> Result<Option<usize>, VectorStoreError> {
+        (*self).collection_dimension().await
+    }
+
+    async fn recreate_collection(&self, dimension: usize) -> Result<(), VectorStoreError> {
+        (*self).recreate_collection(dimension).await
+    }
+
     async fn upsert_vectors(
         &self,
         vectors: &[Vec<f32>],
@@ -142,6 +235,18 @@ where
         note_ids: &[i64],
     ) -> Result<HashMap<i64, String>, VectorStoreError> {
         (*self).get_existing_hashes(note_ids).await
+    }
+
+    async fn search_chunks(
+        &self,
+        query_vector: &[f32],
+        query_sparse: Option<&SparseVector>,
+        limit: usize,
+        filters: &SearchFilters,
+    ) -> Result<Vec<SemanticSearchHit>, VectorStoreError> {
+        (*self)
+            .search_chunks(query_vector, query_sparse, limit, filters)
+            .await
     }
 
     async fn search(
@@ -183,6 +288,14 @@ where
         (**self).ensure_collection(dimension).await
     }
 
+    async fn collection_dimension(&self) -> Result<Option<usize>, VectorStoreError> {
+        (**self).collection_dimension().await
+    }
+
+    async fn recreate_collection(&self, dimension: usize) -> Result<(), VectorStoreError> {
+        (**self).recreate_collection(dimension).await
+    }
+
     async fn upsert_vectors(
         &self,
         vectors: &[Vec<f32>],
@@ -203,6 +316,18 @@ where
         note_ids: &[i64],
     ) -> Result<HashMap<i64, String>, VectorStoreError> {
         (**self).get_existing_hashes(note_ids).await
+    }
+
+    async fn search_chunks(
+        &self,
+        query_vector: &[f32],
+        query_sparse: Option<&SparseVector>,
+        limit: usize,
+        filters: &SearchFilters,
+    ) -> Result<Vec<SemanticSearchHit>, VectorStoreError> {
+        (**self)
+            .search_chunks(query_vector, query_sparse, limit, filters)
+            .await
     }
 
     async fn search(
@@ -244,6 +369,14 @@ where
         (**self).ensure_collection(dimension).await
     }
 
+    async fn collection_dimension(&self) -> Result<Option<usize>, VectorStoreError> {
+        (**self).collection_dimension().await
+    }
+
+    async fn recreate_collection(&self, dimension: usize) -> Result<(), VectorStoreError> {
+        (**self).recreate_collection(dimension).await
+    }
+
     async fn upsert_vectors(
         &self,
         vectors: &[Vec<f32>],
@@ -264,6 +397,18 @@ where
         note_ids: &[i64],
     ) -> Result<HashMap<i64, String>, VectorStoreError> {
         (**self).get_existing_hashes(note_ids).await
+    }
+
+    async fn search_chunks(
+        &self,
+        query_vector: &[f32],
+        query_sparse: Option<&SparseVector>,
+        limit: usize,
+        filters: &SearchFilters,
+    ) -> Result<Vec<SemanticSearchHit>, VectorStoreError> {
+        (**self)
+            .search_chunks(query_vector, query_sparse, limit, filters)
+            .await
     }
 
     async fn search(

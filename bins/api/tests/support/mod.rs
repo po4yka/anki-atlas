@@ -622,6 +622,7 @@ fn build_settings(
         api_key,
         debug: false,
         anki_collection_path: None,
+        anki_media_root: None,
     }
 }
 

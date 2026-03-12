@@ -7,19 +7,20 @@ use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use search::fts::SearchFilters;
-use search::service::SearchParams;
+use search::service::{ChunkSearchParams, SearchParams};
 use serde_json::Value;
 use surface_runtime::{BuildSurfaceServicesOptions, SurfaceError, SurfaceServices};
 
 use crate::formatters;
 use crate::handlers::{error_result, success_result};
 use crate::tools::{
-    DuplicatesToolInput, DuplicatesToolResult, GenerateToolInput, IndexJobToolInput,
-    JobAcceptedToolResult, JobCancelToolInput, JobStatusToolInput, JobStatusToolResult,
-    ObsidianSyncToolInput, SearchResultView, SearchToolInput, SearchToolResult, SyncJobToolInput,
-    TagAuditToolInput, ToolError, TopicCoverageToolInput, TopicCoverageToolResult,
-    TopicGapsToolInput, TopicGapsToolResult, TopicWeakNotesToolInput, TopicWeakNotesToolResult,
-    TopicsToolInput, TopicsToolResult, ValidateToolInput, WorkflowToolResult,
+    ChunkSearchResultView, ChunkSearchToolInput, ChunkSearchToolResult, DuplicatesToolInput,
+    DuplicatesToolResult, GenerateToolInput, IndexJobToolInput, JobAcceptedToolResult,
+    JobCancelToolInput, JobStatusToolInput, JobStatusToolResult, ObsidianSyncToolInput,
+    SearchResultView, SearchToolInput, SearchToolResult, SyncJobToolInput, TagAuditToolInput,
+    ToolError, TopicCoverageToolInput, TopicCoverageToolResult, TopicGapsToolInput,
+    TopicGapsToolResult, TopicWeakNotesToolInput, TopicWeakNotesToolResult, TopicsToolInput,
+    TopicsToolResult, ValidateToolInput, WorkflowToolResult,
 };
 
 #[derive(Clone)]
@@ -161,6 +162,10 @@ impl AnkiAtlasServer {
                                 rerank_score: item.rerank_score,
                                 headline: item.headline,
                                 sources,
+                                match_modality: item.match_modality,
+                                match_chunk_kind: item.match_chunk_kind,
+                                match_source_field: item.match_source_field,
+                                match_asset_rel_path: item.match_asset_rel_path,
                             }
                         })
                         .collect(),
@@ -168,6 +173,59 @@ impl AnkiAtlasServer {
                 success_result(
                     input.output_mode,
                     formatters::format_search(&response),
+                    &response,
+                )
+            }
+            Err(error) => error_result(
+                input.output_mode,
+                Self::tool_error("search_error", error.to_string(), None),
+            ),
+        }
+    }
+
+    #[tool(
+        name = "ankiatlas_search_chunks",
+        description = "Search raw multimodal chunks with semantic retrieval only"
+    )]
+    async fn ankiatlas_search_chunks(
+        &self,
+        Parameters(input): Parameters<ChunkSearchToolInput>,
+    ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+        let filters =
+            (!input.deck_names.is_empty() || !input.tags.is_empty()).then(|| SearchFilters {
+                deck_names: (!input.deck_names.is_empty()).then(|| input.deck_names.clone()),
+                tags: (!input.tags.is_empty()).then(|| input.tags.clone()),
+                ..Default::default()
+            });
+        let params = ChunkSearchParams {
+            query: input.query.clone(),
+            filters,
+            limit: input.limit,
+        };
+        match self.services.search.search_chunks(&params).await {
+            Ok(result) => {
+                let response = ChunkSearchToolResult {
+                    query: result.query,
+                    total_results: result.results.len(),
+                    results: result
+                        .results
+                        .into_iter()
+                        .map(|item| ChunkSearchResultView {
+                            note_id: item.note_id,
+                            chunk_id: item.chunk_id,
+                            chunk_kind: item.chunk_kind,
+                            modality: item.modality,
+                            source_field: item.source_field,
+                            asset_rel_path: item.asset_rel_path,
+                            mime_type: item.mime_type,
+                            preview_label: item.preview_label,
+                            score: item.score,
+                        })
+                        .collect(),
+                };
+                success_result(
+                    input.output_mode,
+                    formatters::format_chunk_search(&response),
                     &response,
                 )
             }

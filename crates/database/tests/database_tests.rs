@@ -53,6 +53,7 @@ fn settings_for_container(host: &str, port: u16) -> common::config::Settings {
         api_key: None,
         debug: false,
         anki_collection_path: None,
+        anki_media_root: None,
     }
 }
 

@@ -8,7 +8,7 @@ use analytics::duplicates::{DuplicateCluster, DuplicateStats};
 use analytics::labeling::LabelingStats;
 use analytics::service::AnalyticsService;
 use analytics::taxonomy::Taxonomy;
-use anyhow::{Context, Result as AnyhowResult};
+use anyhow::{Context, Result as AnyhowResult, anyhow};
 use common::config::{EmbeddingProviderKind, Settings, qdrant_grpc_url};
 use database::create_pool;
 use indexer::embeddings::{EmbeddingProvider, EmbeddingProviderConfig, create_embedding_provider};
@@ -17,7 +17,9 @@ use jobs::{JobManager, RedisJobManager};
 use qdrant_client::Qdrant;
 use search::error::SearchError;
 use search::reranker::{CrossEncoderReranker, Reranker};
-use search::service::{HybridSearchResult, SearchParams, SearchService};
+use search::service::{
+    ChunkSearchParams, ChunkSearchResult, HybridSearchResult, SearchParams, SearchService,
+};
 use serde_json::Value;
 use sqlx::PgPool;
 
@@ -42,6 +44,11 @@ pub trait SearchFacade: Send + Sync {
         &self,
         params: &SearchParams,
     ) -> std::result::Result<HybridSearchResult, SearchError>;
+
+    async fn search_chunks(
+        &self,
+        params: &ChunkSearchParams,
+    ) -> std::result::Result<ChunkSearchResult, SearchError>;
 }
 
 #[async_trait::async_trait]
@@ -95,6 +102,13 @@ impl SearchFacade for SearchFacadeImpl {
         params: &SearchParams,
     ) -> std::result::Result<HybridSearchResult, SearchError> {
         self.inner.search(params).await
+    }
+
+    async fn search_chunks(
+        &self,
+        params: &ChunkSearchParams,
+    ) -> std::result::Result<ChunkSearchResult, SearchError> {
+        self.inner.search_chunks(params).await
     }
 }
 
@@ -227,12 +241,69 @@ fn build_embedding_config(settings: &Settings) -> AnyhowResult<EmbeddingProvider
             model: embedding.model,
             dimension: embedding.dimension as usize,
             batch_size: None,
-            api_key: env::var("GOOGLE_API_KEY")
-                .context("GOOGLE_API_KEY must be set for the Google embedding provider")?,
+            api_key: env::var("GEMINI_API_KEY")
+                .or_else(|_| env::var("GOOGLE_API_KEY"))
+                .context(
+                    "GEMINI_API_KEY or GOOGLE_API_KEY must be set for the Google embedding provider",
+                )?,
         },
     };
 
     Ok(config)
+}
+
+async fn load_sync_metadata_value(db: &PgPool, key: &str) -> AnyhowResult<Option<String>> {
+    sqlx::query_scalar::<_, String>("SELECT value #>> '{}' FROM sync_metadata WHERE key = $1")
+        .bind(key)
+        .fetch_optional(db)
+        .await
+        .with_context(|| format!("load sync metadata key `{key}`"))
+}
+
+async fn validate_read_only_vector_store(
+    db: &PgPool,
+    vector_store: &QdrantVectorStore,
+    embedding: &dyn EmbeddingProvider,
+) -> AnyhowResult<()> {
+    let desired_dimension = embedding.dimension();
+    let desired_model = embedding.model_name();
+    let current_dimension = vector_store
+        .collection_dimension()
+        .await
+        .context("inspect Qdrant collection dimension")?;
+
+    let Some(current_dimension) = current_dimension else {
+        return Err(anyhow!("reindex required: vector collection is missing"));
+    };
+    if current_dimension != desired_dimension {
+        return Err(anyhow!(
+            "reindex required: vector collection dimension is {current_dimension}, expected {desired_dimension}"
+        ));
+    }
+
+    if let Some(stored_model) = load_sync_metadata_value(db, "embedding_model").await?
+        && stored_model != desired_model
+    {
+        return Err(anyhow!(
+            "reindex required: stored embedding model is {stored_model}, current model is {desired_model}"
+        ));
+    }
+    if let Some(stored_dimension) = load_sync_metadata_value(db, "embedding_dimension").await?
+        && stored_dimension != desired_dimension.to_string()
+    {
+        return Err(anyhow!(
+            "reindex required: stored embedding dimension is {stored_dimension}, current dimension is {desired_dimension}"
+        ));
+    }
+    if let Some(stored_schema) = load_sync_metadata_value(db, "embedding_vector_schema").await?
+        && stored_schema != "multimodal_v1"
+    {
+        return Err(anyhow!(
+            "reindex required: stored vector schema is {stored_schema}, expected multimodal_v1"
+        ));
+    }
+
+    Ok(())
 }
 
 fn build_reranker(settings: &Settings) -> Option<SharedReranker> {
@@ -285,10 +356,9 @@ pub async fn build_surface_services(
         qdrant_client.clone(),
         collection_name,
     ));
-    vector_store
-        .ensure_collection(settings.embedding().dimension as usize)
-        .await
-        .context("ensure Qdrant collection for surface runtime")?;
+    if !options.enable_direct_execution {
+        validate_read_only_vector_store(&db, &vector_store, embedding.as_ref()).await?;
+    }
     let vector_repo = vector_store as SharedVectorRepository;
     let reranker = build_reranker(settings);
     let rerank_enabled = settings.rerank().enabled && reranker.is_some();
@@ -322,7 +392,13 @@ pub async fn build_surface_services(
 
     let mut services = SurfaceServices::new(db.clone(), job_manager, search, analytics);
     if options.enable_direct_execution {
-        let index = Arc::new(IndexingService::new(db.clone(), embedding, vector_repo));
+        let index = Arc::new(IndexingService::new(
+            db.clone(),
+            embedding,
+            vector_repo,
+            settings.anki_collection_path.as_ref().map(PathBuf::from),
+            settings.anki_media_root.as_ref().map(PathBuf::from),
+        ));
         services.sync = Arc::new(SyncExecutionService::new(db, index.clone()));
         services.index = index;
     }

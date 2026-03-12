@@ -53,6 +53,19 @@ pub struct SearchToolInput {
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct ChunkSearchToolInput {
+    #[serde(default)]
+    pub output_mode: OutputMode,
+    pub query: String,
+    #[serde(default)]
+    pub deck_names: Vec<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct TopicsToolInput {
     #[serde(default)]
     pub output_mode: OutputMode,
@@ -180,6 +193,10 @@ pub struct SearchResultView {
     pub rerank_score: Option<f64>,
     pub headline: Option<String>,
     pub sources: Vec<String>,
+    pub match_modality: Option<String>,
+    pub match_chunk_kind: Option<String>,
+    pub match_source_field: Option<String>,
+    pub match_asset_rel_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -192,6 +209,26 @@ pub struct SearchToolResult {
     pub query_suggestions: Vec<String>,
     pub autocomplete_suggestions: Vec<String>,
     pub results: Vec<SearchResultView>,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct ChunkSearchResultView {
+    pub note_id: i64,
+    pub chunk_id: String,
+    pub chunk_kind: String,
+    pub modality: String,
+    pub source_field: Option<String>,
+    pub asset_rel_path: Option<String>,
+    pub mime_type: Option<String>,
+    pub preview_label: Option<String>,
+    pub score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct ChunkSearchToolResult {
+    pub query: String,
+    pub total_results: usize,
+    pub results: Vec<ChunkSearchResultView>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]

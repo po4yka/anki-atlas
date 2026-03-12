@@ -58,6 +58,8 @@ pub struct SearchArgs {
     #[arg(short = 'n', long, default_value_t = 10)]
     pub limit: usize,
     #[arg(long, default_value_t = false)]
+    pub chunks: bool,
+    #[arg(long, default_value_t = false)]
     pub semantic: bool,
     #[arg(long, default_value_t = false)]
     pub fts: bool,

@@ -56,6 +56,7 @@ pub struct Settings {
     pub api_key: Option<String>,
     pub debug: bool,
     pub anki_collection_path: Option<String>,
+    pub anki_media_root: Option<String>,
 }
 
 /// Database bootstrap settings.
@@ -142,6 +143,9 @@ impl Settings {
             anki_collection_path: env::var("ANKIATLAS_ANKI_COLLECTION_PATH")
                 .ok()
                 .filter(|s| !s.is_empty()),
+            anki_media_root: env::var("ANKIATLAS_ANKI_MEDIA_ROOT")
+                .ok()
+                .filter(|s| !s.is_empty()),
         };
 
         settings.validate()?;
@@ -184,7 +188,24 @@ impl Settings {
         }
         if self.embedding_provider != EmbeddingProviderKind::Mock {
             const VALID_DIMS: [u32; 5] = [384, 768, 1024, 1536, 3072];
-            if !VALID_DIMS.contains(&self.embedding_dimension) {
+            let is_gemini_embedding_2 = self.embedding_provider == EmbeddingProviderKind::Google
+                && self.embedding_model == "gemini-embedding-2-preview";
+
+            if is_gemini_embedding_2 {
+                if self.embedding_dimension > 3072 {
+                    return Err(ConfigError(format!(
+                        "embedding_dimension {} exceeds Gemini Embedding 2 maximum of 3072",
+                        self.embedding_dimension
+                    )));
+                }
+
+                if !matches!(self.embedding_dimension, 768 | 1536 | 3072) {
+                    tracing::warn!(
+                        dimension = self.embedding_dimension,
+                        "Gemini Embedding 2 is configured with a non-recommended dimensionality; recommended values are 3072, 1536, or 768"
+                    );
+                }
+            } else if !VALID_DIMS.contains(&self.embedding_dimension) {
                 return Err(ConfigError(format!(
                     "embedding_dimension {} not in valid set: {VALID_DIMS:?}",
                     self.embedding_dimension

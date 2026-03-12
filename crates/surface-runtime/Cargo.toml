@@ -28,6 +28,9 @@ sqlx = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+regex = { workspace = true }
+sha2 = { workspace = true }
+hex = "0.4"
 
 [dev-dependencies]
 mockall = { workspace = true }

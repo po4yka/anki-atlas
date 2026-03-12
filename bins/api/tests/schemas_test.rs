@@ -139,6 +139,11 @@ fn search_response_serializes_typed_metadata() {
             headline: Some("headline".into()),
             rerank_score: Some(0.97),
             rerank_rank: Some(1),
+            match_modality: Some("text".into()),
+            match_chunk_kind: Some("text_primary".into()),
+            match_source_field: None,
+            match_asset_rel_path: None,
+            match_preview_label: Some("headline".into()),
         }],
         stats: FusionStats {
             semantic_only: 0,

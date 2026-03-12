@@ -29,7 +29,7 @@ Important current constraints:
 - PostgreSQL, Qdrant, and Redis
 - Optional embedding credentials:
   - `OPENAI_API_KEY` for `ANKIATLAS_EMBEDDING_PROVIDER=openai`
-  - `GOOGLE_API_KEY` for `ANKIATLAS_EMBEDDING_PROVIDER=google`
+  - `GEMINI_API_KEY` for `ANKIATLAS_EMBEDDING_PROVIDER=google` (`GOOGLE_API_KEY` still works)
 
 ### 1. Start infrastructure
 
@@ -94,6 +94,7 @@ Current stable API routes:
 - `GET /jobs/{job_id}`
 - `POST /jobs/{job_id}/cancel`
 - `POST /search`
+- `POST /search/chunks`
 - `GET /topics`
 - `GET /topic-coverage`
 - `GET /topic-gaps`
@@ -132,6 +133,7 @@ Example commands:
 cargo run --bin anki-atlas -- sync /path/to/collection.anki2 --force-reindex
 cargo run --bin anki-atlas -- duplicates --threshold 0.95 --max 25 --deck Rust
 cargo run --bin anki-atlas -- validate /path/to/cards.txt --quality
+cargo run --bin anki-atlas -- search "diagram" --chunks -n 10
 cargo run --bin anki-atlas -- obsidian-sync /path/to/vault --dry-run
 cargo run --bin anki-atlas -- tui
 ```
@@ -158,9 +160,10 @@ Keybindings:
 
 ## MCP Surface
 
-The MCP server registers 14 tools:
+The MCP server registers 15 tools:
 
 - `ankiatlas_search`
+- `ankiatlas_search_chunks`
 - `ankiatlas_topics`
 - `ankiatlas_topic_coverage`
 - `ankiatlas_topic_gaps`
@@ -202,6 +205,13 @@ Core environment variables come from [config.rs](/Users/po4yka/GitRep/anki-atlas
 | `ANKIATLAS_API_KEY` | unset | Optional API auth |
 | `ANKIATLAS_DEBUG` | `false` | Logging verbosity |
 | `ANKIATLAS_ANKI_COLLECTION_PATH` | unset | Optional default collection path |
+| `ANKIATLAS_ANKI_MEDIA_ROOT` | unset | Optional explicit Anki media root |
+
+Gemini Embedding 2 notes:
+
+- Use `ANKIATLAS_EMBEDDING_PROVIDER=google`.
+- Use `ANKIATLAS_EMBEDDING_MODEL=gemini-embedding-2-preview`.
+- `ANKIATLAS_EMBEDDING_DIMENSION` accepts any positive value up to `3072`; `3072`, `1536`, and `768` are the recommended sizes.
 
 ## Development
 
