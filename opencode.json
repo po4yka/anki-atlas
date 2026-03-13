@@ -5,6 +5,9 @@
     "openrouter": {}
   },
   "instructions": [
-    "Follow all instructions in .claude/CLAUDE.md. Use cargo run --bin anki-atlas for CLI commands."
+    "Follow all instructions in .claude/CLAUDE.md. Use cargo run --bin anki-atlas for CLI commands.",
+    "docs/anki/card-model.md",
+    "docs/anki/tag-taxonomy.md",
+    "docs/anki/cli-reference.md"
   ]
 }

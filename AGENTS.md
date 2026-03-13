@@ -75,6 +75,21 @@ config/     -- Configuration files
 - `tempfile::TempDir` for filesystem tests
 - Run single crate: `cargo test -p <crate-name>`
 
+## Anki Card Domain
+
+This project manages Anki flashcards. Key domain concepts:
+
+- **Bilingual cards**: Every concept gets EN + RU cards (Cyrillic only, no transliteration)
+- **Slug format**: `{note_id}-{index}-{lang}` (e.g., `q-coroutines-0-en`)
+- **Flat decks**: `Kotlin`, `Android`, `CompSci` -- no subdecks
+- **Tags**: `prefix::topic` kebab-case, max 2 levels (see `docs/anki/tag-taxonomy.md`)
+- **Quality**: Mastery-oriented (why/when/how, not "what is X"), atomic, under 100 words
+- **CLI**: `cargo run --bin anki-atlas -- <subcommand>` (search, validate, gaps, duplicates, tag-audit, etc.)
+- **MCP**: `ankiatlas_search`, `ankiatlas_validate`, `ankiatlas_sync`, etc.
+
+Card-working skills: `.agents/skills/` (Codex) and `.claude/skills/` (Claude Code/OpenCode).
+Reference docs: `docs/anki/`.
+
 ## Entry Points
 
 ```bash
