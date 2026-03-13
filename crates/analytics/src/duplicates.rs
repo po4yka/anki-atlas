@@ -69,12 +69,31 @@ impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
     ) -> Result<(UnionFind, HashMap<(i64, i64), f64>), AnalyticsError> {
         let mut union_find = UnionFind::new();
         let mut pair_scores = HashMap::new();
+        let mut first_error = None;
+        let mut successful_lookups = 0_usize;
 
         for &note_id in note_ids {
-            let similar_notes = self
+            let similar_notes = match self
                 .vector_repo
                 .find_similar_to_note(note_id, 20, threshold as f32, deck_filter, tag_filter)
-                .await?;
+                .await
+            {
+                Ok(similar_notes) => {
+                    successful_lookups += 1;
+                    similar_notes
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        note_id,
+                        error = %error,
+                        "skipping duplicate similarity lookup for note"
+                    );
+                    if first_error.is_none() {
+                        first_error = Some(AnalyticsError::from(error));
+                    }
+                    continue;
+                }
+            };
 
             for (other_note_id, score) in similar_notes {
                 if other_note_id == note_id {
@@ -90,6 +109,14 @@ impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
                 pair_scores.entry(note_pair).or_insert(f64::from(score));
                 union_find.union(note_id, other_note_id);
             }
+        }
+
+        if successful_lookups == 0 && !note_ids.is_empty() {
+            return Err(first_error.unwrap_or_else(|| {
+                AnalyticsError::VectorStore(indexer::qdrant::VectorStoreError::Client(
+                    "duplicate similarity lookup failed for all notes".to_string(),
+                ))
+            }));
         }
 
         Ok((union_find, pair_scores))
@@ -325,6 +352,99 @@ impl UnionFind {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use indexer::qdrant::{
+        NotePayload, SearchFilters, SemanticSearchHit, SparseVector, VectorRepository,
+        VectorStoreError,
+    };
+    use sqlx::postgres::PgPoolOptions;
+
+    #[derive(Debug)]
+    struct StubVectorRepo {
+        results: HashMap<i64, StubResult>,
+    }
+
+    #[derive(Debug, Clone)]
+    enum StubResult {
+        Ok(Vec<(i64, f32)>),
+        ClientError(&'static str),
+        ConnectionError(&'static str),
+    }
+
+    #[async_trait]
+    impl VectorRepository for StubVectorRepo {
+        async fn ensure_collection(&self, _dimension: usize) -> Result<bool, VectorStoreError> {
+            Ok(false)
+        }
+
+        async fn collection_dimension(&self) -> Result<Option<usize>, VectorStoreError> {
+            Ok(Some(384))
+        }
+
+        async fn recreate_collection(&self, _dimension: usize) -> Result<(), VectorStoreError> {
+            Ok(())
+        }
+
+        async fn upsert_vectors(
+            &self,
+            _vectors: &[Vec<f32>],
+            _payloads: &[NotePayload],
+            _sparse_vectors: Option<&[SparseVector]>,
+        ) -> Result<usize, VectorStoreError> {
+            Ok(0)
+        }
+
+        async fn delete_vectors(&self, _note_ids: &[i64]) -> Result<usize, VectorStoreError> {
+            Ok(0)
+        }
+
+        async fn get_existing_hashes(
+            &self,
+            _note_ids: &[i64],
+        ) -> Result<HashMap<i64, String>, VectorStoreError> {
+            Ok(HashMap::new())
+        }
+
+        async fn search_chunks(
+            &self,
+            _query_vector: &[f32],
+            _query_sparse: Option<&SparseVector>,
+            _limit: usize,
+            _filters: &SearchFilters,
+        ) -> Result<Vec<SemanticSearchHit>, VectorStoreError> {
+            Ok(Vec::new())
+        }
+
+        async fn find_similar_to_note(
+            &self,
+            note_id: i64,
+            _limit: usize,
+            _min_score: f32,
+            _deck_names: Option<&[String]>,
+            _tags: Option<&[String]>,
+        ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+            match self.results.get(&note_id).cloned() {
+                Some(StubResult::Ok(results)) => Ok(results),
+                Some(StubResult::ClientError(message)) => {
+                    Err(VectorStoreError::Client(message.to_string()))
+                }
+                Some(StubResult::ConnectionError(message)) => {
+                    Err(VectorStoreError::Connection(message.to_string()))
+                }
+                None => Ok(Vec::new()),
+            }
+        }
+
+        async fn close(&self) -> Result<(), VectorStoreError> {
+            Ok(())
+        }
+    }
+
+    fn test_pool() -> sqlx::PgPool {
+        PgPoolOptions::new()
+            .connect_lazy("postgresql://postgres:postgres@localhost/postgres")
+            .expect("create lazy pg pool")
+    }
 
     // --- DuplicateCluster::size ---
 
@@ -424,5 +544,53 @@ mod tests {
         uf.union(1, 2);
         assert_eq!(uf.find(1), 1);
         assert_eq!(uf.find(2), 1);
+    }
+
+    #[tokio::test]
+    async fn collect_similarity_pairs_skips_partial_vector_errors() {
+        let detector = DuplicateDetector::new(
+            StubVectorRepo {
+                results: HashMap::from([
+                    (1, StubResult::Ok(vec![(2, 0.995)])),
+                    (2, StubResult::ClientError("transient qdrant error")),
+                ]),
+            },
+            test_pool(),
+        );
+
+        let (mut union_find, pair_scores) = detector
+            .collect_similarity_pairs(&[1, 2], 0.99, None, None)
+            .await
+            .expect("partial failures should be tolerated");
+
+        let similarity = pair_scores
+            .get(&(1, 2))
+            .copied()
+            .expect("expected similarity pair");
+        assert!((similarity - 0.995).abs() < 1e-6);
+        assert_eq!(union_find.find(1), union_find.find(2));
+    }
+
+    #[tokio::test]
+    async fn collect_similarity_pairs_propagates_when_all_vector_lookups_fail() {
+        let detector = DuplicateDetector::new(
+            StubVectorRepo {
+                results: HashMap::from([
+                    (1, StubResult::ClientError("qdrant unavailable")),
+                    (2, StubResult::ConnectionError("connection reset")),
+                ]),
+            },
+            test_pool(),
+        );
+
+        let error = match detector.collect_similarity_pairs(&[1, 2], 0.99, None, None).await {
+            Ok(_) => panic!("all failures should still propagate"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("qdrant unavailable"),
+            "unexpected error: {error}"
+        );
     }
 }

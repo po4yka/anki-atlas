@@ -61,6 +61,11 @@ Crates may depend on other crates but **no circular dependencies**.
 | `tdd-rewrite.yml` | TDD loop for crate rewrites (red/green/refactor) | `ralph run -c presets/tdd-rewrite.yml` |
 | `card-improve.yml` | Iterative card quality improvement (select/analyze/improve/review) | `ralph run -c presets/card-improve.yml` |
 
+## Git
+
+- **Never** add `Co-Authored-By` trailers to commit messages
+- Follow Conventional Commits (feat:, fix:, docs:, refactor:, chore:, test:)
+
 ## Conventions
 
 - Rust 1.85+ (edition 2024)
