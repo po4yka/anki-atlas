@@ -83,6 +83,7 @@ strum = { version = "0.28", features = ["derive"] }
 async-trait = "0.1"
 futures = "0.3"
 tempfile = "3"
+dotenvy = "0.15"
 walkdir = "2"
 phf = { version = "0.13", features = ["macros"] }
 

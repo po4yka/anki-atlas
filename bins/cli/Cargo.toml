@@ -17,6 +17,7 @@ search = { path = "../../crates/search" }
 surface-runtime = { path = "../../crates/surface-runtime" }
 
 anyhow.workspace = true
+dotenvy.workspace = true
 clap.workspace = true
 crossterm = "0.28"
 ratatui = "0.29"

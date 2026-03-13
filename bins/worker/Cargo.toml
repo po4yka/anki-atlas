@@ -21,6 +21,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
+dotenvy = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
 

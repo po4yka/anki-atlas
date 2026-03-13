@@ -22,6 +22,7 @@ surface-runtime = { path = "../../crates/surface-runtime" }
 
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+dotenvy = { workspace = true }
 axum = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }

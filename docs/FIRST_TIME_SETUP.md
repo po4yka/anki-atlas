@@ -6,11 +6,8 @@ This guide is for the current Rust workspace on `main`.
 
 - Rust `1.88+`
 - Docker and Docker Compose
-- PostgreSQL, Qdrant, and Redis
-- Optional:
-  - An Anki collection if you want to run sync
-  - `OPENAI_API_KEY` for OpenAI embeddings
-  - `GEMINI_API_KEY` for Google embeddings (`GOOGLE_API_KEY` still works)
+- An Anki collection (for sync)
+- An embedding API key (Gemini or OpenAI)
 
 ## 1. Clone and Build
 
@@ -25,11 +22,13 @@ cargo run --bin anki-atlas -- version
 ## 2. Start Infrastructure
 
 ```bash
-docker compose -f infra/docker-compose.yml up -d
-docker compose -f infra/docker-compose.yml ps
+docker compose up -d
+docker compose ps   # wait until all services are healthy
 ```
 
-Basic dependency checks:
+This starts PostgreSQL 16, Qdrant v1.16.3, and Redis 7 with persistent volumes.
+
+Quick health checks:
 
 ```bash
 psql postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas -c "SELECT 1"
@@ -37,43 +36,45 @@ curl http://localhost:6333/healthz
 redis-cli -u redis://localhost:6379/0 ping
 ```
 
-## 3. Pick an Embedding Mode
+## 3. Configure Environment
 
-### Fast local smoke-test mode
-
-This avoids external API calls:
+Copy the example and fill in your API key:
 
 ```bash
-export ANKIATLAS_EMBEDDING_PROVIDER=mock
-export ANKIATLAS_EMBEDDING_DIMENSION=384
+cp .env.example .env
 ```
 
-### Real embedding mode
+Edit `.env` and set `GEMINI_API_KEY` (get one at https://aistudio.google.com/apikey).
+
+All binaries (CLI, API, MCP, worker) load `.env` automatically via `dotenvy`.
+
+The `.env.example` ships pre-configured for **Gemini Embedding 2** (`gemini-embedding-2-preview`, dimension 3072). To use a different provider, see the alternatives below.
+
+<details>
+<summary>Alternative: OpenAI embeddings</summary>
+
+Set these in your `.env`:
 
 ```bash
-export ANKIATLAS_EMBEDDING_PROVIDER=openai
-export ANKIATLAS_EMBEDDING_MODEL=text-embedding-3-small
-export ANKIATLAS_EMBEDDING_DIMENSION=1536
-export OPENAI_API_KEY=sk-...
+ANKIATLAS_EMBEDDING_PROVIDER=openai
+ANKIATLAS_EMBEDDING_MODEL=text-embedding-3-small
+ANKIATLAS_EMBEDDING_DIMENSION=1536
+OPENAI_API_KEY=sk-...
 ```
 
-Or:
+</details>
+
+<details>
+<summary>Alternative: Mock provider (no API key needed)</summary>
+
+For a quick smoke test without external calls:
 
 ```bash
-export ANKIATLAS_EMBEDDING_PROVIDER=google
-export ANKIATLAS_EMBEDDING_MODEL=gemini-embedding-2-preview
-export ANKIATLAS_EMBEDDING_DIMENSION=3072
-export GEMINI_API_KEY=...
+ANKIATLAS_EMBEDDING_PROVIDER=mock
+ANKIATLAS_EMBEDDING_DIMENSION=384
 ```
 
-Shared runtime variables:
-
-```bash
-export ANKIATLAS_POSTGRES_URL=postgresql://ankiatlas:ankiatlas@localhost:5432/ankiatlas
-export ANKIATLAS_QDRANT_URL=http://localhost:6333
-export ANKIATLAS_REDIS_URL=redis://localhost:6379/0
-export ANKIATLAS_DEBUG=true
-```
+</details>
 
 ## 4. Run Migrations
 
@@ -85,31 +86,43 @@ cargo run --bin anki-atlas -- migrate
 
 ```bash
 # macOS
-ls ~/Library/Application\\ Support/Anki2/*/collection.anki2
+ls ~/Library/Application\ Support/Anki2/*/collection.anki2
 
 # Linux
 ls ~/.local/share/Anki2/*/collection.anki2
 
 # Windows (PowerShell)
-ls \"$env:APPDATA\\Anki2\\*\\collection.anki2\"
+ls "$env:APPDATA\Anki2\*\collection.anki2"
 ```
 
 Close Anki before using the SQLite collection file directly.
 
-For multimodal Anki indexing, media files resolve in this order:
+Update `ANKIATLAS_ANKI_COLLECTION_PATH` in your `.env` with the path you found.
 
-- `ANKIATLAS_ANKI_MEDIA_ROOT`
-- `last_collection_path` saved in `sync_metadata`
-- `ANKIATLAS_ANKI_COLLECTION_PATH`
-- sibling `collection.media` next to the collection file
+Media files resolve in this order:
 
-If your media lives outside the usual Anki layout, set:
+1. `ANKIATLAS_ANKI_MEDIA_ROOT` (explicit override in `.env`)
+2. `last_collection_path` saved in `sync_metadata`
+3. `ANKIATLAS_ANKI_COLLECTION_PATH`
+4. sibling `collection.media` next to the collection file
+
+## 6. Sync and Index
+
+Sync imports cards from Anki SQLite into Postgres and indexes them into Qdrant:
 
 ```bash
-export ANKIATLAS_ANKI_MEDIA_ROOT=/path/to/collection.media
+cargo run --bin anki-atlas -- sync "$ANKIATLAS_ANKI_COLLECTION_PATH"
 ```
 
-## 6. Start the API
+This runs migrations, imports cards, and creates vector embeddings in one step.
+
+To re-index only (e.g. after changing embedding provider/dimension):
+
+```bash
+cargo run --bin anki-atlas -- index --force
+```
+
+## 7. Start the API
 
 ```bash
 cargo run --bin anki-atlas-api
@@ -130,7 +143,7 @@ If you set `ANKIATLAS_API_KEY`, include it on protected routes:
 curl -H "X-API-Key: $ANKIATLAS_API_KEY" http://localhost:8000/topics
 ```
 
-## 7. Start the Worker
+## 8. Start the Worker
 
 ```bash
 ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1 cargo run --bin anki-atlas-worker
@@ -138,7 +151,7 @@ ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1 cargo run --bin anki-atlas-worker
 
 Without that env var, the worker exits intentionally.
 
-## 8. Enqueue a Sync Job
+## 9. Enqueue a Sync Job
 
 ```bash
 curl -X POST http://localhost:8000/jobs/sync \
@@ -152,7 +165,7 @@ Poll the job:
 curl http://localhost:8000/jobs/<job-id>
 ```
 
-## 9. Verify the Read API
+## 10. Verify the Read API
 
 ```bash
 curl -X POST http://localhost:8000/search \
@@ -172,7 +185,7 @@ curl "http://localhost:8000/duplicates?threshold=0.92&max_clusters=10&deck_filte
 
 Direct `/sync` and `/index` HTTP mutations are intentionally not exposed.
 
-## 10. Use the CLI
+## 11. CLI Reference
 
 ```bash
 cargo run --bin anki-atlas -- sync /path/to/collection.anki2 --force-reindex
@@ -198,7 +211,7 @@ Behavioral notes:
 - `search --chunks` is semantic-only raw chunk search. `--fts` is not supported with `--chunks`.
 - Explicit CLI `index --force` or sync/index work recreates an incompatible vector collection automatically. API and MCP startup stay read-only and return `reindex required` until you reindex.
 
-## 11. Set Up MCP
+## 12. Set Up MCP
 
 Example MCP configuration:
 

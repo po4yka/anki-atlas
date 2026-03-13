@@ -4,6 +4,7 @@ use common::logging::{LoggingConfig, init_global_logging};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let _ = dotenvy::dotenv();
     let settings = common::config::Settings::load()?;
     let api_settings = settings.api();
 

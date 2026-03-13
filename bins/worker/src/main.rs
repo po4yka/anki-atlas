@@ -70,6 +70,7 @@ impl QueueBackend for RedisQueueBackend {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let _ = dotenvy::dotenv();
     let settings = common::config::Settings::load()?;
     let api_settings = settings.api();
     let job_settings = settings.jobs();
