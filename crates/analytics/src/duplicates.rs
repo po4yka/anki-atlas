@@ -583,7 +583,10 @@ mod tests {
             test_pool(),
         );
 
-        let error = match detector.collect_similarity_pairs(&[1, 2], 0.99, None, None).await {
+        let error = match detector
+            .collect_similarity_pairs(&[1, 2], 0.99, None, None)
+            .await
+        {
             Ok(_) => panic!("all failures should still propagate"),
             Err(error) => error,
         };
