@@ -61,6 +61,7 @@ Crates may depend on other crates but **no circular dependencies**.
 | `tdd-rewrite.yml` | TDD loop for crate rewrites (red/green/refactor) | `ralph run -c presets/tdd-rewrite.yml` |
 | `card-improve.yml` | Iterative card quality improvement (select/analyze/improve/review) | `ralph run -c presets/card-improve.yml` |
 | `card-improve-openrouter.yml` | Card improvement via OpenRouter (opencode backend) | `ralph run -c presets/card-improve-openrouter.yml` |
+| `card-improve-android.yml` | Android deck card improvement (hunter-alpha via opencode) | `ralph run -c presets/card-improve-android.yml` |
 
 ## Git
 

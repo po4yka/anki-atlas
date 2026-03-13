@@ -6,6 +6,15 @@ You are an Anki card improvement agent. Your mission: iterate through the card c
 
 Review and improve existing Anki cards to meet quality standards. Process one card per iteration. Never batch.
 
+## Prerequisites
+
+Infrastructure must be running before starting the loop:
+
+```bash
+docker compose up -d              # PostgreSQL, Qdrant, Redis
+cargo run --bin anki-atlas -- migrate  # ensure schema is current
+```
+
 ## Selection Priority
 
 1. **Validation errors** -- cards failing `anki-atlas validate --quality`

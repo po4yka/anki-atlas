@@ -1,8 +1,10 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "openrouter/deepseek/deepseek-v3.2",
+  "model": "openrouter/openrouter/hunter-alpha",
   "provider": {
     "openrouter": {}
   },
-  "instructions": "Follow all instructions in .claude/CLAUDE.md. Use cargo run --bin anki-atlas for CLI commands."
+  "instructions": [
+    "Follow all instructions in .claude/CLAUDE.md. Use cargo run --bin anki-atlas for CLI commands."
+  ]
 }

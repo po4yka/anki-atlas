@@ -1,5 +1,5 @@
 event_loop:
-  prompt_file: "presets/card-improve-prompt.md"
+  prompt_file: "presets/card-improve-android-prompt.md"
   starting_event: "improve.start"
   max_iterations: 200
   max_runtime_seconds: 14400  # 4 hours
@@ -8,9 +8,10 @@ event_loop:
 
 cli:
   backend: "opencode"
-  # OpenCode routes LLM calls through OpenRouter (configured in opencode.json).
+  # Uses openrouter/hunter-alpha model via opencode.
   # Auth: run `opencode auth login` and select OpenRouter.
-  # Model: set in opencode.json or override at runtime via OPENCODE_MODEL env var.
+  # Model override: .opencode/oh-my-opencode.json routes Sisyphus agent to hunter-alpha.
+  # Override model at runtime: OPENCODE_MODEL env var or opencode.json.
 
 hooks:
   enabled: true
@@ -37,29 +38,28 @@ skills:
 hats:
   selector:
     name: "Card Selector"
-    description: "Pick the next card to improve, skipping already-processed cards"
+    description: "Pick the next Android card to improve, skipping already-processed cards"
     triggers:
       - "improve.start"
       - "round.done"
     publishes:
       - "card.selected"
     instructions: |
-      ## Select Next Card
+      ## Select Next Android Card
 
-      You are the Card Selector. Pick ONE unprocessed card to improve.
+      You are the Card Selector. Pick ONE unprocessed card from the **Android** deck.
 
       ### Process
 
       1. Read `.ralph/card-progress.md` (create if missing with header row)
       2. Collect already-processed card IDs into a skip list
-      3. Find the next card using priority order:
-         a. `cargo run --bin anki-atlas -- validate --quality 2>&1 | head -20` (validation errors first)
-         b. Cards with relevance warnings (look for "dead skill" or "syntax recall" in validate output)
-         c. `cargo run --bin anki-atlas -- weak-notes 2>&1 | head -20`
-         d. `cargo run --bin anki-atlas -- gaps "programming" --min-coverage 1 2>&1 | head -20`
-         e. `cargo run --bin anki-atlas -- duplicates --threshold 0.92 2>&1 | head -10`
+      3. Find the next card using priority order (Android deck only):
+         a. `cargo run --bin anki-atlas -- validate --quality 2>&1 | head -20` (filter for Android deck)
+         b. `cargo run --bin anki-atlas -- weak-notes --topic "android" 2>&1 | head -20`
+         c. `cargo run --bin anki-atlas -- gaps "android" --min-coverage 1 2>&1 | head -20`
+         d. `cargo run --bin anki-atlas -- duplicates --deck "Android" --threshold 0.92 2>&1 | head -10`
       4. Pick the FIRST card not in the skip list
-      5. If user prompt specifies a focus (topic, deck, tag), filter accordingly
+      5. Only select cards from the Android deck
 
       ### Output
 
@@ -67,27 +67,28 @@ hats:
       ```
       ## Selected Card
       - ID: <card-id>
+      - Deck: Android
       - Source: <how found: validation-error | weak-note | gap | duplicate>
       - File: <path to card file if known>
       - Current content summary: <brief>
       ```
 
-      If no unprocessed cards remain, write "ALL CARDS PROCESSED" to scratchpad
+      If no unprocessed Android cards remain, write "ALL CARDS PROCESSED" to scratchpad
       and stop (the user should cancel the loop).
 
       Publish event: `card.selected`
 
   analyst:
     name: "Card Analyst"
-    description: "Diagnose quality issues on the selected card"
+    description: "Diagnose quality issues on the selected Android card"
     triggers:
       - "card.selected"
     publishes:
       - "analysis.done"
     instructions: |
-      ## Analyze Card
+      ## Analyze Android Card
 
-      You are the Card Analyst. Diagnose all quality issues for the selected card.
+      You are the Card Analyst. Diagnose all quality issues for the selected Android card.
 
       ### Process
 
@@ -102,14 +103,17 @@ hats:
          ```
       5. Check for:
          - Missing bilingual pair (EN + RU)
-         - Tag violations (missing difficulty, wrong format)
+         - Tag violations (missing difficulty, wrong `android::` prefix format)
          - Anti-patterns (sets, enumerations, vague questions)
          - Near-duplicates (similarity > 0.85)
-         - Answer too long (> 100 words)
+         - Answer too long (> 100 words, relaxed for code examples)
          - Missing context (card doesn't make sense alone)
-         - **Skill relevance**: check for "relevance" warnings in validate output
-           - Dead skill patterns: syntax recall, boilerplate, rote lookup
-           - Missing skill:: tag
+         - **Mastery depth**: does the card test understanding or just recall?
+           - Elementary: "What is X?" -> needs reformulation
+           - Syntax-only code -> needs "when/why" reasoning
+         - **Skill relevance**: check for dead skill patterns
+           - Dead: syntax recall, boilerplate, rote lookup
+           - Alive: system design, debugging, tradeoffs, architectural reasoning
 
       ### Output
 
@@ -117,6 +121,7 @@ hats:
       ```
       ## Diagnosis
       - Validation: <pass/fail + details>
+      - Mastery level: <elementary / adequate / mastery>
       - Relevance: <alive / neutral / dead + reason>
       - Duplicates: <none / list with scores>
       - Tag issues: <none / list>
@@ -128,14 +133,14 @@ hats:
 
   improver:
     name: "Card Improver"
-    description: "Fix card content, tags, and format based on diagnosis"
+    description: "Fix Android card content, tags, and format based on diagnosis"
     triggers:
       - "analysis.done"
       - "fix.needed"
     publishes:
       - "improved"
     instructions: |
-      ## Improve Card
+      ## Improve Android Card
 
       You are the Card Improver. Fix the card based on the analyst's diagnosis.
 
@@ -145,12 +150,17 @@ hats:
       2. If diagnosis says no action needed, publish `improved` immediately
       3. On `fix.needed` trigger, read reviewer feedback from scratchpad
       4. Apply fixes:
-         - **Tag issues**: fix tags per taxonomy (kebab-case, `::` separator, add difficulty)
+         - **Tag issues**: fix tags per taxonomy (kebab-case, `::` separator, add `difficulty::` + `android::` topic)
          - **Content issues**: rewrite question/answer per card principles
-         - **Missing pair**: create the missing EN or RU card
+         - **Missing pair**: create the missing EN or RU card (Cyrillic only, never transliteration)
          - **Anti-patterns**: split sets, rewrite vague questions
          - **Near-duplicate**: add distinguishing `[Context]` prefix or merge
          - **Format**: add bold terms, code blocks, proper structure
+         - **Elementary -> Mastery reformulation**:
+           - "What is ViewModel?" -> "When would you choose ViewModel over rememberSaveable, and what trade-offs?"
+           - "What is Compose?" -> "When would you choose Compose over View system, and why?"
+           - "List lifecycle methods" -> Split into individual cards with "when/why" for each
+           - Syntax-only -> Add "when to use" + trade-offs + pitfalls
          - **Dead skill pattern**: transform the card:
            - Syntax recall -> "When/why would you use this?" or "What goes wrong if you get this wrong?"
            - Boilerplate -> "What problem does this pattern solve?" or "Compare with alternatives"
@@ -159,15 +169,16 @@ hats:
          - **Neutral**: tag with `skill::neutral` if no clear signal
       5. Self-check: `cargo run --bin anki-atlas -- validate <file> --quality`
 
-      ### Quality Standards
+      ### Quality Standards (Mastery-Oriented)
 
-      - Atomic: one fact per card
-      - Active recall: "what/how/why", not yes/no
-      - Concise: answer under 100 words
+      - Atomic: one concept per card (with appropriate depth)
+      - Active recall: "when/how/why", not yes/no or "what is"
+      - Concise: answer under 100 words (longer OK for code + reasoning)
       - Bilingual: EN + RU (Cyrillic only, never transliteration)
-      - Tagged: difficulty + topic + skill:: tags per taxonomy
-      - Alive skills: system design, debugging, tradeoffs, product thinking, shipping
-      - Dead skills: syntax recall, boilerplate, rote lookup -- transform or suspend
+      - Tagged: `difficulty::` + `android::` topic + `skill::` tags
+      - Precise technical terminology (ViewModel, LazyColumn, Composable)
+      - Connect to related concepts or principles
+      - Test application and reasoning, not recognition
 
       ### Output
 
@@ -176,6 +187,7 @@ hats:
       ```
       ## Improvements Applied
       - Changes: <list of what changed>
+      - Mastery level: <before> -> <after>
       - Self-validation: <pass/fail>
       ```
 
@@ -190,7 +202,7 @@ hats:
       - "round.done"
       - "fix.needed"
     instructions: |
-      ## Review Improvement
+      ## Review Android Card Improvement
 
       You are the Card Reviewer. Validate the improvement and decide: accept or rework.
 
@@ -204,7 +216,11 @@ hats:
          cargo run --bin anki-atlas -- tag-audit
          ```
       4. Decision:
-         - **PASS**: proceed to step 5 (verify card has skill:: tag and no relevance warnings)
+         - **PASS**: proceed to step 5. Verify:
+           - Card has `skill::` tag and no relevance warnings
+           - Card tests understanding, not just recall (mastery level)
+           - Tags include `android::` prefix and `difficulty::`
+           - Bilingual pair exists (EN + RU)
          - **FAIL (first time)**: append feedback to scratchpad, publish `fix.needed`
          - **FAIL (second time)**: skip card, log reason, proceed to step 5
 
