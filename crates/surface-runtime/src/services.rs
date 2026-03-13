@@ -351,7 +351,7 @@ async fn validate_read_only_vector_store(
     validate_read_only_collection_state(
         current_dimension,
         desired_dimension,
-        &desired_model,
+        desired_model,
         stored_fingerprint.as_ref(),
     )
 }
