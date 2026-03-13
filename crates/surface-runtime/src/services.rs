@@ -32,6 +32,8 @@ type SharedEmbeddingProvider = Arc<dyn EmbeddingProvider>;
 type SharedVectorRepository = Arc<dyn VectorRepository>;
 type SharedReranker = Arc<dyn Reranker>;
 
+const EMBEDDING_VECTOR_SCHEMA: &str = "multimodal_v1";
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BuildSurfaceServicesOptions {
     pub enable_direct_execution: bool,
@@ -260,6 +262,79 @@ async fn load_sync_metadata_value(db: &PgPool, key: &str) -> AnyhowResult<Option
         .with_context(|| format!("load sync metadata key `{key}`"))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EmbeddingFingerprint {
+    model: String,
+    dimension: usize,
+    vector_schema: String,
+}
+
+async fn load_embedding_fingerprint(db: &PgPool) -> AnyhowResult<Option<EmbeddingFingerprint>> {
+    let model = load_sync_metadata_value(db, "embedding_model").await?;
+    let dimension = load_sync_metadata_value(db, "embedding_dimension").await?;
+    let vector_schema = load_sync_metadata_value(db, "embedding_vector_schema").await?;
+
+    let (Some(model), Some(dimension), Some(vector_schema)) = (model, dimension, vector_schema)
+    else {
+        return Ok(None);
+    };
+
+    let dimension = dimension.parse::<usize>().with_context(|| {
+        format!("parse sync metadata `embedding_dimension` value `{dimension}`")
+    })?;
+
+    Ok(Some(EmbeddingFingerprint {
+        model,
+        dimension,
+        vector_schema,
+    }))
+}
+
+fn validate_read_only_collection_state(
+    current_dimension: Option<usize>,
+    desired_dimension: usize,
+    desired_model: &str,
+    stored_fingerprint: Option<&EmbeddingFingerprint>,
+) -> AnyhowResult<()> {
+    let Some(current_dimension) = current_dimension else {
+        if stored_fingerprint.is_some() {
+            return Err(anyhow!("reindex required: vector collection is missing"));
+        }
+        return Ok(());
+    };
+
+    if current_dimension != desired_dimension {
+        return Err(anyhow!(
+            "reindex required: vector collection dimension is {current_dimension}, expected {desired_dimension}"
+        ));
+    }
+
+    let Some(stored_fingerprint) = stored_fingerprint else {
+        return Ok(());
+    };
+
+    if stored_fingerprint.model != desired_model {
+        return Err(anyhow!(
+            "reindex required: stored embedding model is {}, current model is {desired_model}",
+            stored_fingerprint.model
+        ));
+    }
+    if stored_fingerprint.dimension != desired_dimension {
+        return Err(anyhow!(
+            "reindex required: stored embedding dimension is {}, current dimension is {desired_dimension}",
+            stored_fingerprint.dimension
+        ));
+    }
+    if stored_fingerprint.vector_schema != EMBEDDING_VECTOR_SCHEMA {
+        return Err(anyhow!(
+            "reindex required: stored vector schema is {}, expected {EMBEDDING_VECTOR_SCHEMA}",
+            stored_fingerprint.vector_schema
+        ));
+    }
+
+    Ok(())
+}
+
 async fn validate_read_only_vector_store(
     db: &PgPool,
     vector_store: &QdrantVectorStore,
@@ -271,39 +346,14 @@ async fn validate_read_only_vector_store(
         .collection_dimension()
         .await
         .context("inspect Qdrant collection dimension")?;
+    let stored_fingerprint = load_embedding_fingerprint(db).await?;
 
-    let Some(current_dimension) = current_dimension else {
-        return Err(anyhow!("reindex required: vector collection is missing"));
-    };
-    if current_dimension != desired_dimension {
-        return Err(anyhow!(
-            "reindex required: vector collection dimension is {current_dimension}, expected {desired_dimension}"
-        ));
-    }
-
-    if let Some(stored_model) = load_sync_metadata_value(db, "embedding_model").await?
-        && stored_model != desired_model
-    {
-        return Err(anyhow!(
-            "reindex required: stored embedding model is {stored_model}, current model is {desired_model}"
-        ));
-    }
-    if let Some(stored_dimension) = load_sync_metadata_value(db, "embedding_dimension").await?
-        && stored_dimension != desired_dimension.to_string()
-    {
-        return Err(anyhow!(
-            "reindex required: stored embedding dimension is {stored_dimension}, current dimension is {desired_dimension}"
-        ));
-    }
-    if let Some(stored_schema) = load_sync_metadata_value(db, "embedding_vector_schema").await?
-        && stored_schema != "multimodal_v1"
-    {
-        return Err(anyhow!(
-            "reindex required: stored vector schema is {stored_schema}, expected multimodal_v1"
-        ));
-    }
-
-    Ok(())
+    validate_read_only_collection_state(
+        current_dimension,
+        desired_dimension,
+        &desired_model,
+        stored_fingerprint.as_ref(),
+    )
 }
 
 fn build_reranker(settings: &Settings) -> Option<SharedReranker> {
@@ -404,4 +454,37 @@ pub async fn build_surface_services(
     }
 
     Ok(services)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        EMBEDDING_VECTOR_SCHEMA, EmbeddingFingerprint, validate_read_only_collection_state,
+    };
+
+    #[test]
+    fn fresh_runtime_allows_missing_collection_without_fingerprint() {
+        let result = validate_read_only_collection_state(None, 384, "mock/test", None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn missing_collection_requires_reindex_when_fingerprint_exists() {
+        let result = validate_read_only_collection_state(
+            None,
+            384,
+            "mock/test",
+            Some(&EmbeddingFingerprint {
+                model: "mock/test".to_string(),
+                dimension: 384,
+                vector_schema: EMBEDDING_VECTOR_SCHEMA.to_string(),
+            }),
+        );
+
+        let error = result.expect_err("missing indexed collection should fail");
+        assert_eq!(
+            error.to_string(),
+            "reindex required: vector collection is missing"
+        );
+    }
 }
