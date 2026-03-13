@@ -20,8 +20,7 @@ use qdrant_client::Payload;
 use qdrant_client::Qdrant;
 use qdrant_client::qdrant::{
     Condition, CreateCollectionBuilder, DeletePointsBuilder, Distance, Filter, PointId,
-    PointStruct, RecommendPointsBuilder, ScrollPointsBuilder, SearchPointsBuilder,
-    VectorParamsBuilder, vectors_config,
+    PointStruct, ScrollPointsBuilder, SearchPointsBuilder, VectorParamsBuilder, vectors_config,
 };
 use regex::Regex;
 use serde::Serialize;
@@ -1477,20 +1476,6 @@ impl QdrantVectorStore {
         }
     }
 
-    fn extend_filter(&self, base: Option<Filter>, extra_must: Vec<Condition>) -> Option<Filter> {
-        if extra_must.is_empty() {
-            return base;
-        }
-
-        match base {
-            Some(mut filter) => {
-                filter.must.extend(extra_must);
-                Some(filter)
-            }
-            None => Some(Filter::must(extra_must)),
-        }
-    }
-
     fn note_id_filter(&self, note_ids: &[i64]) -> Option<Filter> {
         (!note_ids.is_empty())
             .then(|| Filter::must([Condition::matches("note_id", note_ids.to_vec())]))
@@ -1603,16 +1588,35 @@ impl QdrantVectorStore {
         Ok(points)
     }
 
-    async fn find_text_primary_point(
+    async fn find_text_primary_vector(
         &self,
         note_id: i64,
-    ) -> Result<Option<PointId>, indexer::qdrant::VectorStoreError> {
+    ) -> Result<Option<Vec<f32>>, indexer::qdrant::VectorStoreError> {
         let filter = Filter::must([
             Condition::matches("note_id", note_id),
             Condition::matches("chunk_kind", "text_primary".to_string()),
         ]);
-        let mut results = self.scroll_points(filter, false).await?;
-        Ok(results.pop().and_then(|point| point.id))
+        let mut results = self.scroll_points(filter, true).await?;
+        let Some(point) = results.pop() else {
+            return Ok(None);
+        };
+        let Some(vectors) = point.vectors else {
+            return Err(indexer::qdrant::VectorStoreError::Client(
+                "Qdrant point vectors missing".to_string(),
+            ));
+        };
+
+        match vectors.get_vector() {
+            Some(qdrant_client::qdrant::vector_output::Vector::Dense(dense)) => {
+                Ok(Some(dense.data))
+            }
+            Some(other) => Err(indexer::qdrant::VectorStoreError::Client(format!(
+                "unsupported vector output for duplicate detection: {other:?}"
+            ))),
+            None => Err(indexer::qdrant::VectorStoreError::Client(
+                "Qdrant vectors output missing".to_string(),
+            )),
+        }
     }
 
     async fn collection_dimension_from_info(
@@ -1849,7 +1853,7 @@ impl VectorRepository for QdrantVectorStore {
         deck_names: Option<&[String]>,
         tags: Option<&[String]>,
     ) -> Result<Vec<(i64, f32)>, indexer::qdrant::VectorStoreError> {
-        let Some(text_primary_point) = self.find_text_primary_point(note_id).await? else {
+        let Some(query_vector) = self.find_text_primary_vector(note_id).await? else {
             return Ok(Vec::new());
         };
 
@@ -1858,42 +1862,20 @@ impl VectorRepository for QdrantVectorStore {
             tags: tags.map(|items| items.to_vec()),
             ..Default::default()
         };
-        let mut request =
-            RecommendPointsBuilder::new(&self.collection_name, (limit * 4 + 4) as u64)
-                .add_positive(text_primary_point)
-                .score_threshold(min_score);
-        if let Some(filter) = self.extend_filter(
-            self.build_filters(&filters),
-            vec![Condition::matches("chunk_kind", "text_primary".to_string())],
-        ) {
-            request = request.filter(filter);
-        }
+        let similar_notes = self
+            .search(
+                &query_vector,
+                None,
+                limit.saturating_mul(4).max(limit),
+                &filters,
+            )
+            .await?;
 
-        let response = self
-            .client
-            .recommend(request)
-            .await
-            .map_err(|error| indexer::qdrant::VectorStoreError::Client(error.to_string()))?;
-        let mut best_by_note = HashMap::<i64, f32>::new();
-        for point in response.result {
-            let payload = self.payload_from_map(point.payload)?;
-            if payload.note_id == note_id {
-                continue;
-            }
-            best_by_note
-                .entry(payload.note_id)
-                .and_modify(|score| {
-                    if point.score > *score {
-                        *score = point.score;
-                    }
-                })
-                .or_insert(point.score);
-        }
-
-        let mut results: Vec<_> = best_by_note.into_iter().collect();
-        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        results.truncate(limit);
-        Ok(results)
+        Ok(similar_notes
+            .into_iter()
+            .filter(|(other_note_id, score)| *other_note_id != note_id && *score >= min_score)
+            .take(limit)
+            .collect())
     }
 
     async fn close(&self) -> Result<(), indexer::qdrant::VectorStoreError> {
