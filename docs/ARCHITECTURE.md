@@ -8,7 +8,7 @@ The core architecture rule on `main` is simple:
 
 - public interfaces must match wired domain services
 - unsupported workflows must fail explicitly
-- shared runtime composition belongs in `crates/surface-runtime`
+- shared surface composition belongs in `crates/surface-runtime` and `crates/surface-contracts`
 
 ## Current Stack
 
@@ -16,7 +16,7 @@ The core architecture rule on `main` is simple:
 |---|---|
 | Language | Rust 2024 |
 | API | Axum |
-| CLI | Clap |
+| CLI / TUI | Clap + Ratatui |
 | MCP | rmcp |
 | Jobs | Tokio + Redis |
 | Relational storage | PostgreSQL |
@@ -27,22 +27,29 @@ The core architecture rule on `main` is simple:
 ```text
 bins/
   api/       # HTTP surface
-  cli/       # command-line surface
+  cli/       # command-line and TUI surface
   mcp/       # stdio MCP server
+  perf-harness/ # Goose performance runner
   worker/    # async job execution process
 crates/
-  common/           # config, logging, shared errors and types
-  database/         # PostgreSQL pool and migrations
+  analytics/        # taxonomy, coverage, gaps, duplicates
   anki-reader/      # Anki SQLite + AnkiConnect access
   anki-sync/        # sync orchestration
-  indexer/          # embeddings and vector persistence
-  search/           # hybrid search and reranking
-  analytics/        # taxonomy, coverage, gaps, duplicates
-  obsidian/         # note parsing and vault analysis
-  validation/       # validation pipeline and quality scoring
+  card/             # card domain models, registry, APF
+  common/           # config, logging, shared errors and types
+  database/         # PostgreSQL pool and migrations
   generator/        # generation models and agents
+  indexer/          # embeddings and vector persistence
   jobs/             # job types, persistence, queue manager
+  llm/              # LLM provider abstraction
+  obsidian/         # note parsing and vault analysis
+  perf-support/     # deterministic perf datasets and helpers
+  rag/              # chunking and retrieval support
+  search/           # hybrid search and reranking
+  surface-contracts/ # shared DTOs for API, CLI, MCP
   surface-runtime/  # shared runtime graph and local workflow wrappers
+  taxonomy/         # tag normalization and validation
+  validation/       # validation pipeline and quality scoring
 ```
 
 Older Python-oriented specs and migration notes still exist under `specs/` and `docs/plans/`, but they are historical design artifacts unless they have been explicitly rewritten for the current Rust runtime.
@@ -50,14 +57,15 @@ Older Python-oriented specs and migration notes still exist under `specs/` and `
 ## Layer Boundaries
 
 ```text
-Surfaces
+Public runtime surfaces
   bins/api
-  bins/cli
+  bins/cli (subcommands + tui)
   bins/mcp
   bins/worker
         |
         v
-Shared runtime composition
+Shared surface boundary
+  crates/surface-contracts
   crates/surface-runtime
         |
         v
@@ -77,6 +85,10 @@ Infrastructure
   Qdrant
   Redis
   embedding providers
+
+Support and tooling
+  crates/perf-support
+  bins/perf-harness
 ```
 
 ### Ownership rules
@@ -84,13 +96,15 @@ Infrastructure
 - `bins/*` should extract input, call facades, and translate output.
 - `crates/*` should contain business logic and reusable workflows.
 - Shared runtime wiring should not be duplicated across API, CLI, and MCP.
+- `surface-contracts` owns the leaf-free surface DTOs used by API, CLI, and MCP.
+- `surface-runtime` owns contract-to-domain mapping and runtime composition.
 - Write-side transport differences are allowed only when intentional:
   - CLI may execute sync/index directly.
   - API and MCP must keep sync/index behind jobs.
 
 ## Shared Runtime
 
-[services.rs](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) builds the runtime graph once from [config.rs](/Users/po4yka/GitRep/anki-atlas/crates/common/src/config.rs):
+[services.rs](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) builds the runtime graph once from [config.rs](/Users/po4yka/GitRep/anki-atlas/crates/common/src/config.rs), and [surface-contracts](/Users/po4yka/GitRep/anki-atlas/crates/surface-contracts/src/lib.rs) provides the shared leaf-free DTOs consumed by API, CLI, and MCP:
 
 - PostgreSQL pool
 - embedding provider
@@ -143,12 +157,13 @@ Important behavior:
 }
 ```
 
-### CLI
+### CLI and TUI
 
 The CLI exposes:
 
 - `version`
 - `migrate`
+- `tui`
 - `sync`
 - `index`
 - `search`
@@ -167,6 +182,7 @@ The CLI exposes:
 Important behavior:
 
 - `sync` and `index` execute directly through the shared runtime.
+- `tui` runs over the same direct local runtime and focuses on search, topics, and workflow execution.
 - explicit `index` and sync+index runs may recreate an incompatible vector collection when the embedding model, dimension, or vector schema has changed
 - `search --chunks` exposes semantic-only raw chunk search; standard `search` remains note-level hybrid search
 - `generate` is preview-only.

@@ -16,8 +16,8 @@ Note: `database` and `anki-sync` crates require Docker (testcontainers). Skip lo
 ## Architecture
 
 ```
-crates/     -- Library crates (shared, reusable)
-bins/       -- Binary entry points (cli, api, mcp, worker)
+crates/     -- Library crates and shared runtime/support components
+bins/       -- Product surfaces and tooling binaries
 specs/      -- Ralph loop spec files (one per crate)
 config/     -- Configuration files
 ```
@@ -33,6 +33,7 @@ config/     -- Configuration files
 | database | PostgreSQL pool (sqlx), migrations |
 | anki-reader | Anki SQLite reader (rusqlite), models, normalizer, AnkiConnect client |
 | anki-sync | Sync engine, state tracking, progress, recovery |
+| perf-support | Performance dataset seeding and support helpers |
 | indexer | Embedding providers, Qdrant vector store, index service |
 | search | Hybrid search: FTS + semantic + RRF fusion + reranking |
 | analytics | Topic taxonomy, coverage, gap detection, duplicate detection |
@@ -43,19 +44,27 @@ config/     -- Configuration files
 | rag | Document chunker, vector store, RAG service |
 | generator | LLM-powered card generation agents, APF rendering |
 | jobs | Background job queue (Redis via rustis) |
+| surface-contracts | Leaf-free DTOs shared by API, CLI, and MCP |
+| surface-runtime | Shared runtime graph, facade composition, and local workflow wrappers |
 
-### Binaries
+### Runtime Surfaces
 
 | Binary | Framework | Purpose |
 |--------|-----------|---------|
-| cli | clap | Command-line interface (12 subcommands) |
+| cli | clap + ratatui | Command-line surface plus local TUI operator console |
 | api | axum | REST API with auth middleware |
 | mcp | rmcp | MCP server for AI agents |
 | worker | tokio | Background job worker |
 
+### Tooling Binaries
+
+| Binary | Framework | Purpose |
+|--------|-----------|---------|
+| perf-harness | goose | Load and performance harness |
+
 ## Conventions
 
-- Rust 1.85+ (edition 2024)
+- Rust 1.88+ (edition 2024)
 - All types must be `Send + Sync`
 - `thiserror` for library error types, `anyhow` only in binary crates
 - Trait-based DI at every external boundary (DB, HTTP, Qdrant, Redis)
@@ -84,7 +93,7 @@ This project manages Anki flashcards. Key domain concepts:
 - **Flat decks**: `Kotlin`, `Android`, `CompSci` -- no subdecks
 - **Tags**: `prefix::topic` kebab-case, max 2 levels (see `docs/anki/tag-taxonomy.md`)
 - **Quality**: Mastery-oriented (why/when/how, not "what is X"), atomic, under 100 words
-- **CLI**: `cargo run --bin anki-atlas -- <subcommand>` (search, validate, gaps, duplicates, tag-audit, etc.)
+- **CLI**: `cargo run --bin anki-atlas -- <command>`; see `README.md#cli-surface` for the current command inventory
 - **MCP**: `ankiatlas_search`, `ankiatlas_validate`, `ankiatlas_sync`, etc.
 
 Card-working skills: `.agents/skills/` (Codex) and `.claude/skills/` (Claude Code/OpenCode).

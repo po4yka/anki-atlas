@@ -1,6 +1,6 @@
 # Anki Atlas
 
-Anki Atlas is a Rust workspace for syncing Anki data, building a hybrid search index, analyzing topic coverage, previewing Obsidian-driven card generation, and exposing stable API, CLI, and MCP surfaces over the same shared runtime.
+Anki Atlas is a Rust workspace for syncing Anki data, building a hybrid search index, analyzing topic coverage, previewing Obsidian-driven card generation, and exposing stable API, CLI, TUI, and MCP surfaces over the same `surface-runtime + surface-contracts` boundary.
 
 ## What Ships on `main`
 
@@ -258,8 +258,9 @@ Fuzzing instructions live in [docs/FUZZING.md](/Users/po4yka/GitRep/anki-atlas/d
 ```text
 bins/
   api/       # axum API surface
-  cli/       # clap-based CLI
+  cli/       # clap CLI and ratatui TUI
   mcp/       # rmcp stdio server
+  perf-harness/ # Goose-based performance runner
   worker/    # Redis-backed job worker
 crates/
   analytics/
@@ -273,12 +274,16 @@ crates/
   jobs/
   llm/
   obsidian/
+  perf-support/
   rag/
   search/
+  surface-contracts/
   surface-runtime/
   taxonomy/
   validation/
 ```
+
+Product surfaces compose runtime behavior in `surface-runtime`, while the leaf-free DTO boundary shared by API, CLI, and MCP lives in `surface-contracts`. `perf-support` and `perf-harness` are support/tooling members, not user-facing runtime surfaces.
 
 ## License
 
