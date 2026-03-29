@@ -14,5 +14,5 @@ Current reality:
 
 - the CLI lives in `bins/cli/`
 - it uses clap, not Typer
-- it executes sync/index directly through `crates/surface-runtime`
+- it executes sync/index directly through the `surface-runtime + surface-contracts` boundary
 - preview workflows are explicit about unsupported persistence paths

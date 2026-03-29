@@ -25,10 +25,9 @@ Direct synchronous `/sync` and `/index` HTTP mutations are intentionally absent.
 
 ```toml
 [dependencies]
-analytics = { path = "../../crates/analytics" }
 common = { path = "../../crates/common" }
 jobs = { path = "../../crates/jobs" }
-search = { path = "../../crates/search" }
+surface-contracts = { path = "../../crates/surface-contracts" }
 surface-runtime = { path = "../../crates/surface-runtime" }
 
 anyhow.workspace = true
@@ -79,6 +78,7 @@ uuid.workspace = true
 - shared `SurfaceServices`
 
 The API builds those services through [surface-runtime](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) with direct execution disabled.
+The shared request and response DTOs for search and analytics come from [surface-contracts](/Users/po4yka/GitRep/anki-atlas/crates/surface-contracts/src/lib.rs).
 
 ### Request DTOs
 
@@ -86,8 +86,8 @@ Current request DTO families:
 
 - `AsyncSyncRequest`
 - `AsyncIndexRequest`
-- `SearchRequest`
-- `ChunkSearchRequest`
+- `SearchRequest` from `surface-contracts`
+- `ChunkSearchRequest` from `surface-contracts`
 - query DTOs for topics, coverage, gaps, weak notes, and duplicates
 
 Important `SearchRequest` fields:
@@ -116,8 +116,8 @@ Current response DTO families:
 - `ReadyResponse`
 - `JobAcceptedResponse`
 - `JobStatusResponse`
-- `SearchResponse`
-- `ChunkSearchResponse`
+- `SearchResponse` from `surface-contracts`
+- `ChunkSearchResponse` from `surface-contracts`
 - `TopicsTreeResponse`
 - `TopicCoverageResponse`
 - `TopicGapsResponse`

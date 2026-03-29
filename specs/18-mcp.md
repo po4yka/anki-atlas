@@ -27,7 +27,7 @@ The MCP server must:
 [dependencies]
 common = { path = "../../crates/common" }
 jobs = { path = "../../crates/jobs" }
-search = { path = "../../crates/search" }
+surface-contracts = { path = "../../crates/surface-contracts" }
 surface-runtime = { path = "../../crates/surface-runtime" }
 
 rmcp.workspace = true
@@ -109,6 +109,7 @@ Representative result families:
 ## Runtime Rules
 
 - MCP uses [surface-runtime](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) with direct execution disabled
+- MCP tool inputs and outputs are shaped through [surface-contracts](/Users/po4yka/GitRep/anki-atlas/crates/surface-contracts/src/lib.rs)
 - read tools call the shared search and analytics facades
 - `ankiatlas_search` stays note-oriented and includes best semantic chunk metadata when semantic retrieval contributes
 - `ankiatlas_search_chunks` is semantic-only and returns raw multimodal chunk hits

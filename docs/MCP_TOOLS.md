@@ -1,6 +1,6 @@
 # Anki Atlas MCP Tools
 
-The MCP server shares the same runtime graph as the API and CLI through [surface-runtime](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs). That means its tools should describe real service behavior, not synthetic agent-only wrappers.
+The MCP server shares the same surface boundary as the API and CLI through [surface-runtime](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) and [surface-contracts](/Users/po4yka/GitRep/anki-atlas/crates/surface-contracts/src/lib.rs). That means its tools should describe real service behavior, not synthetic agent-only wrappers.
 
 ## Running the Server
 

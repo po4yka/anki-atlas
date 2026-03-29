@@ -17,14 +17,15 @@ Provide the operator-facing command surface for Anki Atlas. The CLI is the only 
 
 ```toml
 [dependencies]
-analytics = { path = "../../crates/analytics" }
 common = { path = "../../crates/common" }
 database = { path = "../../crates/database" }
-search = { path = "../../crates/search" }
+surface-contracts = { path = "../../crates/surface-contracts" }
 surface-runtime = { path = "../../crates/surface-runtime" }
 
 anyhow.workspace = true
 clap.workspace = true
+crossterm = "0.28"
+ratatui = "0.29"
 serde_json.workspace = true
 tokio.workspace = true
 ```
@@ -70,8 +71,8 @@ anki-atlas tag-audit <file> [--fix]
 - `index`
   - runs direct indexing over PostgreSQL notes
 - `search`
-  - default mode maps onto `search::service::SearchParams`
-  - `--chunks` maps onto `search::service::ChunkSearchParams`
+  - default mode maps onto the shared contract `SearchRequest`
+  - `--chunks` maps onto the shared contract `ChunkSearchRequest`
   - `--chunks` is semantic-only and rejects `--fts`
 - `topics tree`
   - prints taxonomy tree data
@@ -93,7 +94,7 @@ anki-atlas tag-audit <file> [--fix]
 
 ## Runtime Wiring
 
-The CLI uses [surface-runtime](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) with direct execution enabled.
+The CLI uses [surface-runtime](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) with direct execution enabled, and consumes shared DTOs from [surface-contracts](/Users/po4yka/GitRep/anki-atlas/crates/surface-contracts/src/lib.rs).
 
 That shared runtime provides:
 
@@ -135,6 +136,19 @@ bins/cli/src/
   main.rs
   args.rs
   output.rs
+  runtime.rs
+  tui/
+    mod.rs
+    app.rs
+    bootstrap.rs
+    input.rs
+    tasks.rs
+    widgets.rs
+    screens/
+      home.rs
+      search.rs
+      topics.rs
+      workflows.rs
   commands/
     coverage.rs
     duplicates.rs
