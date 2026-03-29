@@ -6,11 +6,8 @@ use jobs::types::{IndexJobPayload, SyncJobPayload};
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
-use search::surface::{
-    ChunkSearchRequestInput, SearchFilterInput, SearchRequestInput, build_chunk_search_params,
-    build_search_params,
-};
 use serde_json::Value;
+use surface_contracts::search::{ChunkSearchRequest, SearchFilterInput, SearchRequest};
 use surface_runtime::{BuildSurfaceServicesOptions, SurfaceError, SurfaceServices};
 
 use crate::formatters;
@@ -75,6 +72,7 @@ impl AnkiAtlasServer {
                 format!("path not found: {}", path.display()),
                 None,
             ),
+            SurfaceError::NotFound(message) => Self::tool_error("not_found", message, None),
             SurfaceError::InvalidInput(message) => Self::tool_error("invalid_input", message, None),
             SurfaceError::Database(error) => {
                 Self::tool_error("database_unavailable", error.to_string(), None)
@@ -82,6 +80,7 @@ impl AnkiAtlasServer {
             SurfaceError::VectorStore(error) => {
                 Self::tool_error("vector_store_unavailable", error.to_string(), None)
             }
+            SurfaceError::Provider(message) => Self::tool_error("provider_error", message, None),
             other => Self::tool_error("internal_error", other.to_string(), None),
         }
     }
@@ -110,13 +109,13 @@ impl AnkiAtlasServer {
         &self,
         Parameters(input): Parameters<SearchToolInput>,
     ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
-        let params = match build_search_params(SearchRequestInput {
+        let request = SearchRequest {
             query: input.query.clone(),
-            filters: SearchFilterInput {
+            filters: Some(SearchFilterInput {
                 deck_names: Some(input.deck_names.clone()),
                 tags: Some(input.tags.clone()),
                 ..Default::default()
-            },
+            }),
             limit: input.limit,
             semantic_weight: 1.0,
             fts_weight: 1.0,
@@ -124,16 +123,14 @@ impl AnkiAtlasServer {
             fts_only: input.fts_only,
             rerank_override: None,
             rerank_top_n_override: None,
-        }) {
-            Ok(params) => params,
-            Err(error) => {
-                return error_result(
-                    input.output_mode,
-                    Self::tool_error("invalid_input", error, None),
-                );
-            }
         };
-        match self.services.search.search(&params).await {
+        if let Err(error) = request.validate() {
+            return error_result(
+                input.output_mode,
+                Self::tool_error("invalid_input", error, None),
+            );
+        }
+        match self.services.search.search(&request).await {
             Ok(result) => {
                 let response = SearchToolResult {
                     query: result.query,
@@ -147,11 +144,6 @@ impl AnkiAtlasServer {
                         .results
                         .into_iter()
                         .map(|item| {
-                            let sources = item
-                                .sources()
-                                .into_iter()
-                                .map(ToString::to_string)
-                                .collect();
                             SearchResultView {
                                 note_id: item.note_id,
                                 rrf_score: item.rrf_score,
@@ -159,7 +151,7 @@ impl AnkiAtlasServer {
                                 fts_score: item.fts_score,
                                 rerank_score: item.rerank_score,
                                 headline: item.headline,
-                                sources,
+                                sources: item.sources,
                                 match_modality: item.match_modality,
                                 match_chunk_kind: item.match_chunk_kind,
                                 match_source_field: item.match_source_field,
@@ -189,24 +181,22 @@ impl AnkiAtlasServer {
         &self,
         Parameters(input): Parameters<ChunkSearchToolInput>,
     ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
-        let params = match build_chunk_search_params(ChunkSearchRequestInput {
+        let request = ChunkSearchRequest {
             query: input.query.clone(),
-            filters: SearchFilterInput {
+            filters: Some(SearchFilterInput {
                 deck_names: Some(input.deck_names.clone()),
                 tags: Some(input.tags.clone()),
                 ..Default::default()
-            },
+            }),
             limit: input.limit,
-        }) {
-            Ok(params) => params,
-            Err(error) => {
-                return error_result(
-                    input.output_mode,
-                    Self::tool_error("invalid_input", error, None),
-                );
-            }
         };
-        match self.services.search.search_chunks(&params).await {
+        if let Err(error) = request.validate() {
+            return error_result(
+                input.output_mode,
+                Self::tool_error("invalid_input", error, None),
+            );
+        }
+        match self.services.search.search_chunks(&request).await {
             Ok(result) => {
                 let response = ChunkSearchToolResult {
                     query: result.query,

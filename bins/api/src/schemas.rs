@@ -1,16 +1,15 @@
-use analytics::coverage::{GapType, TopicCoverage, TopicGap, WeakNote};
-use analytics::duplicates::{DuplicateCluster, DuplicateDetail, DuplicateStats};
 use chrono::{DateTime, Utc};
 use jobs::types::{IndexJobPayload, JobResultData, JobStatus, JobType, SyncJobPayload};
-use search::fts::LexicalMode;
-use search::fusion::{FusionStats, SearchResult};
-use search::surface::{
-    ChunkSearchRequestInput, SearchFilterInput, SearchRequestInput, build_chunk_search_params,
-    build_search_params,
-};
-use search::service::{ChunkSearchParams, ChunkSearchResult, HybridSearchResult, SearchParams};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use surface_contracts::analytics::{
+    DuplicateCluster, DuplicateDetail, DuplicateStats, GapKind, TopicCoverage, TopicGap, WeakNote,
+};
+pub use surface_contracts::search::{
+    ChunkSearchHit as ChunkSearchHitItem, ChunkSearchRequest, ChunkSearchResponse, FusionStats,
+    LexicalMode, SearchFilterInput as SearchFiltersDto, SearchRequest, SearchResponse,
+    SearchResultItem,
+};
 
 #[derive(Debug, Serialize)]
 pub struct HealthResponse {
@@ -114,228 +113,6 @@ impl From<jobs::types::JobRecord> for JobStatusResponse {
 
 // --- Search ---
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
-pub struct SearchFiltersDto {
-    pub deck_names: Option<Vec<String>>,
-    pub deck_names_exclude: Option<Vec<String>>,
-    pub tags: Option<Vec<String>>,
-    pub tags_exclude: Option<Vec<String>>,
-    pub model_ids: Option<Vec<i64>>,
-    pub min_ivl: Option<i32>,
-    pub max_lapses: Option<i32>,
-    pub min_reps: Option<i32>,
-}
-
-impl From<SearchFiltersDto> for SearchFilterInput {
-    fn from(filters: SearchFiltersDto) -> Self {
-        Self {
-            deck_names: filters.deck_names,
-            deck_names_exclude: filters.deck_names_exclude,
-            tags: filters.tags,
-            tags_exclude: filters.tags_exclude,
-            model_ids: filters.model_ids,
-            min_ivl: filters.min_ivl,
-            max_lapses: filters.max_lapses,
-            min_reps: filters.min_reps,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SearchRequest {
-    pub query: String,
-    pub filters: Option<SearchFiltersDto>,
-    #[serde(default = "default_limit")]
-    pub limit: usize,
-    #[serde(default = "default_weight")]
-    pub semantic_weight: f64,
-    #[serde(default = "default_weight")]
-    pub fts_weight: f64,
-    #[serde(default)]
-    pub semantic_only: bool,
-    #[serde(default)]
-    pub fts_only: bool,
-    pub rerank_override: Option<bool>,
-    pub rerank_top_n_override: Option<usize>,
-}
-
-impl SearchRequest {
-    pub fn validate(&self) -> Result<(), String> {
-        build_search_params(self.clone().into()).map(|_| ())
-    }
-}
-
-impl From<SearchRequest> for SearchRequestInput {
-    fn from(request: SearchRequest) -> Self {
-        Self {
-            query: request.query,
-            filters: request.filters.map(Into::into).unwrap_or_default(),
-            limit: request.limit,
-            semantic_weight: request.semantic_weight,
-            fts_weight: request.fts_weight,
-            semantic_only: request.semantic_only,
-            fts_only: request.fts_only,
-            rerank_override: request.rerank_override,
-            rerank_top_n_override: request.rerank_top_n_override,
-        }
-    }
-}
-
-impl From<SearchRequest> for SearchParams {
-    fn from(request: SearchRequest) -> Self {
-        build_search_params(request.into()).expect("search request should be validated before conversion")
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ChunkSearchRequest {
-    pub query: String,
-    pub filters: Option<SearchFiltersDto>,
-    #[serde(default = "default_limit")]
-    pub limit: usize,
-}
-
-impl ChunkSearchRequest {
-    pub fn validate(&self) -> Result<(), String> {
-        build_chunk_search_params(self.clone().into()).map(|_| ())
-    }
-}
-
-impl From<ChunkSearchRequest> for ChunkSearchRequestInput {
-    fn from(request: ChunkSearchRequest) -> Self {
-        Self {
-            query: request.query,
-            filters: request.filters.map(Into::into).unwrap_or_default(),
-            limit: request.limit,
-        }
-    }
-}
-
-impl From<ChunkSearchRequest> for ChunkSearchParams {
-    fn from(request: ChunkSearchRequest) -> Self {
-        build_chunk_search_params(request.into())
-            .expect("chunk search request should be validated before conversion")
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct SearchResultItem {
-    pub note_id: i64,
-    pub rrf_score: f64,
-    pub semantic_score: Option<f64>,
-    pub semantic_rank: Option<usize>,
-    pub fts_score: Option<f64>,
-    pub fts_rank: Option<usize>,
-    pub headline: Option<String>,
-    pub rerank_score: Option<f64>,
-    pub rerank_rank: Option<usize>,
-    pub sources: Vec<String>,
-    pub match_modality: Option<String>,
-    pub match_chunk_kind: Option<String>,
-    pub match_source_field: Option<String>,
-    pub match_asset_rel_path: Option<String>,
-    pub match_preview_label: Option<String>,
-}
-
-impl From<SearchResult> for SearchResultItem {
-    fn from(result: SearchResult) -> Self {
-        let sources = result.sources().into_iter().map(str::to_string).collect();
-
-        Self {
-            note_id: result.note_id,
-            rrf_score: result.rrf_score,
-            semantic_score: result.semantic_score,
-            semantic_rank: result.semantic_rank,
-            fts_score: result.fts_score,
-            fts_rank: result.fts_rank,
-            headline: result.headline,
-            rerank_score: result.rerank_score,
-            rerank_rank: result.rerank_rank,
-            sources,
-            match_modality: result.match_modality,
-            match_chunk_kind: result.match_chunk_kind,
-            match_source_field: result.match_source_field,
-            match_asset_rel_path: result.match_asset_rel_path,
-            match_preview_label: result.match_preview_label,
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct SearchResponse {
-    pub query: String,
-    pub results: Vec<SearchResultItem>,
-    pub stats: FusionStats,
-    pub filters_applied: std::collections::HashMap<String, Value>,
-    pub lexical_mode: LexicalMode,
-    pub lexical_fallback_used: bool,
-    pub query_suggestions: Vec<String>,
-    pub autocomplete_suggestions: Vec<String>,
-    pub rerank_applied: bool,
-    pub rerank_model: Option<String>,
-    pub rerank_top_n: Option<usize>,
-}
-
-impl From<HybridSearchResult> for SearchResponse {
-    fn from(result: HybridSearchResult) -> Self {
-        Self {
-            query: result.query,
-            results: result.results.into_iter().map(Into::into).collect(),
-            stats: result.stats,
-            filters_applied: result.filters_applied,
-            lexical_mode: result.lexical_mode,
-            lexical_fallback_used: result.lexical_fallback_used,
-            query_suggestions: result.query_suggestions,
-            autocomplete_suggestions: result.autocomplete_suggestions,
-            rerank_applied: result.rerank_applied,
-            rerank_model: result.rerank_model,
-            rerank_top_n: result.rerank_top_n,
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct ChunkSearchHitItem {
-    pub note_id: i64,
-    pub chunk_id: String,
-    pub chunk_kind: String,
-    pub modality: String,
-    pub source_field: Option<String>,
-    pub asset_rel_path: Option<String>,
-    pub mime_type: Option<String>,
-    pub preview_label: Option<String>,
-    pub score: f64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ChunkSearchResponse {
-    pub query: String,
-    pub results: Vec<ChunkSearchHitItem>,
-}
-
-impl From<ChunkSearchResult> for ChunkSearchResponse {
-    fn from(result: ChunkSearchResult) -> Self {
-        Self {
-            query: result.query,
-            results: result
-                .results
-                .into_iter()
-                .map(|hit| ChunkSearchHitItem {
-                    note_id: hit.note_id,
-                    chunk_id: hit.chunk_id,
-                    chunk_kind: hit.chunk_kind,
-                    modality: hit.modality,
-                    source_field: hit.source_field,
-                    asset_rel_path: hit.asset_rel_path,
-                    mime_type: hit.mime_type,
-                    preview_label: hit.preview_label,
-                    score: hit.score,
-                })
-                .collect(),
-        }
-    }
-}
-
 // --- Topics and analytics ---
 
 #[derive(Debug, Deserialize)]
@@ -410,7 +187,7 @@ pub struct TopicGapItem {
     pub path: String,
     pub label: String,
     pub description: Option<String>,
-    pub gap_type: GapType,
+    pub gap_type: GapKind,
     pub note_count: i64,
     pub threshold: i64,
     pub nearest_notes: Vec<Value>,
@@ -624,14 +401,6 @@ pub struct DuplicatesResponse {
 
 fn default_true() -> bool {
     true
-}
-
-fn default_limit() -> usize {
-    50
-}
-
-fn default_weight() -> f64 {
-    1.0
 }
 
 fn default_min_coverage() -> i64 {

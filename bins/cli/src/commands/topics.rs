@@ -20,14 +20,14 @@ pub async fn run(args: &TopicsArgs, services: &SurfaceServices) -> anyhow::Resul
             output::print_topics_tree(&topics)?;
         }
         TopicsCommand::Load(load) => {
-            let taxonomy = usecases::topics_load(
+            let summary = usecases::topics_load(
                 handles.clone(),
                 TopicsLoadRequest {
                     file: load.file.clone(),
                 },
             )
             .await?;
-            output::print_taxonomy_load(taxonomy.topics.len(), taxonomy.roots.len());
+            output::print_taxonomy_load(summary.topic_count, summary.root_count);
         }
         TopicsCommand::Label(label) => {
             let stats = usecases::topics_label(

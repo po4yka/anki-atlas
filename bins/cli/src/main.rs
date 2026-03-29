@@ -1,6 +1,7 @@
 mod args;
 mod commands;
 mod output;
+mod runtime;
 mod tui;
 mod usecases;
 
@@ -24,82 +25,14 @@ async fn main() -> anyhow::Result<()> {
         Commands::Validate(args) => commands::validate::run(args).await,
         Commands::ObsidianSync(args) => commands::obsidian_sync::run(args).await,
         Commands::TagAudit(args) => commands::tag_audit::run(args).await,
-        Commands::Sync(args) => {
-            let settings = common::config::Settings::load()?;
-            let services = surface_runtime::build_surface_services(
-                &settings,
-                surface_runtime::BuildSurfaceServicesOptions {
-                    enable_direct_execution: true,
-                },
-            )
-            .await?;
-            commands::sync::run(args, &services).await
-        }
-        Commands::Index(args) => {
-            let settings = common::config::Settings::load()?;
-            let services = surface_runtime::build_surface_services(
-                &settings,
-                surface_runtime::BuildSurfaceServicesOptions {
-                    enable_direct_execution: true,
-                },
-            )
-            .await?;
-            commands::index::run(args, &services).await
-        }
-        Commands::Search(args) => {
-            let settings = common::config::Settings::load()?;
-            let services = surface_runtime::build_surface_services(
-                &settings,
-                surface_runtime::BuildSurfaceServicesOptions::default(),
-            )
-            .await?;
-            commands::search::run(args, &services).await
-        }
-        Commands::Topics(args) => {
-            let settings = common::config::Settings::load()?;
-            let services = surface_runtime::build_surface_services(
-                &settings,
-                surface_runtime::BuildSurfaceServicesOptions::default(),
-            )
-            .await?;
-            commands::topics::run(args, &services).await
-        }
-        Commands::Coverage(args) => {
-            let settings = common::config::Settings::load()?;
-            let services = surface_runtime::build_surface_services(
-                &settings,
-                surface_runtime::BuildSurfaceServicesOptions::default(),
-            )
-            .await?;
-            commands::coverage::run(args, &services).await
-        }
-        Commands::Gaps(args) => {
-            let settings = common::config::Settings::load()?;
-            let services = surface_runtime::build_surface_services(
-                &settings,
-                surface_runtime::BuildSurfaceServicesOptions::default(),
-            )
-            .await?;
-            commands::gaps::run(args, &services).await
-        }
-        Commands::WeakNotes(args) => {
-            let settings = common::config::Settings::load()?;
-            let services = surface_runtime::build_surface_services(
-                &settings,
-                surface_runtime::BuildSurfaceServicesOptions::default(),
-            )
-            .await?;
-            commands::weak_notes::run(args, &services).await
-        }
-        Commands::Duplicates(args) => {
-            let settings = common::config::Settings::load()?;
-            let services = surface_runtime::build_surface_services(
-                &settings,
-                surface_runtime::BuildSurfaceServicesOptions::default(),
-            )
-            .await?;
-            commands::duplicates::run(args, &services).await
-        }
+        Commands::Sync(_)
+        | Commands::Index(_)
+        | Commands::Search(_)
+        | Commands::Topics(_)
+        | Commands::Coverage(_)
+        | Commands::Gaps(_)
+        | Commands::WeakNotes(_)
+        | Commands::Duplicates(_) => runtime::dispatch_service_command(&cli.command).await,
     };
 
     if let Err(error) = result {

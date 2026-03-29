@@ -1,3 +1,4 @@
+mod contracts;
 pub mod error;
 pub mod services;
 pub mod workflows;

@@ -1,8 +1,3 @@
-use analytics::AnalyticsError;
-use analytics::coverage::{GapType, TopicCoverage, TopicGap, WeakNote};
-use analytics::duplicates::{DuplicateCluster, DuplicateDetail, DuplicateStats};
-use analytics::labeling::LabelingStats;
-use analytics::taxonomy::Taxonomy;
 use anki_atlas_api::router::build_router;
 use anki_atlas_api::schemas::SearchRequest;
 use anki_atlas_api::services::{AnalyticsFacade, ApiServices, SearchFacade, build_app_state};
@@ -16,14 +11,19 @@ use jobs::{
     SyncJobPayload,
 };
 use mockall::{Sequence, mock};
-use search::error::SearchError;
-use search::fts::LexicalMode;
-use search::fusion::{FusionStats, SearchResult};
-use search::service::{ChunkSearchParams, ChunkSearchResult, HybridSearchResult, SearchParams};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use surface_contracts::analytics::{
+    DuplicateCluster, DuplicateDetail, DuplicateStats, GapKind, LabelingStats,
+    TaxonomyLoadSummary, TopicCoverage, TopicGap, WeakNote,
+};
+use surface_contracts::search::{
+    ChunkSearchRequest, ChunkSearchResponse, FusionStats, LexicalMode, SearchResponse,
+    SearchResultItem,
+};
+use surface_runtime::SurfaceError;
 use tower::ServiceExt;
 
 mock! {
@@ -58,13 +58,13 @@ mock! {
     impl SearchFacade for Search {
         async fn search(
             &self,
-            params: &SearchParams,
-        ) -> Result<HybridSearchResult, SearchError>;
+            params: &SearchRequest,
+        ) -> Result<SearchResponse, SurfaceError>;
 
         async fn search_chunks(
             &self,
-            params: &ChunkSearchParams,
-        ) -> Result<ChunkSearchResult, SearchError>;
+            params: &ChunkSearchRequest,
+        ) -> Result<ChunkSearchResponse, SurfaceError>;
     }
 }
 
@@ -76,36 +76,36 @@ mock! {
         async fn load_taxonomy(
             &self,
             yaml_path: Option<PathBuf>,
-        ) -> Result<Taxonomy, AnalyticsError>;
+        ) -> Result<TaxonomyLoadSummary, SurfaceError>;
 
         async fn label_notes(
             &self,
             yaml_path: Option<PathBuf>,
             min_confidence: f32,
-        ) -> Result<LabelingStats, AnalyticsError>;
+        ) -> Result<LabelingStats, SurfaceError>;
 
         async fn get_taxonomy_tree(
             &self,
             root_path: Option<String>,
-        ) -> Result<Vec<Value>, AnalyticsError>;
+        ) -> Result<Vec<Value>, SurfaceError>;
 
         async fn get_coverage(
             &self,
             topic_path: String,
             include_subtree: bool,
-        ) -> Result<Option<TopicCoverage>, AnalyticsError>;
+        ) -> Result<Option<TopicCoverage>, SurfaceError>;
 
         async fn get_gaps(
             &self,
             topic_path: String,
             min_coverage: i64,
-        ) -> Result<Vec<TopicGap>, AnalyticsError>;
+        ) -> Result<Vec<TopicGap>, SurfaceError>;
 
         async fn get_weak_notes(
             &self,
             topic_path: String,
             max_results: i64,
-        ) -> Result<Vec<WeakNote>, AnalyticsError>;
+        ) -> Result<Vec<WeakNote>, SurfaceError>;
 
         async fn find_duplicates(
             &self,
@@ -113,7 +113,7 @@ mock! {
             max_clusters: usize,
             deck_filter: Option<Vec<String>>,
             tag_filter: Option<Vec<String>>,
-        ) -> Result<(Vec<DuplicateCluster>, DuplicateStats), AnalyticsError>;
+        ) -> Result<(Vec<DuplicateCluster>, DuplicateStats), SurfaceError>;
     }
 }
 
@@ -195,9 +195,9 @@ fn make_job_record(job_id: &str, job_type: JobType, status: JobStatus) -> JobRec
     }
 }
 
-fn sample_search_result() -> HybridSearchResult {
-    HybridSearchResult {
-        results: vec![SearchResult {
+fn sample_search_result() -> SearchResponse {
+    SearchResponse {
+        results: vec![SearchResultItem {
             note_id: 1,
             rrf_score: 0.95,
             semantic_score: Some(0.9),
@@ -207,6 +207,7 @@ fn sample_search_result() -> HybridSearchResult {
             headline: Some("ownership".into()),
             rerank_score: Some(0.97),
             rerank_rank: Some(1),
+            sources: vec!["semantic".into(), "fts".into()],
             match_modality: Some("text".into()),
             match_chunk_kind: Some("text_primary".into()),
             match_source_field: None,
@@ -549,7 +550,7 @@ async fn topic_gaps_returns_typed_gap_type() {
                 path: "cs/networking".into(),
                 label: "Networking".into(),
                 description: None,
-                gap_type: GapType::Missing,
+                gap_type: GapKind::Missing,
                 note_count: 0,
                 threshold: 2,
                 nearest_notes: vec![],

@@ -1,12 +1,11 @@
-use analytics::coverage::{GapType, TopicCoverage, TopicGap, WeakNote};
-use analytics::duplicates::{DuplicateCluster, DuplicateDetail, DuplicateStats};
 use anki_atlas_api::schemas::*;
 use jobs::types::{JobStatus, JobType};
-use search::fts::LexicalMode;
-use search::fusion::{FusionStats, SearchResult};
-use search::service::{HybridSearchResult, SearchParams};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use surface_contracts::analytics::{
+    DuplicateCluster, DuplicateDetail, DuplicateStats, GapKind, TopicCoverage, TopicGap, WeakNote,
+};
+use surface_contracts::search::{FusionStats, LexicalMode, SearchResultItem};
 
 #[test]
 fn async_sync_request_defaults() {
@@ -92,7 +91,7 @@ fn search_request_validation_rejects_conflicting_modes() {
 }
 
 #[test]
-fn search_request_converts_to_search_params() {
+fn search_request_preserves_valid_filter_payload() {
     let request = SearchRequest {
         query: "lifetimes".into(),
         filters: Some(SearchFiltersDto {
@@ -109,12 +108,13 @@ fn search_request_converts_to_search_params() {
         rerank_top_n_override: Some(3),
     };
 
-    let params: SearchParams = request.into();
-    assert_eq!(params.query, "lifetimes");
-    assert_eq!(params.limit, 15);
-    assert!(params.fts_only);
-    assert_eq!(params.rerank_override, Some(false));
-    let filters = params.filters.expect("filters");
+    request.validate().expect("request should be valid");
+
+    assert_eq!(request.query, "lifetimes");
+    assert_eq!(request.limit, 15);
+    assert!(request.fts_only);
+    assert_eq!(request.rerank_override, Some(false));
+    let filters = request.filters.expect("filters");
     assert_eq!(filters.deck_names, Some(vec!["Rust".into()]));
     assert_eq!(filters.deck_names_exclude, None);
     assert_eq!(filters.tags, None);
@@ -127,9 +127,9 @@ fn search_request_converts_to_search_params() {
 
 #[test]
 fn search_response_serializes_typed_metadata() {
-    let response = SearchResponse::from(HybridSearchResult {
+    let response = SearchResponse {
         query: "ownership".into(),
-        results: vec![SearchResult {
+        results: vec![SearchResultItem {
             note_id: 1,
             rrf_score: 0.95,
             semantic_score: Some(0.9),
@@ -139,6 +139,7 @@ fn search_response_serializes_typed_metadata() {
             headline: Some("headline".into()),
             rerank_score: Some(0.97),
             rerank_rank: Some(1),
+            sources: vec!["semantic".into(), "fts".into()],
             match_modality: Some("text".into()),
             match_chunk_kind: Some("text_primary".into()),
             match_source_field: None,
@@ -159,7 +160,7 @@ fn search_response_serializes_typed_metadata() {
         rerank_applied: true,
         rerank_model: Some("cross-encoder/test".into()),
         rerank_top_n: Some(10),
-    });
+    };
 
     let v: Value = serde_json::to_value(&response).unwrap();
     assert_eq!(v["lexical_mode"], "fts");
@@ -206,7 +207,7 @@ fn topic_gaps_response_serializes_typed_gap_type() {
             path: "cs/networking".into(),
             label: "Networking".into(),
             description: None,
-            gap_type: GapType::Missing,
+            gap_type: GapKind::Missing,
             note_count: 0,
             threshold: 2,
             nearest_notes: vec![],

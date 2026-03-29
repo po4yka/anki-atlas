@@ -1,16 +1,16 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use analytics::AnalyticsError;
-use analytics::coverage::{TopicCoverage, TopicGap, WeakNote};
-use analytics::duplicates::{DuplicateCluster, DuplicateStats};
-use analytics::labeling::LabelingStats;
-use analytics::taxonomy::Taxonomy;
 use anki_atlas_mcp::server::AnkiAtlasServer;
 use jobs::{IndexJobPayload, JobError, JobManager, JobRecord, SyncJobPayload};
-use search::error::SearchError;
-use search::service::{ChunkSearchParams, ChunkSearchResult, HybridSearchResult, SearchParams};
-use surface_runtime::{AnalyticsFacade, SearchFacade, SurfaceServices};
+use surface_contracts::analytics::{
+    DuplicateCluster, DuplicateStats, LabelingStats, TaxonomyLoadSummary, TopicCoverage, TopicGap,
+    WeakNote,
+};
+use surface_contracts::search::{
+    ChunkSearchRequest, ChunkSearchResponse, SearchRequest, SearchResponse,
+};
+use surface_runtime::{AnalyticsFacade, SearchFacade, SurfaceError, SurfaceServices};
 
 struct NoopJobs;
 
@@ -57,15 +57,15 @@ struct NoopSearch;
 
 #[async_trait::async_trait]
 impl SearchFacade for NoopSearch {
-    async fn search(&self, _params: &SearchParams) -> Result<HybridSearchResult, SearchError> {
-        Err(SearchError::Database(sqlx::Error::PoolTimedOut))
+    async fn search(&self, _params: &SearchRequest) -> Result<SearchResponse, SurfaceError> {
+        Err(SurfaceError::Database(sqlx::Error::PoolTimedOut))
     }
 
     async fn search_chunks(
         &self,
-        _params: &ChunkSearchParams,
-    ) -> Result<ChunkSearchResult, SearchError> {
-        Err(SearchError::Database(sqlx::Error::PoolTimedOut))
+        _params: &ChunkSearchRequest,
+    ) -> Result<ChunkSearchResponse, SurfaceError> {
+        Err(SurfaceError::Database(sqlx::Error::PoolTimedOut))
     }
 }
 
@@ -73,22 +73,25 @@ struct NoopAnalytics;
 
 #[async_trait::async_trait]
 impl AnalyticsFacade for NoopAnalytics {
-    async fn load_taxonomy(&self, _yaml_path: Option<PathBuf>) -> Result<Taxonomy, AnalyticsError> {
-        Ok(Taxonomy::default())
+    async fn load_taxonomy(
+        &self,
+        _yaml_path: Option<PathBuf>,
+    ) -> Result<TaxonomyLoadSummary, SurfaceError> {
+        Ok(TaxonomyLoadSummary::default())
     }
 
     async fn label_notes(
         &self,
         _yaml_path: Option<PathBuf>,
         _min_confidence: f32,
-    ) -> Result<LabelingStats, AnalyticsError> {
+    ) -> Result<LabelingStats, SurfaceError> {
         Ok(LabelingStats::default())
     }
 
     async fn get_taxonomy_tree(
         &self,
         _root_path: Option<String>,
-    ) -> Result<Vec<serde_json::Value>, AnalyticsError> {
+    ) -> Result<Vec<serde_json::Value>, SurfaceError> {
         Ok(Vec::new())
     }
 
@@ -96,7 +99,7 @@ impl AnalyticsFacade for NoopAnalytics {
         &self,
         _topic_path: String,
         _include_subtree: bool,
-    ) -> Result<Option<TopicCoverage>, AnalyticsError> {
+    ) -> Result<Option<TopicCoverage>, SurfaceError> {
         Ok(None)
     }
 
@@ -104,7 +107,7 @@ impl AnalyticsFacade for NoopAnalytics {
         &self,
         _topic_path: String,
         _min_coverage: i64,
-    ) -> Result<Vec<TopicGap>, AnalyticsError> {
+    ) -> Result<Vec<TopicGap>, SurfaceError> {
         Ok(Vec::new())
     }
 
@@ -112,7 +115,7 @@ impl AnalyticsFacade for NoopAnalytics {
         &self,
         _topic_path: String,
         _max_results: i64,
-    ) -> Result<Vec<WeakNote>, AnalyticsError> {
+    ) -> Result<Vec<WeakNote>, SurfaceError> {
         Ok(Vec::new())
     }
 
@@ -122,7 +125,7 @@ impl AnalyticsFacade for NoopAnalytics {
         _max_clusters: usize,
         _deck_filter: Option<Vec<String>>,
         _tag_filter: Option<Vec<String>>,
-    ) -> Result<(Vec<DuplicateCluster>, DuplicateStats), AnalyticsError> {
+    ) -> Result<(Vec<DuplicateCluster>, DuplicateStats), SurfaceError> {
         Ok((Vec::new(), DuplicateStats::default()))
     }
 }

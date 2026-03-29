@@ -1,12 +1,13 @@
-use analytics::coverage::{TopicCoverage, TopicGap, WeakNote};
-use analytics::duplicates::{DuplicateCluster, DuplicateStats};
-use search::service::{ChunkSearchResult, HybridSearchResult};
+use surface_contracts::analytics::{
+    DuplicateCluster, DuplicateStats, LabelingStats, TopicCoverage, TopicGap, WeakNote,
+};
+use surface_contracts::search::{ChunkSearchResponse, SearchResponse};
 use surface_runtime::{
     GeneratePreview, IndexExecutionSummary, ObsidianScanPreview, SyncExecutionSummary,
     TagAuditSummary, ValidationSummary,
 };
 
-pub fn print_search_result(result: &HybridSearchResult, verbose: bool) {
+pub fn print_search_result(result: &SearchResponse, verbose: bool) {
     println!("query: {}", result.query);
     println!("results: {}", result.results.len());
     for item in &result.results {
@@ -15,7 +16,7 @@ pub fn print_search_result(result: &HybridSearchResult, verbose: bool) {
             "- note={} score={:.4} sources={} headline={}",
             item.note_id,
             item.rrf_score,
-            item.sources().join(","),
+            item.sources.join(","),
             headline
         );
         if verbose {
@@ -52,7 +53,7 @@ pub fn print_search_result(result: &HybridSearchResult, verbose: bool) {
     }
 }
 
-pub fn print_chunk_search_result(result: &ChunkSearchResult, verbose: bool) {
+pub fn print_chunk_search_result(result: &ChunkSearchResponse, verbose: bool) {
     println!("query: {}", result.query);
     println!("results: {}", result.results.len());
     for item in &result.results {
@@ -80,7 +81,7 @@ pub fn print_taxonomy_load(topic_count: usize, root_count: usize) {
     println!("roots: {root_count}");
 }
 
-pub fn print_labeling_summary(stats: &analytics::labeling::LabelingStats) {
+pub fn print_labeling_summary(stats: &LabelingStats) {
     println!("labeling complete");
     println!("notes_processed: {}", stats.notes_processed);
     println!("assignments_created: {}", stats.assignments_created);

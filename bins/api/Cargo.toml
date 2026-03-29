@@ -14,10 +14,9 @@ name = "anki-atlas-api"
 path = "src/main.rs"
 
 [dependencies]
-analytics = { path = "../../crates/analytics" }
 common = { path = "../../crates/common" }
 jobs = { path = "../../crates/jobs" }
-search = { path = "../../crates/search" }
+surface-contracts = { path = "../../crates/surface-contracts" }
 surface-runtime = { path = "../../crates/surface-runtime" }
 
 anyhow = { workspace = true }

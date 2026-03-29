@@ -1,67 +1,22 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use analytics::coverage::{TopicCoverage, TopicGap, WeakNote};
-use analytics::duplicates::{DuplicateCluster, DuplicateStats};
-use analytics::labeling::LabelingStats;
-use analytics::taxonomy::Taxonomy;
-use common::config::{EmbeddingProviderKind, Settings};
 use database::MigrationResult;
-use search::surface::{
-    ChunkSearchRequestInput, SearchFilterInput, SearchRequestInput, build_chunk_search_params,
-    build_search_params,
+use surface_contracts::analytics::{
+    DuplicateCluster, DuplicateStats, LabelingStats, TaxonomyLoadSummary, TopicCoverage, TopicGap,
+    WeakNote,
 };
-use search::service::{ChunkSearchResult, HybridSearchResult};
+use surface_contracts::search::{
+    ChunkSearchRequest as SurfaceChunkSearchRequest, ChunkSearchResponse,
+    SearchFilterInput as SurfaceSearchFilterInput, SearchRequest as SurfaceSearchRequest,
+    SearchResponse,
+};
 use surface_runtime::{
-    AnalyticsFacade, BuildSurfaceServicesOptions, GeneratePreview, GeneratePreviewService,
-    IndexExecutionSummary, IndexExecutor, ObsidianScanPreview, ObsidianScanService, SearchFacade,
-    SurfaceProgressSink, SurfaceServices, SyncExecutionHandle, SyncExecutionSummary,
-    TagAuditService, TagAuditSummary, ValidationService, ValidationSummary, build_surface_services,
+    GeneratePreview, GeneratePreviewService, IndexExecutionSummary, ObsidianScanPreview,
+    ObsidianScanService, SurfaceProgressSink, SyncExecutionSummary, TagAuditService,
+    TagAuditSummary, ValidationService, ValidationSummary,
 };
 
-#[derive(Debug, Clone)]
-pub struct RuntimeSettingsSummary {
-    pub postgres_url: String,
-    pub qdrant_url: String,
-    pub redis_url: String,
-    pub embedding_provider: String,
-    pub embedding_model: String,
-    pub rerank_enabled: bool,
-}
-
-#[derive(Clone)]
-pub struct RuntimeBootstrap {
-    pub settings: Settings,
-    pub summary: RuntimeSettingsSummary,
-    pub services: Arc<SurfaceServices>,
-}
-
-#[derive(Clone)]
-pub struct RuntimeHandles {
-    pub search: Arc<dyn SearchFacade>,
-    pub analytics: Arc<dyn AnalyticsFacade>,
-    pub sync: SyncExecutionHandle,
-    pub index: Arc<dyn IndexExecutor>,
-    pub generate_preview: Arc<GeneratePreviewService>,
-    pub validation: Arc<ValidationService>,
-    pub obsidian_scan: Arc<ObsidianScanService>,
-    pub tag_audit: Arc<TagAuditService>,
-}
-
-impl From<&SurfaceServices> for RuntimeHandles {
-    fn from(services: &SurfaceServices) -> Self {
-        Self {
-            search: Arc::clone(&services.search),
-            analytics: Arc::clone(&services.analytics),
-            sync: services.sync.handle(),
-            index: Arc::clone(&services.index),
-            generate_preview: Arc::clone(&services.generate_preview),
-            validation: Arc::clone(&services.validation),
-            obsidian_scan: Arc::clone(&services.obsidian_scan),
-            tag_audit: Arc::clone(&services.tag_audit),
-        }
-    }
-}
+pub use crate::runtime::RuntimeHandles;
 
 #[derive(Debug, Clone)]
 pub struct SearchRequest {
@@ -160,43 +115,7 @@ pub struct TagAuditRequest {
     pub apply_fixes: bool,
 }
 
-fn embedding_provider_label(provider: EmbeddingProviderKind) -> &'static str {
-    match provider {
-        EmbeddingProviderKind::OpenAi => "openai",
-        EmbeddingProviderKind::Google => "google",
-        EmbeddingProviderKind::Mock => "mock",
-    }
-}
-
-pub fn summarize_settings(settings: &Settings) -> RuntimeSettingsSummary {
-    RuntimeSettingsSummary {
-        postgres_url: settings.postgres_url.clone(),
-        qdrant_url: settings.qdrant_url.clone(),
-        redis_url: settings.redis_url.clone(),
-        embedding_provider: embedding_provider_label(settings.embedding_provider).to_string(),
-        embedding_model: settings.embedding_model.clone(),
-        rerank_enabled: settings.rerank_enabled,
-    }
-}
-
-pub async fn bootstrap_runtime(enable_direct_execution: bool) -> anyhow::Result<RuntimeBootstrap> {
-    let settings = Settings::load()?;
-    let services = build_surface_services(
-        &settings,
-        BuildSurfaceServicesOptions {
-            enable_direct_execution,
-        },
-    )
-    .await?;
-
-    Ok(RuntimeBootstrap {
-        summary: summarize_settings(&settings),
-        settings,
-        services: Arc::new(services),
-    })
-}
-
-pub async fn run_migrations(settings: &Settings) -> anyhow::Result<MigrationResult> {
+pub async fn run_migrations(settings: &common::config::Settings) -> anyhow::Result<MigrationResult> {
     let pool = database::create_pool(&settings.database()).await?;
     database::run_migrations(&pool).await.map_err(Into::into)
 }
@@ -204,14 +123,14 @@ pub async fn run_migrations(settings: &Settings) -> anyhow::Result<MigrationResu
 pub async fn search(
     handles: RuntimeHandles,
     request: SearchRequest,
-) -> anyhow::Result<HybridSearchResult> {
-    let params = build_search_params(SearchRequestInput {
+) -> anyhow::Result<SearchResponse> {
+    let request = SurfaceSearchRequest {
         query: request.query,
-        filters: SearchFilterInput {
+        filters: Some(SurfaceSearchFilterInput {
             deck_names: Some(request.deck_names),
             tags: Some(request.tags),
             ..Default::default()
-        },
+        }),
         limit: request.limit,
         semantic_weight: 1.0,
         fts_weight: 1.0,
@@ -219,28 +138,26 @@ pub async fn search(
         fts_only: request.fts_only,
         rerank_override: None,
         rerank_top_n_override: None,
-    })
-    .map_err(anyhow::Error::msg)?;
-    handles.search.search(&params).await.map_err(Into::into)
+    };
+    handles.search.search(&request).await.map_err(Into::into)
 }
 
 pub async fn search_chunks(
     handles: RuntimeHandles,
     request: ChunkSearchRequest,
-) -> anyhow::Result<ChunkSearchResult> {
-    let params = build_chunk_search_params(ChunkSearchRequestInput {
+) -> anyhow::Result<ChunkSearchResponse> {
+    let request = SurfaceChunkSearchRequest {
         query: request.query,
-        filters: SearchFilterInput {
+        filters: Some(SurfaceSearchFilterInput {
             deck_names: Some(request.deck_names),
             tags: Some(request.tags),
             ..Default::default()
-        },
+        }),
         limit: request.limit,
-    })
-    .map_err(anyhow::Error::msg)?;
+    };
     handles
         .search
-        .search_chunks(&params)
+        .search_chunks(&request)
         .await
         .map_err(Into::into)
 }
@@ -259,7 +176,7 @@ pub async fn topics_tree(
 pub async fn topics_load(
     handles: RuntimeHandles,
     request: TopicsLoadRequest,
-) -> anyhow::Result<Taxonomy> {
+) -> anyhow::Result<TaxonomyLoadSummary> {
     handles
         .analytics
         .load_taxonomy(Some(request.file))

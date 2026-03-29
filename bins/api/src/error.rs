@@ -1,10 +1,9 @@
-use analytics::AnalyticsError;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use common::error::AnkiAtlasError;
-use search::error::{RerankError, SearchError};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use surface_runtime::SurfaceError;
 
 /// Wrapper that maps domain and validation errors to HTTP responses.
 pub struct AppError(pub anyhow::Error);
@@ -89,63 +88,39 @@ impl IntoResponse for AppError {
     }
 }
 
-impl From<SearchError> for AppError {
-    fn from(error: SearchError) -> Self {
+impl From<SurfaceError> for AppError {
+    fn from(error: SurfaceError) -> Self {
         match error {
-            SearchError::InvalidRequest(message) => Self(
+            SurfaceError::InvalidInput(message) => Self(
                 AnkiAtlasError::Configuration {
                     message,
                     context: HashMap::new(),
                 }
                 .into(),
             ),
-            SearchError::Database(source) => Self(
+            SurfaceError::Database(source) => Self(
                 AnkiAtlasError::DatabaseConnection {
                     message: source.to_string(),
                     context: HashMap::new(),
                 }
                 .into(),
             ),
-            SearchError::Embedding(source) => Self(anyhow::Error::new(source)),
-            SearchError::VectorStore(source) => Self(
+            SurfaceError::Embedding(source) => Self(anyhow::Error::new(source)),
+            SurfaceError::VectorStore(source) => Self(
                 AnkiAtlasError::VectorStoreConnection {
                     message: source.to_string(),
                     context: HashMap::new(),
                 }
                 .into(),
             ),
-            SearchError::Rerank(RerankError::Transport { message })
-            | SearchError::Rerank(RerankError::Http { body: message, .. })
-            | SearchError::Rerank(RerankError::Protocol { message }) => Self(
+            SurfaceError::Provider(message) => Self(
                 AnkiAtlasError::Provider {
                     message,
                     context: HashMap::new(),
                 }
                 .into(),
             ),
-        }
-    }
-}
-
-impl From<AnalyticsError> for AppError {
-    fn from(error: AnalyticsError) -> Self {
-        match error {
-            AnalyticsError::Database(source) => Self(
-                AnkiAtlasError::DatabaseConnection {
-                    message: source.to_string(),
-                    context: HashMap::new(),
-                }
-                .into(),
-            ),
-            AnalyticsError::Embedding(source) => Self(anyhow::Error::new(source)),
-            AnalyticsError::VectorStore(source) => Self(
-                AnkiAtlasError::VectorStoreConnection {
-                    message: source.to_string(),
-                    context: HashMap::new(),
-                }
-                .into(),
-            ),
-            AnalyticsError::TopicNotFound(topic_path) => Self(
+            SurfaceError::NotFound(topic_path) => Self(
                 AnkiAtlasError::NotFound {
                     message: format!("topic not found: {topic_path}"),
                     context: HashMap::new(),

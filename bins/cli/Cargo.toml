@@ -10,10 +10,9 @@ name = "anki-atlas"
 path = "src/main.rs"
 
 [dependencies]
-analytics = { path = "../../crates/analytics" }
 common = { path = "../../crates/common" }
 database = { path = "../../crates/database" }
-search = { path = "../../crates/search" }
+surface-contracts = { path = "../../crates/surface-contracts" }
 surface-runtime = { path = "../../crates/surface-runtime" }
 
 anyhow.workspace = true

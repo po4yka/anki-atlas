@@ -17,6 +17,7 @@ members = [
   "crates/rag",
   "crates/generator",
   "crates/jobs",
+  "crates/surface-contracts",
   "crates/surface-runtime",
   "bins/cli",
   "bins/api",

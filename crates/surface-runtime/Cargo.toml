@@ -15,6 +15,7 @@ indexer = { path = "../indexer" }
 jobs = { path = "../jobs" }
 obsidian = { path = "../obsidian" }
 search = { path = "../search" }
+surface-contracts = { path = "../surface-contracts" }
 taxonomy = { path = "../taxonomy" }
 validation = { path = "../validation" }
 

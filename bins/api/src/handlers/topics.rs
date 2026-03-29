@@ -11,6 +11,7 @@ use crate::schemas::{
 };
 use crate::state::AppState;
 use common::error::AnkiAtlasError;
+use surface_contracts::analytics::GapKind;
 
 #[instrument(skip(state))]
 pub async fn topics(
@@ -69,7 +70,7 @@ pub async fn topic_gaps(
 
     let missing_count = gaps
         .iter()
-        .filter(|gap| matches!(gap.gap_type, analytics::coverage::GapType::Missing))
+        .filter(|gap| matches!(gap.gap_type, GapKind::Missing))
         .count();
     let undercovered_count = gaps.len().saturating_sub(missing_count);
 

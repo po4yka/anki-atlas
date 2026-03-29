@@ -8,6 +8,8 @@ pub enum SurfaceError {
     Unsupported(String),
     #[error("path not found: {0}")]
     PathNotFound(PathBuf),
+    #[error("resource not found: {0}")]
+    NotFound(String),
     #[error("invalid input: {0}")]
     InvalidInput(String),
     #[error("io error: {0}")]
@@ -24,6 +26,8 @@ pub enum SurfaceError {
     Embedding(#[from] indexer::embeddings::EmbeddingError),
     #[error("vector store error: {0}")]
     VectorStore(#[from] indexer::qdrant::VectorStoreError),
+    #[error("provider error: {0}")]
+    Provider(String),
     #[error("search error: {0}")]
     Search(#[from] search::error::SearchError),
     #[error("analytics error: {0}")]
