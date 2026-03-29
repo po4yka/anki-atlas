@@ -6,8 +6,10 @@ use jobs::types::{IndexJobPayload, SyncJobPayload};
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
-use search::fts::SearchFilters;
-use search::service::{ChunkSearchParams, SearchParams};
+use search::surface::{
+    ChunkSearchRequestInput, SearchFilterInput, SearchRequestInput, build_chunk_search_params,
+    build_search_params,
+};
 use serde_json::Value;
 use surface_runtime::{BuildSurfaceServicesOptions, SurfaceError, SurfaceServices};
 
@@ -108,25 +110,13 @@ impl AnkiAtlasServer {
         &self,
         Parameters(input): Parameters<SearchToolInput>,
     ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
-        if input.semantic_only && input.fts_only {
-            return error_result(
-                input.output_mode,
-                Self::tool_error(
-                    "invalid_input",
-                    "semantic_only and fts_only cannot both be true",
-                    None,
-                ),
-            );
-        }
-        let filters =
-            (!input.deck_names.is_empty() || !input.tags.is_empty()).then(|| SearchFilters {
-                deck_names: (!input.deck_names.is_empty()).then(|| input.deck_names.clone()),
-                tags: (!input.tags.is_empty()).then(|| input.tags.clone()),
-                ..Default::default()
-            });
-        let params = SearchParams {
+        let params = match build_search_params(SearchRequestInput {
             query: input.query.clone(),
-            filters,
+            filters: SearchFilterInput {
+                deck_names: Some(input.deck_names.clone()),
+                tags: Some(input.tags.clone()),
+                ..Default::default()
+            },
             limit: input.limit,
             semantic_weight: 1.0,
             fts_weight: 1.0,
@@ -134,6 +124,14 @@ impl AnkiAtlasServer {
             fts_only: input.fts_only,
             rerank_override: None,
             rerank_top_n_override: None,
+        }) {
+            Ok(params) => params,
+            Err(error) => {
+                return error_result(
+                    input.output_mode,
+                    Self::tool_error("invalid_input", error, None),
+                );
+            }
         };
         match self.services.search.search(&params).await {
             Ok(result) => {
@@ -191,16 +189,22 @@ impl AnkiAtlasServer {
         &self,
         Parameters(input): Parameters<ChunkSearchToolInput>,
     ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
-        let filters =
-            (!input.deck_names.is_empty() || !input.tags.is_empty()).then(|| SearchFilters {
-                deck_names: (!input.deck_names.is_empty()).then(|| input.deck_names.clone()),
-                tags: (!input.tags.is_empty()).then(|| input.tags.clone()),
-                ..Default::default()
-            });
-        let params = ChunkSearchParams {
+        let params = match build_chunk_search_params(ChunkSearchRequestInput {
             query: input.query.clone(),
-            filters,
+            filters: SearchFilterInput {
+                deck_names: Some(input.deck_names.clone()),
+                tags: Some(input.tags.clone()),
+                ..Default::default()
+            },
             limit: input.limit,
+        }) {
+            Ok(params) => params,
+            Err(error) => {
+                return error_result(
+                    input.output_mode,
+                    Self::tool_error("invalid_input", error, None),
+                );
+            }
         };
         match self.services.search.search_chunks(&params).await {
             Ok(result) => {

@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+async-trait = { workspace = true }
 common = { path = "../common" }
 database = { path = "../database" }
 indexer = { path = "../indexer" }
@@ -17,7 +18,6 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-async-trait = { workspace = true }
 criterion = { workspace = true }
 perf-support = { path = "../perf-support" }
 tokio = { workspace = true }

@@ -2,8 +2,12 @@ use analytics::coverage::{GapType, TopicCoverage, TopicGap, WeakNote};
 use analytics::duplicates::{DuplicateCluster, DuplicateDetail, DuplicateStats};
 use chrono::{DateTime, Utc};
 use jobs::types::{IndexJobPayload, JobResultData, JobStatus, JobType, SyncJobPayload};
-use search::fts::{LexicalMode, SearchFilters};
+use search::fts::LexicalMode;
 use search::fusion::{FusionStats, SearchResult};
+use search::surface::{
+    ChunkSearchRequestInput, SearchFilterInput, SearchRequestInput, build_chunk_search_params,
+    build_search_params,
+};
 use search::service::{ChunkSearchParams, ChunkSearchResult, HybridSearchResult, SearchParams};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -122,7 +126,7 @@ pub struct SearchFiltersDto {
     pub min_reps: Option<i32>,
 }
 
-impl From<SearchFiltersDto> for SearchFilters {
+impl From<SearchFiltersDto> for SearchFilterInput {
     fn from(filters: SearchFiltersDto) -> Self {
         Self {
             deck_names: filters.deck_names,
@@ -137,7 +141,7 @@ impl From<SearchFiltersDto> for SearchFilters {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SearchRequest {
     pub query: String,
     pub filters: Option<SearchFiltersDto>,
@@ -157,32 +161,15 @@ pub struct SearchRequest {
 
 impl SearchRequest {
     pub fn validate(&self) -> Result<(), String> {
-        if self.limit == 0 {
-            return Err("limit must be greater than 0".to_string());
-        }
-        if self.semantic_only && self.fts_only {
-            return Err("semantic_only and fts_only cannot both be true".to_string());
-        }
-        if self.semantic_weight < 0.0 {
-            return Err("semantic_weight must be non-negative".to_string());
-        }
-        if self.fts_weight < 0.0 {
-            return Err("fts_weight must be non-negative".to_string());
-        }
-        if let Some(top_n) = self.rerank_top_n_override
-            && top_n == 0
-        {
-            return Err("rerank_top_n_override must be greater than 0".to_string());
-        }
-        Ok(())
+        build_search_params(self.clone().into()).map(|_| ())
     }
 }
 
-impl From<SearchRequest> for SearchParams {
+impl From<SearchRequest> for SearchRequestInput {
     fn from(request: SearchRequest) -> Self {
         Self {
             query: request.query,
-            filters: request.filters.map(Into::into),
+            filters: request.filters.map(Into::into).unwrap_or_default(),
             limit: request.limit,
             semantic_weight: request.semantic_weight,
             fts_weight: request.fts_weight,
@@ -194,7 +181,13 @@ impl From<SearchRequest> for SearchParams {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+impl From<SearchRequest> for SearchParams {
+    fn from(request: SearchRequest) -> Self {
+        build_search_params(request.into()).expect("search request should be validated before conversion")
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ChunkSearchRequest {
     pub query: String,
     pub filters: Option<SearchFiltersDto>,
@@ -204,20 +197,24 @@ pub struct ChunkSearchRequest {
 
 impl ChunkSearchRequest {
     pub fn validate(&self) -> Result<(), String> {
-        if self.limit == 0 {
-            return Err("limit must be greater than 0".to_string());
+        build_chunk_search_params(self.clone().into()).map(|_| ())
+    }
+}
+
+impl From<ChunkSearchRequest> for ChunkSearchRequestInput {
+    fn from(request: ChunkSearchRequest) -> Self {
+        Self {
+            query: request.query,
+            filters: request.filters.map(Into::into).unwrap_or_default(),
+            limit: request.limit,
         }
-        Ok(())
     }
 }
 
 impl From<ChunkSearchRequest> for ChunkSearchParams {
     fn from(request: ChunkSearchRequest) -> Self {
-        Self {
-            query: request.query,
-            filters: request.filters.map(Into::into),
-            limit: request.limit,
-        }
+        build_chunk_search_params(request.into())
+            .expect("chunk search request should be validated before conversion")
     }
 }
 

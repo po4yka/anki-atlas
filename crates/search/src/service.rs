@@ -1,13 +1,14 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use indexer::embeddings::{EmbeddingInput, EmbeddingTask};
 use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
 use tracing::instrument;
 
 use crate::error::SearchError;
 use crate::fts::{LexicalMode, SearchFilters};
 use crate::fusion::{FusionStats, SearchResult};
+use crate::repository::SearchReadRepository;
 use crate::reranker::Reranker;
 
 /// Parameters for a hybrid search query.
@@ -121,19 +122,6 @@ pub struct NoteDetail {
     pub reps: i32,
 }
 
-/// Raw row from note details query.
-#[derive(Debug, FromRow)]
-struct NoteDetailRow {
-    note_id: i64,
-    model_id: i64,
-    normalized_text: String,
-    tags: Vec<String>,
-    deck_name: String,
-    mature: bool,
-    lapses: i32,
-    reps: i32,
-}
-
 /// Search service with trait-based DI.
 pub struct SearchService<E, V, R>
 where
@@ -144,7 +132,7 @@ where
     embedding: E,
     vector_repo: V,
     reranker: Option<R>,
-    db: sqlx::PgPool,
+    repository: Arc<dyn SearchReadRepository>,
     rerank_enabled: bool,
     rerank_top_n: usize,
 }
@@ -160,7 +148,7 @@ where
         embedding: E,
         vector_repo: V,
         reranker: Option<R>,
-        db: sqlx::PgPool,
+        repository: Arc<dyn SearchReadRepository>,
         rerank_enabled: bool,
         rerank_top_n: usize,
     ) -> Self {
@@ -168,7 +156,7 @@ where
             embedding,
             vector_repo,
             reranker,
-            db,
+            repository,
             rerank_enabled,
             rerank_top_n,
         }
@@ -324,9 +312,10 @@ where
         ) = if semantic_only {
             (vec![], LexicalMode::None, false, vec![], vec![])
         } else {
-            let lexical =
-                crate::fts::search_lexical(&self.db, query, params.filters.as_ref(), limit as i64)
-                    .await?;
+            let lexical = self
+                .repository
+                .search_lexical(query, params.filters.as_ref(), limit as i64)
+                .await?;
             let fts_results = lexical
                 .results
                 .into_iter()
@@ -468,47 +457,7 @@ where
         &self,
         note_ids: &[i64],
     ) -> Result<HashMap<i64, NoteDetail>, SearchError> {
-        if note_ids.is_empty() {
-            return Ok(HashMap::new());
-        }
-
-        let rows = sqlx::query_as::<_, NoteDetailRow>(
-            "SELECT n.note_id AS note_id, n.model_id AS model_id, n.normalized_text, \
-             n.tags, \
-             COALESCE(d.name, '') AS deck_name, \
-             COALESCE(c.ivl >= 21, false) AS mature, \
-             COALESCE(c.lapses, 0) AS lapses, \
-             COALESCE(c.reps, 0) AS reps \
-             FROM notes n \
-             LEFT JOIN cards c ON c.note_id = n.note_id \
-             LEFT JOIN decks d ON d.deck_id = c.deck_id \
-             WHERE n.note_id = ANY($1)",
-        )
-        .bind(note_ids)
-        .fetch_all(&self.db)
-        .await?;
-
-        let mut map = HashMap::new();
-        for row in rows {
-            let entry = map.entry(row.note_id).or_insert_with(|| NoteDetail {
-                note_id: row.note_id,
-                model_id: row.model_id,
-                normalized_text: row.normalized_text.clone(),
-                tags: row.tags.clone(),
-                deck_names: vec![],
-                mature: row.mature,
-                lapses: row.lapses,
-                reps: row.reps,
-            });
-            entry.mature |= row.mature;
-            entry.lapses = entry.lapses.max(row.lapses);
-            entry.reps = entry.reps.max(row.reps);
-            if !row.deck_name.is_empty() && !entry.deck_names.contains(&row.deck_name) {
-                entry.deck_names.push(row.deck_name.clone());
-            }
-        }
-
-        Ok(map)
+        self.repository.get_note_details(note_ids).await
     }
 }
 
@@ -517,6 +466,8 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::*;
+    use crate::fts::{FtsResult, FtsSource, LexicalSearchResult};
+    use crate::repository::{SearchReadRepository, SqlxSearchReadRepository};
     use database::run_migrations;
     use sqlx::postgres::PgPoolOptions;
     use testcontainers::runners::AsyncRunner;
@@ -602,6 +553,119 @@ mod tests {
 
         fn empty() -> Self {
             Self::new(vec![])
+        }
+    }
+
+    struct FakeSearchReadRepository {
+        lexical: LexicalSearchResult,
+        lexical_error: bool,
+        note_details: HashMap<i64, NoteDetail>,
+        note_details_error: bool,
+    }
+
+    impl FakeSearchReadRepository {
+        fn with_note_details(note_ids: &[i64]) -> Self {
+            let note_details = note_ids
+                .iter()
+                .map(|note_id| {
+                    (
+                        *note_id,
+                        NoteDetail {
+                            note_id: *note_id,
+                            model_id: 100,
+                            normalized_text: format!("note {note_id} body"),
+                            tags: vec!["rust".to_string()],
+                            deck_names: vec!["Default".to_string()],
+                            mature: true,
+                            lapses: 0,
+                            reps: 10,
+                        },
+                    )
+                })
+                .collect();
+            Self {
+                note_details,
+                ..Default::default()
+            }
+        }
+
+        fn with_lexical(results: Vec<FtsResult>, mode: LexicalMode) -> Self {
+            Self {
+                lexical: LexicalSearchResult {
+                    results,
+                    mode,
+                    used_fallback: false,
+                    query_suggestions: vec![],
+                    autocomplete_suggestions: vec![],
+                },
+                ..Default::default()
+            }
+        }
+
+        fn failing_lexical() -> Self {
+            Self {
+                lexical_error: true,
+                ..Default::default()
+            }
+        }
+
+        fn failing_note_details() -> Self {
+            Self {
+                note_details_error: true,
+                ..Default::default()
+            }
+        }
+    }
+
+    impl Default for FakeSearchReadRepository {
+        fn default() -> Self {
+            Self {
+                lexical: LexicalSearchResult {
+                    results: vec![],
+                    mode: LexicalMode::None,
+                    used_fallback: false,
+                    query_suggestions: vec![],
+                    autocomplete_suggestions: vec![],
+                },
+                lexical_error: false,
+                note_details: HashMap::new(),
+                note_details_error: false,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl SearchReadRepository for FakeSearchReadRepository {
+        async fn search_lexical(
+            &self,
+            _query: &str,
+            _filters: Option<&SearchFilters>,
+            _limit: i64,
+        ) -> Result<LexicalSearchResult, SearchError> {
+            if self.lexical_error {
+                return Err(SearchError::InvalidRequest("lexical lookup failed".to_string()));
+            }
+            Ok(self.lexical.clone())
+        }
+
+        async fn get_note_details(
+            &self,
+            note_ids: &[i64],
+        ) -> Result<HashMap<i64, NoteDetail>, SearchError> {
+            if self.note_details_error {
+                return Err(SearchError::InvalidRequest(
+                    "note detail lookup failed".to_string(),
+                ));
+            }
+            Ok(note_ids
+                .iter()
+                .filter_map(|note_id| {
+                    self.note_details
+                        .get(note_id)
+                        .cloned()
+                        .map(|detail| (*note_id, detail))
+                })
+                .collect())
         }
     }
 
@@ -717,8 +781,8 @@ mod tests {
         }
     }
 
-    fn fake_pool() -> sqlx::PgPool {
-        sqlx::PgPool::connect_lazy("postgres://invalid:5432/fake").unwrap()
+    fn fake_repo() -> Arc<dyn SearchReadRepository> {
+        Arc::new(FakeSearchReadRepository::default())
     }
 
     struct RecordingReranker {
@@ -944,12 +1008,11 @@ mod tests {
 
     #[tokio::test]
     async fn service_new_constructs_with_all_deps() {
-        let pool = fake_pool();
         let _svc = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::empty(),
             Some(FakeReranker::new()),
-            pool,
+            fake_repo(),
             false,
             20,
         );
@@ -957,12 +1020,11 @@ mod tests {
 
     #[tokio::test]
     async fn service_new_without_reranker() {
-        let pool = fake_pool();
         let _svc: SearchService<FakeEmbedding, FakeVectorRepo, FakeReranker> = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::empty(),
             None,
-            pool,
+            fake_repo(),
             false,
             20,
         );
@@ -972,12 +1034,11 @@ mod tests {
 
     #[tokio::test]
     async fn search_empty_query_returns_empty() {
-        let pool = fake_pool();
         let svc = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::empty(),
             Some(FakeReranker::new()),
-            pool,
+            fake_repo(),
             false,
             20,
         );
@@ -991,12 +1052,11 @@ mod tests {
 
     #[tokio::test]
     async fn search_whitespace_query_returns_empty() {
-        let pool = fake_pool();
         let svc = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::empty(),
             Some(FakeReranker::new()),
-            pool,
+            fake_repo(),
             false,
             20,
         );
@@ -1008,13 +1068,12 @@ mod tests {
 
     #[tokio::test]
     async fn search_semantic_only_skips_fts() {
-        let pool = fake_pool();
         let semantic_results = vec![(1, 0.95_f32), (2, 0.85)];
         let svc = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::new(semantic_results),
             Some(FakeReranker::new()),
-            pool,
+            fake_repo(),
             false,
             20,
         );
@@ -1035,17 +1094,15 @@ mod tests {
 
     #[tokio::test]
     async fn search_fts_only_returns_db_error_without_real_pool() {
-        let pool = fake_pool();
         let svc = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::empty(),
             Some(FakeReranker::new()),
-            pool,
+            Arc::new(FakeSearchReadRepository::failing_lexical()),
             false,
             20,
         );
 
-        // fts_only=true triggers a real FTS query which fails with a fake pool
         let result = svc.search(&params_fts_only("test query")).await;
         assert!(result.is_err());
     }
@@ -1061,7 +1118,7 @@ mod tests {
             FakeEmbedding,
             FakeVectorRepo::empty(),
             Some(FakeReranker::new()),
-            pool,
+            Arc::new(SqlxSearchReadRepository::new(pool.clone())),
             false,
             20,
         );
@@ -1076,12 +1133,11 @@ mod tests {
 
     #[tokio::test]
     async fn search_returns_query_in_result() {
-        let pool = fake_pool();
         let svc = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::new(vec![(1, 0.9)]),
             Some(FakeReranker::new()),
-            pool,
+            fake_repo(),
             false,
             20,
         );
@@ -1096,12 +1152,11 @@ mod tests {
 
     #[tokio::test]
     async fn search_rerank_disabled_returns_rerank_applied_false() {
-        let pool = fake_pool();
         let svc = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::new(vec![(1, 0.9)]),
             Some(FakeReranker::new()),
-            pool,
+            Arc::new(FakeSearchReadRepository::with_note_details(&[1])),
             false, // rerank_enabled = false
             20,
         );
@@ -1115,12 +1170,11 @@ mod tests {
 
     #[tokio::test]
     async fn search_rerank_failure_degrades_gracefully() {
-        let pool = fake_pool();
         let svc = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::new(vec![(1, 0.95), (2, 0.85), (3, 0.75)]),
             Some(FakeReranker::failing()),
-            pool,
+            Arc::new(FakeSearchReadRepository::with_note_details(&[1, 2, 3])),
             true, // rerank_enabled = true
             20,
         );
@@ -1137,12 +1191,11 @@ mod tests {
 
     #[tokio::test]
     async fn search_rerank_override_enables_reranking() {
-        let pool = fake_pool();
         let svc = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::new(vec![(1, 0.95), (2, 0.85)]),
             Some(FakeReranker::new()),
-            pool,
+            Arc::new(FakeSearchReadRepository::with_note_details(&[1, 2])),
             false, // rerank_enabled = false globally
             20,
         );
@@ -1158,19 +1211,18 @@ mod tests {
             .await
             .unwrap();
 
-        // Rerank override should take precedence
-        // (Exact behavior depends on GREEN implementation, but result should not error)
         assert_eq!(result.query, "test query");
+        assert!(result.rerank_applied);
+        assert_eq!(result.rerank_model.as_deref(), Some("fake/reranker"));
     }
 
     #[tokio::test]
     async fn search_rerank_override_disables_reranking() {
-        let pool = fake_pool();
         let svc = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::new(vec![(1, 0.95)]),
             Some(FakeReranker::new()),
-            pool,
+            Arc::new(FakeSearchReadRepository::with_note_details(&[1])),
             true, // rerank_enabled = true globally
             20,
         );
@@ -1191,12 +1243,11 @@ mod tests {
 
     #[tokio::test]
     async fn search_no_reranker_with_rerank_enabled_degrades() {
-        let pool = fake_pool();
         let svc: SearchService<FakeEmbedding, FakeVectorRepo, FakeReranker> = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::new(vec![(1, 0.95)]),
             None, // no reranker provided
-            pool,
+            Arc::new(FakeSearchReadRepository::with_note_details(&[1])),
             true, // but rerank_enabled
             20,
         );
@@ -1212,13 +1263,12 @@ mod tests {
 
     #[tokio::test]
     async fn search_limit_respected() {
-        let pool = fake_pool();
         let many_results: Vec<(i64, f32)> = (1..=20).map(|i| (i, 1.0 - i as f32 * 0.01)).collect();
         let svc = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::new(many_results),
             Some(FakeReranker::new()),
-            pool,
+            fake_repo(),
             false,
             20,
         );
@@ -1249,7 +1299,7 @@ mod tests {
             FakeEmbedding,
             FakeVectorRepo::new(vec![(1, 0.95), (2, 0.85)]),
             Some(reranker),
-            pool,
+            Arc::new(SqlxSearchReadRepository::new(pool.clone())),
             true,
             2,
         );
@@ -1300,34 +1350,30 @@ mod tests {
 
     #[tokio::test]
     async fn get_notes_details_empty_ids_returns_empty_map() {
-        let pool = fake_pool();
         let svc = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::empty(),
             Some(FakeReranker::new()),
-            pool,
+            fake_repo(),
             false,
             20,
         );
 
-        // Empty slice should return empty HashMap without hitting DB
         let result = svc.get_notes_details(&[]).await.unwrap();
         assert!(result.is_empty());
     }
 
     #[tokio::test]
     async fn get_notes_details_with_ids_returns_db_error() {
-        let pool = fake_pool();
         let svc = SearchService::new(
             FakeEmbedding,
             FakeVectorRepo::empty(),
             Some(FakeReranker::new()),
-            pool,
+            Arc::new(FakeSearchReadRepository::failing_note_details()),
             false,
             20,
         );
 
-        // With actual IDs and a fake pool, should return a DB error (not panic)
         let result = svc.get_notes_details(&[1, 2, 3]).await;
         assert!(result.is_err());
     }
@@ -1343,7 +1389,7 @@ mod tests {
             FakeEmbedding,
             FakeVectorRepo::empty(),
             Some(FakeReranker::new()),
-            pool,
+            Arc::new(SqlxSearchReadRepository::new(pool.clone())),
             false,
             20,
         );
@@ -1354,5 +1400,29 @@ mod tests {
         assert_eq!(result[&1].deck_names, vec!["Default".to_string()]);
         assert!(result[&1].mature);
         assert_eq!(result[&2].deck_names, vec!["Archive".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn search_fts_only_uses_repository_results() {
+        let lexical = vec![FtsResult {
+            note_id: 7,
+            rank: 0.8,
+            headline: Some("repository headline".to_string()),
+            source: FtsSource::Fts,
+        }];
+        let svc = SearchService::new(
+            FakeEmbedding,
+            FakeVectorRepo::empty(),
+            Some(FakeReranker::new()),
+            Arc::new(FakeSearchReadRepository::with_lexical(lexical, LexicalMode::Fts)),
+            false,
+            20,
+        );
+
+        let result = svc.search(&params_fts_only("ownership")).await.unwrap();
+
+        assert_eq!(result.results.len(), 1);
+        assert_eq!(result.results[0].note_id, 7);
+        assert_eq!(result.results[0].headline.as_deref(), Some("repository headline"));
     }
 }

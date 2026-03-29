@@ -5,12 +5,10 @@ use anyhow::{Context, Result};
 use common::config::Settings;
 use database::run_migrations;
 use indexer::embeddings::{EmbeddingProvider, MockEmbeddingProvider, content_hash};
-use indexer::qdrant::{NotePayload, VectorRepository};
-use qdrant_client::Qdrant;
+use indexer::qdrant::{NotePayload, QdrantRepository, VectorRepository};
 use rustis::commands::{FlushingMode, ServerCommands};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use surface_runtime::workflows::QdrantVectorStore;
 
 pub const PERF_COLLECTION_NAME: &str = "anki_notes";
 
@@ -227,16 +225,13 @@ async fn truncate_runtime_tables(pool: &PgPool) -> Result<()> {
 }
 
 async fn reset_qdrant(settings: &Settings, notes: &[SeededNote]) -> Result<()> {
-    let client = Qdrant::from_url(&common::config::qdrant_grpc_url(&settings.qdrant_url)?)
-        .build()
-        .context("connect Qdrant for perf seeding")?;
-    let _ = client.delete_collection(PERF_COLLECTION_NAME).await;
-
-    let vector_store = QdrantVectorStore::new(client, PERF_COLLECTION_NAME);
-    vector_store
-        .ensure_collection(settings.embedding_dimension as usize)
+    let vector_store = QdrantRepository::new(&settings.qdrant_url, PERF_COLLECTION_NAME)
         .await
-        .context("ensure Qdrant collection for perf seeding")?;
+        .context("connect Qdrant for perf seeding")?;
+    vector_store
+        .recreate_collection(settings.embedding_dimension as usize)
+        .await
+        .context("reset Qdrant collection for perf seeding")?;
 
     let embedding = MockEmbeddingProvider::new(settings.embedding_dimension as usize);
     let texts = notes

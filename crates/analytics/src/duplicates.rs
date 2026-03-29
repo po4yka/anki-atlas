@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serde::Serialize;
 
 use crate::AnalyticsError;
+use crate::repository::AnalyticsRepository;
 
 /// A single duplicate note within a cluster.
 #[derive(Debug, Clone, Serialize)]
@@ -43,21 +45,19 @@ pub struct DuplicateStats {
 /// Duplicate detector. Uses VectorRepository for similarity search.
 pub struct DuplicateDetector<V: indexer::qdrant::VectorRepository> {
     pub vector_repo: V,
-    pub db: sqlx::PgPool,
+    pub repository: Arc<dyn AnalyticsRepository>,
 }
 
 impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
-    pub fn new(vector_repo: V, db: sqlx::PgPool) -> Self {
-        Self { vector_repo, db }
+    pub fn new(vector_repo: V, repository: Arc<dyn AnalyticsRepository>) -> Self {
+        Self {
+            vector_repo,
+            repository,
+        }
     }
 
     async fn fetch_active_note_ids(&self) -> Result<Vec<i64>, AnalyticsError> {
-        let note_ids: Vec<(i64,)> =
-            sqlx::query_as("SELECT note_id FROM notes WHERE deleted_at IS NULL ORDER BY note_id")
-                .fetch_all(&self.db)
-                .await?;
-
-        Ok(note_ids.into_iter().map(|(note_id,)| note_id).collect())
+        self.repository.fetch_active_note_ids().await
     }
 
     async fn collect_similarity_pairs(
@@ -145,11 +145,7 @@ impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
         let mut highest_review_count = 0_i64;
 
         for &note_id in member_note_ids {
-            let (review_count,): (i64,) =
-                sqlx::query_as("SELECT COALESCE(SUM(c.reps), 0) FROM cards c WHERE c.note_id = $1")
-                    .bind(note_id)
-                    .fetch_one(&self.db)
-                    .await?;
+            let review_count = self.repository.fetch_note_review_count(note_id).await?;
 
             if review_count > highest_review_count {
                 highest_review_count = review_count;
@@ -164,31 +160,11 @@ impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
         &self,
         note_id: i64,
     ) -> Result<(String, Vec<String>), AnalyticsError> {
-        let note_row: (String, Vec<String>) = sqlx::query_as(
-            "SELECT LEFT(n.normalized_text, 200), COALESCE(n.tags, '{}') \
-             FROM notes n WHERE n.note_id = $1",
-        )
-        .bind(note_id)
-        .fetch_one(&self.db)
-        .await?;
-
-        Ok(note_row)
+        self.repository.fetch_note_excerpt_and_tags(note_id).await
     }
 
     async fn fetch_note_deck_names(&self, note_id: i64) -> Result<Vec<String>, AnalyticsError> {
-        let deck_rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT DISTINCT d.name FROM cards c \
-             JOIN decks d ON d.deck_id = c.deck_id \
-             WHERE c.note_id = $1",
-        )
-        .bind(note_id)
-        .fetch_all(&self.db)
-        .await?;
-
-        Ok(deck_rows
-            .into_iter()
-            .map(|(deck_name,)| deck_name)
-            .collect())
+        self.repository.fetch_note_deck_names(note_id).await
     }
 
     async fn build_cluster(
@@ -357,6 +333,7 @@ mod tests {
         NotePayload, SearchFilters, SemanticSearchHit, SparseVector, VectorRepository,
         VectorStoreError,
     };
+    use crate::repository::SqlxAnalyticsRepository;
     use sqlx::postgres::PgPoolOptions;
 
     #[derive(Debug)]
@@ -555,7 +532,7 @@ mod tests {
                     (2, StubResult::ClientError("transient qdrant error")),
                 ]),
             },
-            test_pool(),
+            Arc::new(SqlxAnalyticsRepository::new(test_pool())),
         );
 
         let (mut union_find, pair_scores) = detector
@@ -580,7 +557,7 @@ mod tests {
                     (2, StubResult::ConnectionError("connection reset")),
                 ]),
             },
-            test_pool(),
+            Arc::new(SqlxAnalyticsRepository::new(test_pool())),
         );
 
         let error = match detector

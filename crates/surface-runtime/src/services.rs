@@ -6,16 +6,17 @@ use analytics::AnalyticsError;
 use analytics::coverage::{TopicCoverage, TopicGap, WeakNote};
 use analytics::duplicates::{DuplicateCluster, DuplicateStats};
 use analytics::labeling::LabelingStats;
+use analytics::repository::SqlxAnalyticsRepository;
 use analytics::service::AnalyticsService;
 use analytics::taxonomy::Taxonomy;
 use anyhow::{Context, Result as AnyhowResult, anyhow};
-use common::config::{EmbeddingProviderKind, Settings, qdrant_grpc_url};
+use common::config::{EmbeddingProviderKind, Settings};
 use database::create_pool;
 use indexer::embeddings::{EmbeddingProvider, EmbeddingProviderConfig, create_embedding_provider};
-use indexer::qdrant::VectorRepository;
+use indexer::qdrant::{QdrantRepository, VectorRepository};
 use jobs::{JobManager, RedisJobManager};
-use qdrant_client::Qdrant;
 use search::error::SearchError;
+use search::repository::SqlxSearchReadRepository;
 use search::reranker::{CrossEncoderReranker, Reranker};
 use search::service::{
     ChunkSearchParams, ChunkSearchResult, HybridSearchResult, SearchParams, SearchService,
@@ -24,7 +25,7 @@ use serde_json::Value;
 use sqlx::PgPool;
 
 use crate::workflows::{
-    GeneratePreviewService, IndexExecutor, IndexingService, ObsidianScanService, QdrantVectorStore,
+    GeneratePreviewService, IndexExecutor, IndexingService, ObsidianScanService,
     SyncExecutionService, TagAuditService, ValidationService,
 };
 
@@ -202,6 +203,7 @@ pub struct SurfaceServices {
     pub validation: Arc<ValidationService>,
     pub obsidian_scan: Arc<ObsidianScanService>,
     pub tag_audit: Arc<TagAuditService>,
+    direct_execution_enabled: bool,
 }
 
 impl SurfaceServices {
@@ -218,11 +220,17 @@ impl SurfaceServices {
             validation: Arc::new(ValidationService::new()),
             obsidian_scan: Arc::new(ObsidianScanService::new()),
             tag_audit: Arc::new(TagAuditService::new()),
+            direct_execution_enabled: false,
             db,
             job_manager,
             search,
             analytics,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn direct_execution_enabled(&self) -> bool {
+        self.direct_execution_enabled
     }
 }
 
@@ -337,7 +345,7 @@ fn validate_read_only_collection_state(
 
 async fn validate_read_only_vector_store(
     db: &PgPool,
-    vector_store: &QdrantVectorStore,
+    vector_store: &QdrantRepository,
     embedding: &dyn EmbeddingProvider,
 ) -> AnyhowResult<()> {
     let desired_dimension = embedding.dimension();
@@ -394,18 +402,11 @@ pub async fn build_surface_services(
             .context("create embedding provider for surface runtime")?,
     );
     let collection_name = "anki_notes";
-    let qdrant_client = Qdrant::from_url(&qdrant_grpc_url(&settings.qdrant_url)?)
-        .build()
-        .context("connect Qdrant client for surface runtime")?;
-    qdrant_client
-        .health_check()
-        .await
-        .context("check Qdrant health for surface runtime")?;
-
-    let vector_store = Arc::new(QdrantVectorStore::new(
-        qdrant_client.clone(),
-        collection_name,
-    ));
+    let vector_store = Arc::new(
+        QdrantRepository::new(&settings.qdrant_url, collection_name)
+            .await
+            .context("connect Qdrant repository for surface runtime")?,
+    );
     if !options.enable_direct_execution {
         validate_read_only_vector_store(&db, &vector_store, embedding.as_ref()).await?;
     }
@@ -418,14 +419,18 @@ pub async fn build_surface_services(
             embedding.clone(),
             vector_repo.clone(),
             reranker,
-            db.clone(),
+            Arc::new(SqlxSearchReadRepository::new(db.clone())),
             rerank_enabled,
             settings.rerank().top_n as usize,
         ),
     }) as Arc<dyn SearchFacade>;
 
     let analytics = Arc::new(AnalyticsFacadeImpl {
-        inner: AnalyticsService::new(embedding.clone(), vector_repo.clone(), db.clone()),
+        inner: AnalyticsService::new(
+            embedding.clone(),
+            vector_repo.clone(),
+            Arc::new(SqlxAnalyticsRepository::new(db.clone())),
+        ),
     }) as Arc<dyn AnalyticsFacade>;
 
     let job_settings = settings.jobs();
@@ -451,6 +456,7 @@ pub async fn build_surface_services(
         ));
         services.sync = Arc::new(SyncExecutionService::new(db, index.clone()));
         services.index = index;
+        services.direct_execution_enabled = true;
     }
 
     Ok(services)
@@ -459,8 +465,49 @@ pub async fn build_surface_services(
 #[cfg(test)]
 mod tests {
     use super::{
-        EMBEDDING_VECTOR_SCHEMA, EmbeddingFingerprint, validate_read_only_collection_state,
+        AnalyticsFacade, EMBEDDING_VECTOR_SCHEMA, EmbeddingFingerprint, SearchFacade,
+        SurfaceServices, validate_read_only_collection_state,
     };
+    use crate::services::{MockAnalyticsFacade, MockSearchFacade};
+    use jobs::JobManager;
+    use sqlx::postgres::PgPoolOptions;
+    use std::sync::Arc;
+
+    struct NoopJobManager;
+
+    #[async_trait::async_trait]
+    impl JobManager for NoopJobManager {
+        async fn enqueue_sync_job(
+            &self,
+            _payload: jobs::types::SyncJobPayload,
+            _run_at: Option<chrono::DateTime<chrono::Utc>>,
+        ) -> Result<jobs::types::JobRecord, jobs::JobError> {
+            unreachable!("job manager is not exercised in this test")
+        }
+
+        async fn enqueue_index_job(
+            &self,
+            _payload: jobs::types::IndexJobPayload,
+            _run_at: Option<chrono::DateTime<chrono::Utc>>,
+        ) -> Result<jobs::types::JobRecord, jobs::JobError> {
+            unreachable!("job manager is not exercised in this test")
+        }
+
+        async fn get_job(&self, _job_id: &str) -> Result<jobs::types::JobRecord, jobs::JobError> {
+            unreachable!("job manager is not exercised in this test")
+        }
+
+        async fn cancel_job(
+            &self,
+            _job_id: &str,
+        ) -> Result<jobs::types::JobRecord, jobs::JobError> {
+            unreachable!("job manager is not exercised in this test")
+        }
+
+        async fn close(&self) -> Result<(), jobs::JobError> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn fresh_runtime_allows_missing_collection_without_fingerprint() {
@@ -486,5 +533,22 @@ mod tests {
             error.to_string(),
             "reindex required: vector collection is missing"
         );
+    }
+
+    #[tokio::test]
+    async fn surface_services_new_keeps_direct_execution_disabled_by_default() {
+        let db = PgPoolOptions::new()
+            .connect_lazy("postgres://localhost/anki_atlas")
+            .expect("lazy postgres pool");
+        let search = Arc::new(MockSearchFacade::new()) as Arc<dyn SearchFacade>;
+        let analytics = Arc::new(MockAnalyticsFacade::new()) as Arc<dyn AnalyticsFacade>;
+        let services = SurfaceServices::new(
+            db,
+            Arc::new(NoopJobManager) as Arc<dyn JobManager>,
+            search,
+            analytics,
+        );
+
+        assert!(!services.direct_execution_enabled());
     }
 }

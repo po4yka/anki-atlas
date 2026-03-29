@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use crate::AnalyticsError;
 use crate::coverage::{TopicCoverage, TopicGap, WeakNote};
 use crate::duplicates::{DuplicateCluster, DuplicateDetector, DuplicateStats};
 use crate::labeling::{LabelingStats, TopicLabeler};
+use crate::repository::AnalyticsRepository;
 use crate::taxonomy::Taxonomy;
 
 /// Facade aggregating taxonomy, coverage, labeling, and duplicate detection.
@@ -12,7 +15,7 @@ where
 {
     pub embedding: E,
     pub vector_repo: V,
-    pub db: sqlx::PgPool,
+    pub repository: Arc<dyn AnalyticsRepository>,
 }
 
 impl<E, V> AnalyticsService<E, V>
@@ -20,11 +23,15 @@ where
     E: indexer::embeddings::EmbeddingProvider,
     V: indexer::qdrant::VectorRepository,
 {
-    pub fn new(embedding: E, vector_repo: V, db: sqlx::PgPool) -> Self {
+    pub fn new(
+        embedding: E,
+        vector_repo: V,
+        repository: Arc<dyn AnalyticsRepository>,
+    ) -> Self {
         Self {
             embedding,
             vector_repo,
-            db,
+            repository,
         }
     }
 
@@ -33,7 +40,7 @@ where
         &self,
         yaml_path: Option<&std::path::Path>,
     ) -> Result<Taxonomy, AnalyticsError> {
-        crate::taxonomy::load_taxonomy(&self.db, yaml_path).await
+        self.repository.load_taxonomy(yaml_path).await
     }
 
     /// Label all notes with topics.
@@ -46,12 +53,12 @@ where
         let tax = match taxonomy {
             Some(t) => t,
             None => {
-                owned_taxonomy = crate::taxonomy::load_taxonomy_from_db(&self.db).await?;
+                owned_taxonomy = self.repository.load_taxonomy(None).await?;
                 &owned_taxonomy
             }
         };
 
-        TopicLabeler::new(&self.embedding, self.db.clone())
+        TopicLabeler::new(&self.embedding, Arc::clone(&self.repository))
             .label_notes(tax, min_confidence, 5, 100)
             .await
     }
@@ -62,7 +69,9 @@ where
         topic_path: &str,
         include_subtree: bool,
     ) -> Result<Option<TopicCoverage>, AnalyticsError> {
-        crate::coverage::get_topic_coverage(&self.db, topic_path, include_subtree).await
+        self.repository
+            .get_topic_coverage(topic_path, include_subtree)
+            .await
     }
 
     /// Find gaps in topic coverage under a root path.
@@ -71,7 +80,7 @@ where
         topic_path: &str,
         min_coverage: i64,
     ) -> Result<Vec<TopicGap>, AnalyticsError> {
-        crate::coverage::get_topic_gaps(&self.db, topic_path, min_coverage).await
+        self.repository.get_topic_gaps(topic_path, min_coverage).await
     }
 
     /// Get weak notes (high lapse rate) in a topic subtree.
@@ -80,7 +89,9 @@ where
         topic_path: &str,
         max_results: i64,
     ) -> Result<Vec<WeakNote>, AnalyticsError> {
-        crate::coverage::get_weak_notes(&self.db, topic_path, max_results, 0.1).await
+        self.repository
+            .get_weak_notes(topic_path, max_results, 0.1)
+            .await
     }
 
     /// Find clusters of near-duplicate notes.
@@ -91,7 +102,7 @@ where
         deck_filter: Option<&[String]>,
         tag_filter: Option<&[String]>,
     ) -> Result<(Vec<DuplicateCluster>, DuplicateStats), AnalyticsError> {
-        DuplicateDetector::new(&self.vector_repo, self.db.clone())
+        DuplicateDetector::new(&self.vector_repo, Arc::clone(&self.repository))
             .find_duplicates(threshold, max_clusters, deck_filter, tag_filter)
             .await
     }
@@ -101,7 +112,7 @@ where
         &self,
         root_path: Option<&str>,
     ) -> Result<Vec<serde_json::Value>, AnalyticsError> {
-        crate::coverage::get_coverage_tree(&self.db, root_path).await
+        self.repository.get_coverage_tree(root_path).await
     }
 }
 

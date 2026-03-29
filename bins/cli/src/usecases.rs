@@ -7,8 +7,11 @@ use analytics::labeling::LabelingStats;
 use analytics::taxonomy::Taxonomy;
 use common::config::{EmbeddingProviderKind, Settings};
 use database::MigrationResult;
-use search::fts::SearchFilters;
-use search::service::{ChunkSearchParams, ChunkSearchResult, HybridSearchResult, SearchParams};
+use search::surface::{
+    ChunkSearchRequestInput, SearchFilterInput, SearchRequestInput, build_chunk_search_params,
+    build_search_params,
+};
+use search::service::{ChunkSearchResult, HybridSearchResult};
 use surface_runtime::{
     AnalyticsFacade, BuildSurfaceServicesOptions, GeneratePreview, GeneratePreviewService,
     IndexExecutionSummary, IndexExecutor, ObsidianScanPreview, ObsidianScanService, SearchFacade,
@@ -202,20 +205,13 @@ pub async fn search(
     handles: RuntimeHandles,
     request: SearchRequest,
 ) -> anyhow::Result<HybridSearchResult> {
-    anyhow::ensure!(
-        !(request.semantic_only && request.fts_only),
-        "--semantic and --fts are mutually exclusive"
-    );
-
-    let filters =
-        (!request.deck_names.is_empty() || !request.tags.is_empty()).then(|| SearchFilters {
-            deck_names: (!request.deck_names.is_empty()).then(|| request.deck_names.clone()),
-            tags: (!request.tags.is_empty()).then(|| request.tags.clone()),
-            ..Default::default()
-        });
-    let params = SearchParams {
+    let params = build_search_params(SearchRequestInput {
         query: request.query,
-        filters,
+        filters: SearchFilterInput {
+            deck_names: Some(request.deck_names),
+            tags: Some(request.tags),
+            ..Default::default()
+        },
         limit: request.limit,
         semantic_weight: 1.0,
         fts_weight: 1.0,
@@ -223,7 +219,8 @@ pub async fn search(
         fts_only: request.fts_only,
         rerank_override: None,
         rerank_top_n_override: None,
-    };
+    })
+    .map_err(anyhow::Error::msg)?;
     handles.search.search(&params).await.map_err(Into::into)
 }
 
@@ -231,17 +228,16 @@ pub async fn search_chunks(
     handles: RuntimeHandles,
     request: ChunkSearchRequest,
 ) -> anyhow::Result<ChunkSearchResult> {
-    let filters =
-        (!request.deck_names.is_empty() || !request.tags.is_empty()).then(|| SearchFilters {
-            deck_names: (!request.deck_names.is_empty()).then(|| request.deck_names.clone()),
-            tags: (!request.tags.is_empty()).then(|| request.tags.clone()),
-            ..Default::default()
-        });
-    let params = ChunkSearchParams {
+    let params = build_chunk_search_params(ChunkSearchRequestInput {
         query: request.query,
-        filters,
+        filters: SearchFilterInput {
+            deck_names: Some(request.deck_names),
+            tags: Some(request.tags),
+            ..Default::default()
+        },
         limit: request.limit,
-    };
+    })
+    .map_err(anyhow::Error::msg)?;
     handles
         .search
         .search_chunks(&params)

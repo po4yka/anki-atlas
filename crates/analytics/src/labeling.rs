@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serde::Serialize;
 
 use crate::AnalyticsError;
+use crate::repository::AnalyticsRepository;
 
 /// Method used to assign a topic to a note.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -91,12 +93,15 @@ pub(crate) fn rank_topics_for_note(
 /// Topic labeler. Generic over embedding provider.
 pub struct TopicLabeler<E: indexer::embeddings::EmbeddingProvider> {
     pub embedding: E,
-    pub db: sqlx::PgPool,
+    pub repository: Arc<dyn AnalyticsRepository>,
 }
 
 impl<E: indexer::embeddings::EmbeddingProvider> TopicLabeler<E> {
-    pub fn new(embedding: E, db: sqlx::PgPool) -> Self {
-        Self { embedding, db }
+    pub fn new(embedding: E, repository: Arc<dyn AnalyticsRepository>) -> Self {
+        Self {
+            embedding,
+            repository,
+        }
     }
 
     /// Embed all topic descriptions/labels. Returns path -> embedding vector.
@@ -155,15 +160,10 @@ impl<E: indexer::embeddings::EmbeddingProvider> TopicLabeler<E> {
         let mut offset: i64 = 0;
 
         loop {
-            let notes: Vec<(i64, String)> = sqlx::query_as(
-                "SELECT note_id, normalized_text FROM notes \
-                 WHERE deleted_at IS NULL \
-                 ORDER BY note_id LIMIT $1 OFFSET $2",
-            )
-            .bind(batch_size as i64)
-            .bind(offset)
-            .fetch_all(&self.db)
-            .await?;
+            let notes = self
+                .repository
+                .list_active_notes_batch(batch_size, offset)
+                .await?;
 
             if notes.is_empty() {
                 break;
@@ -182,18 +182,14 @@ impl<E: indexer::embeddings::EmbeddingProvider> TopicLabeler<E> {
                 );
 
                 for assignment in &assignments {
-                    sqlx::query(
-                        "INSERT INTO note_topics (note_id, topic_id, confidence, method) \
-                         VALUES ($1, $2, $3, $4) \
-                         ON CONFLICT (note_id, topic_id) DO UPDATE \
-                         SET confidence = $3, method = $4",
-                    )
-                    .bind(assignment.note_id)
-                    .bind(assignment.topic_id as i32)
-                    .bind(assignment.confidence as f32)
-                    .bind(assignment.method.as_str())
-                    .execute(&self.db)
-                    .await?;
+                    self.repository
+                        .upsert_note_topic_assignment(
+                            assignment.note_id,
+                            assignment.topic_id,
+                            assignment.confidence as f32,
+                            assignment.method.as_str(),
+                        )
+                        .await?;
 
                     matched_topics.insert(assignment.topic_path.clone());
                 }
@@ -219,11 +215,7 @@ impl<E: indexer::embeddings::EmbeddingProvider> TopicLabeler<E> {
         max_topics: usize,
     ) -> Result<Vec<TopicAssignment>, AnalyticsError> {
         // Get note text
-        let (text,): (String,) =
-            sqlx::query_as("SELECT normalized_text FROM notes WHERE note_id = $1")
-                .bind(note_id)
-                .fetch_one(&self.db)
-                .await?;
+        let text = self.repository.fetch_note_text(note_id).await?;
 
         // Embed the note
         let note_embeddings = self.embedding.embed(&[text]).await?;
