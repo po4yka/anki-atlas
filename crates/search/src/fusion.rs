@@ -123,7 +123,7 @@ pub fn reciprocal_rank_fusion(
             (true, true) => both += 1,
             (true, false) => semantic_only += 1,
             (false, true) => fts_only += 1,
-            (false, false) => {}
+            (false, false) => unreachable!("entries always have at least one score source"),
         }
     }
 

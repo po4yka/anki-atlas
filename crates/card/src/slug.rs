@@ -55,29 +55,18 @@ fn validate_lang(lang: &str) -> Result<String, SlugError> {
     Ok(lower)
 }
 
+/// Slugify a single component, returning `fallback` if input is empty or non-ASCII.
+fn slugify_or(input: &str, fallback: &str) -> String {
+    if input.is_empty() {
+        return fallback.to_string();
+    }
+    let slug = SlugService::slugify(input);
+    if slug.is_empty() { fallback.to_string() } else { slug }
+}
+
 /// Slugify topic and keyword with defaults for empty inputs.
 fn slugify_components(topic: &str, keyword: &str) -> (String, String) {
-    let topic_slug = if topic.is_empty() {
-        "untitled".to_string()
-    } else {
-        let slug = SlugService::slugify(topic);
-        if slug.is_empty() {
-            "untitled".to_string()
-        } else {
-            slug
-        }
-    };
-    let keyword_slug = if keyword.is_empty() {
-        "card".to_string()
-    } else {
-        let slug = SlugService::slugify(keyword);
-        if slug.is_empty() {
-            "card".to_string()
-        } else {
-            slug
-        }
-    };
-    (topic_slug, keyword_slug)
+    (slugify_or(topic, "untitled"), slugify_or(keyword, "card"))
 }
 
 /// Stateless slug generation utilities.
