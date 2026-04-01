@@ -1,3 +1,4 @@
+use common::types::NoteId;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -52,7 +53,7 @@ pub struct TopicGap {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct WeakNote {
-    pub note_id: i64,
+    pub note_id: NoteId,
     pub topic_path: String,
     pub confidence: f64,
     pub lapses: i32,
@@ -62,7 +63,7 @@ pub struct WeakNote {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct DuplicateDetail {
-    pub note_id: i64,
+    pub note_id: NoteId,
     pub similarity: f64,
     pub text: String,
     pub deck_names: Vec<String>,
@@ -95,7 +96,7 @@ pub struct DuplicateStats {
 #[cfg(test)]
 mod tests {
     use super::{
-        DuplicateCluster, DuplicateDetail, DuplicateStats, GapKind, LabelingStats,
+        DuplicateCluster, DuplicateDetail, DuplicateStats, GapKind, LabelingStats, NoteId,
         TaxonomyLoadSummary, TopicCoverage, TopicGap, WeakNote,
     };
 
@@ -145,7 +146,7 @@ mod tests {
                 nearest_notes: Vec::new(),
             },
             WeakNote {
-                note_id: 10,
+                note_id: NoteId(10),
                 topic_path: "rust/ownership".to_string(),
                 confidence: 0.55,
                 lapses: 4,

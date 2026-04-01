@@ -5,6 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use surface_contracts::analytics::TopicCoverage;
+use common::types::NoteId;
 use surface_contracts::search::{FusionStats, LexicalMode, SearchResponse, SearchResultItem};
 use surface_runtime::{GeneratePreview, SurfaceOperation, SurfaceProgressEvent};
 use tokio::sync::mpsc;
@@ -25,7 +26,7 @@ fn key(code: KeyCode) -> KeyEvent {
 fn sample_search_result() -> SearchResponse {
     SearchResponse {
         results: vec![SearchResultItem {
-            note_id: 42,
+            note_id: NoteId(42),
             rrf_score: 0.9876,
             semantic_score: Some(0.91),
             semantic_rank: Some(1),

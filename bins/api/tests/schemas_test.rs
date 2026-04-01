@@ -1,4 +1,5 @@
 use anki_atlas_api::schemas::*;
+use common::types::NoteId;
 use jobs::types::{JobStatus, JobType};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -130,7 +131,7 @@ fn search_response_serializes_typed_metadata() {
     let response = SearchResponse {
         query: "ownership".into(),
         results: vec![SearchResultItem {
-            note_id: 1,
+            note_id: NoteId(1),
             rrf_score: 0.95,
             semantic_score: Some(0.9),
             semantic_rank: Some(1),
@@ -225,7 +226,7 @@ fn topic_weak_notes_response_serializes() {
         topic_path: "cs".into(),
         max_results: 20,
         notes: vec![TopicWeakNoteItem::from(WeakNote {
-            note_id: 7,
+            note_id: NoteId(7),
             topic_path: "cs".into(),
             confidence: 0.7,
             lapses: 3,
@@ -257,7 +258,7 @@ fn duplicates_response_maps_from_domain() {
             representative_id: 100,
             representative_text: "What is X?".into(),
             duplicates: vec![DuplicateDetail {
-                note_id: 101,
+                note_id: NoteId(101),
                 similarity: 0.95,
                 text: "What is X?".into(),
                 deck_names: vec!["Deck2".into()],

@@ -6,6 +6,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::response::Response;
 use common::config::Settings;
+use common::types::NoteId;
 use jobs::{
     IndexJobPayload, JobError, JobManager, JobPayload, JobRecord, JobStatus, JobType,
     SyncJobPayload,
@@ -198,7 +199,7 @@ fn make_job_record(job_id: &str, job_type: JobType, status: JobStatus) -> JobRec
 fn sample_search_result() -> SearchResponse {
     SearchResponse {
         results: vec![SearchResultItem {
-            note_id: 1,
+            note_id: NoteId(1),
             rrf_score: 0.95,
             semantic_score: Some(0.9),
             semantic_rank: Some(1),
@@ -601,7 +602,7 @@ async fn topic_weak_notes_uses_default_max_results() {
         .withf(|path, max_results| path == "cs" && *max_results == 20)
         .returning(|_, _| {
             Ok(vec![WeakNote {
-                note_id: 5,
+                note_id: NoteId(5),
                 topic_path: "cs".into(),
                 confidence: 0.7,
                 lapses: 3,
@@ -639,7 +640,7 @@ async fn duplicates_forwards_query_filters() {
                     representative_id: 1,
                     representative_text: "What is ownership?".into(),
                     duplicates: vec![DuplicateDetail {
-                        note_id: 2,
+                        note_id: NoteId(2),
                         similarity: 0.96,
                         text: "Explain ownership".into(),
                         deck_names: vec!["Rust".into()],

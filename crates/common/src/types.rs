@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
@@ -20,16 +22,38 @@ pub enum Language {
 
 /// A URL-safe slug string (e.g. "kotlin-coroutines-basics").
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct SlugStr(pub String);
 
 /// Anki card identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct CardId(pub i64);
 
 /// Anki note identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct NoteId(pub i64);
+
+impl fmt::Display for NoteId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<i64> for NoteId {
+    fn from(id: i64) -> Self {
+        Self(id)
+    }
+}
+
+impl From<NoteId> for i64 {
+    fn from(id: NoteId) -> Self {
+        id.0
+    }
+}
 
 /// Anki deck name (may contain `::` hierarchy separators).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct DeckName(pub String);

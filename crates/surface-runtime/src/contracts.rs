@@ -96,7 +96,7 @@ fn search_result_item(value: SearchResult) -> SearchResultItem {
     let sources = value.sources().into_iter().map(str::to_string).collect();
 
     SearchResultItem {
-        note_id: value.note_id,
+        note_id: value.note_id.into(),
         rrf_score: value.rrf_score,
         semantic_score: value.semantic_score,
         semantic_rank: value.semantic_rank,
@@ -132,7 +132,7 @@ pub fn search_response(value: HybridSearchResult) -> SearchResponse {
 
 fn chunk_search_hit(value: SearchChunkSearchHit) -> ChunkSearchHit {
     ChunkSearchHit {
-        note_id: value.note_id,
+        note_id: value.note_id.into(),
         chunk_id: value.chunk_id,
         chunk_kind: value.chunk_kind,
         modality: value.modality,
@@ -189,7 +189,7 @@ fn topic_gap(value: AnalyticsTopicGap) -> TopicGap {
 
 fn weak_note(value: AnalyticsWeakNote) -> WeakNote {
     WeakNote {
-        note_id: value.note_id,
+        note_id: value.note_id.into(),
         topic_path: value.topic_path,
         confidence: value.confidence,
         lapses: value.lapses,
@@ -200,7 +200,7 @@ fn weak_note(value: AnalyticsWeakNote) -> WeakNote {
 
 fn duplicate_detail(value: AnalyticsDuplicateDetail) -> DuplicateDetail {
     DuplicateDetail {
-        note_id: value.note_id,
+        note_id: value.note_id.into(),
         similarity: value.similarity,
         text: value.text,
         deck_names: value.deck_names,

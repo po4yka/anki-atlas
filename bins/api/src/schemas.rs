@@ -244,7 +244,7 @@ impl TopicWeakNotesQuery {
 
 #[derive(Debug, Serialize)]
 pub struct TopicWeakNoteItem {
-    pub note_id: i64,
+    pub note_id: common::types::NoteId,
     pub topic_path: String,
     pub confidence: f64,
     pub lapses: i32,
@@ -339,7 +339,7 @@ impl DuplicatesQuery {
 
 #[derive(Debug, Serialize)]
 pub struct DuplicateNoteItem {
-    pub note_id: i64,
+    pub note_id: common::types::NoteId,
     pub similarity: f64,
     pub text: String,
     pub deck_names: Vec<String>,

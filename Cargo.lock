@@ -2353,7 +2353,6 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "common",
- "database",
  "futures",
  "hex",
  "mockall",
@@ -2363,7 +2362,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "sqlx",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -3164,7 +3162,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
- "surface-runtime",
  "testcontainers",
  "testcontainers-modules",
  "tokio",
@@ -4897,6 +4894,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 name = "surface-contracts"
 version = "0.1.0"
 dependencies = [
+ "common",
  "serde",
  "serde_json",
 ]

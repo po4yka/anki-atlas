@@ -144,7 +144,7 @@ impl AnkiAtlasServer {
                         .results
                         .into_iter()
                         .map(|item| SearchResultView {
-                            note_id: item.note_id,
+                            note_id: item.note_id.into(),
                             rrf_score: item.rrf_score,
                             semantic_score: item.semantic_score,
                             fts_score: item.fts_score,
@@ -203,7 +203,7 @@ impl AnkiAtlasServer {
                         .results
                         .into_iter()
                         .map(|item| ChunkSearchResultView {
-                            note_id: item.note_id,
+                            note_id: item.note_id.into(),
                             chunk_id: item.chunk_id,
                             chunk_kind: item.chunk_kind,
                             modality: item.modality,

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use common::types::NoteId;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -170,7 +171,7 @@ pub struct FusionStats {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct SearchResultItem {
-    pub note_id: i64,
+    pub note_id: NoteId,
     pub rrf_score: f64,
     pub semantic_score: Option<f64>,
     pub semantic_rank: Option<usize>,
@@ -204,7 +205,7 @@ pub struct SearchResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct ChunkSearchHit {
-    pub note_id: i64,
+    pub note_id: NoteId,
     pub chunk_id: String,
     pub chunk_kind: String,
     pub modality: String,
@@ -224,7 +225,7 @@ pub struct ChunkSearchResponse {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChunkSearchRequest, FusionStats, LexicalMode, SearchFilterInput, SearchRequest,
+        ChunkSearchRequest, FusionStats, LexicalMode, NoteId, SearchFilterInput, SearchRequest,
         SearchResponse, SearchResultItem,
     };
 
@@ -272,7 +273,7 @@ mod tests {
         let response = SearchResponse {
             query: "ownership".to_string(),
             results: vec![SearchResultItem {
-                note_id: 42,
+                note_id: NoteId(42),
                 rrf_score: 1.25,
                 semantic_score: Some(0.9),
                 semantic_rank: Some(1),
