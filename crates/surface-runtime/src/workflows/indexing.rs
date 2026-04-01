@@ -39,12 +39,7 @@ struct NoteIndexRow {
 
 const EMBEDDING_VECTOR_SCHEMA: &str = "multimodal_v1";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct EmbeddingFingerprint {
-    model: String,
-    dimension: usize,
-    vector_schema: String,
-}
+use crate::services::EmbeddingFingerprint;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MediaAssetRef {

@@ -338,10 +338,10 @@ async fn load_sync_metadata_value(db: &PgPool, key: &str) -> AnyhowResult<Option
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct EmbeddingFingerprint {
-    model: String,
-    dimension: usize,
-    vector_schema: String,
+pub(crate) struct EmbeddingFingerprint {
+    pub(crate) model: String,
+    pub(crate) dimension: usize,
+    pub(crate) vector_schema: String,
 }
 
 async fn load_embedding_fingerprint(db: &PgPool) -> AnyhowResult<Option<EmbeddingFingerprint>> {
