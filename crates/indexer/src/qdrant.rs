@@ -561,8 +561,7 @@ impl QdrantRepository {
         hasher.update(chunk_id.as_bytes());
         let digest = hasher.finalize();
         let numeric_id = u64::from_be_bytes([
-            digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6],
-            digest[7],
+            digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
         ]);
         numeric_id.into()
     }
@@ -571,14 +570,15 @@ impl QdrantRepository {
     fn note_id_from_point(&self, point_id: Option<PointId>) -> Result<i64, VectorStoreError> {
         match point_id.and_then(|id| id.point_id_options) {
             Some(qdrant_client::qdrant::point_id::PointIdOptions::Num(value)) => {
-                i64::try_from(value)
-                    .map_err(|_| VectorStoreError::Client(format!("point id {value} does not fit into i64")))
+                i64::try_from(value).map_err(|_| {
+                    VectorStoreError::Client(format!("point id {value} does not fit into i64"))
+                })
             }
-            Some(qdrant_client::qdrant::point_id::PointIdOptions::Uuid(value)) => Err(
-                VectorStoreError::Client(format!(
+            Some(qdrant_client::qdrant::point_id::PointIdOptions::Uuid(value)) => {
+                Err(VectorStoreError::Client(format!(
                     "uuid point ids are not supported for note-backed storage: {value}"
-                )),
-            ),
+                )))
+            }
             None => Err(VectorStoreError::Client(
                 "Qdrant point id missing".to_string(),
             )),

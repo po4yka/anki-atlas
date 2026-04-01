@@ -7,9 +7,7 @@ use surface_contracts::analytics::{
     DuplicateCluster, DuplicateStats, TopicCoverage, TopicGap, WeakNote,
 };
 
-use super::super::{
-    AppState, checkbox, empty_placeholder, field_line, next_in, previous_in,
-};
+use super::super::{AppState, checkbox, empty_placeholder, field_line, next_in, previous_in};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TopicsTab {
@@ -188,7 +186,11 @@ pub(crate) fn render_topics(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     );
     frame.render_widget(
         Paragraph::new(Text::from(topics_form_lines(&app.topics)))
-            .block(Block::default().title("Topic Controls").borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .title("Topic Controls")
+                    .borders(Borders::ALL),
+            )
             .wrap(Wrap { trim: true }),
         Rect {
             x: sections[0].x,
@@ -280,7 +282,10 @@ fn topics_form_lines(state: &TopicsState) -> Vec<Line<'static>> {
             ),
             field_line(
                 state.selected_field == TopicsField::InputD,
-                format!("tag filters(csv): {}", empty_placeholder(&state.duplicates_tags)),
+                format!(
+                    "tag filters(csv): {}",
+                    empty_placeholder(&state.duplicates_tags)
+                ),
             ),
             field_line(
                 state.selected_field == TopicsField::Run,

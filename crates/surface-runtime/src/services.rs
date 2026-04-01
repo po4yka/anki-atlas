@@ -21,12 +21,13 @@ use surface_contracts::analytics::{
     DuplicateCluster, DuplicateStats, LabelingStats, TaxonomyLoadSummary, TopicCoverage, TopicGap,
     WeakNote,
 };
-use surface_contracts::search::{ChunkSearchRequest, ChunkSearchResponse, SearchRequest, SearchResponse};
+use surface_contracts::search::{
+    ChunkSearchRequest, ChunkSearchResponse, SearchRequest, SearchResponse,
+};
 
 use crate::contracts::{
     build_chunk_search_params, build_search_params, chunk_search_response, duplicates,
-    labeling_stats, search_response, taxonomy_load_summary, topic_coverage, topic_gaps,
-    weak_notes,
+    labeling_stats, search_response, taxonomy_load_summary, topic_coverage, topic_gaps, weak_notes,
 };
 use crate::error::SurfaceError;
 use crate::workflows::{

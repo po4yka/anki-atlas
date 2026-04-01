@@ -328,12 +328,12 @@ impl UnionFind {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::repository::SqlxAnalyticsRepository;
     use async_trait::async_trait;
     use indexer::qdrant::{
         NotePayload, SearchFilters, SemanticSearchHit, SparseVector, VectorRepository,
         VectorStoreError,
     };
-    use crate::repository::SqlxAnalyticsRepository;
     use sqlx::postgres::PgPoolOptions;
 
     #[derive(Debug)]

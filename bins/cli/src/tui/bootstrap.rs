@@ -60,10 +60,7 @@ fn spawn_ctrl_c_listener(tx: mpsc::UnboundedSender<AppEvent>) {
     });
 }
 
-pub(crate) fn start_bootstrap(
-    tx: mpsc::UnboundedSender<AppEvent>,
-    enable_direct_execution: bool,
-) {
+pub(crate) fn start_bootstrap(tx: mpsc::UnboundedSender<AppEvent>, enable_direct_execution: bool) {
     tokio::spawn(async move {
         let mode = if enable_direct_execution {
             ExecutionMode::DirectExecution

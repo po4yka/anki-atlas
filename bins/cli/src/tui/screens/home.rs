@@ -105,7 +105,11 @@ pub(crate) fn render_home(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     );
     frame.render_widget(
         Paragraph::new(Text::from(quick_actions))
-            .block(Block::default().title("Quick Actions").borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .title("Quick Actions")
+                    .borders(Borders::ALL),
+            )
             .wrap(Wrap { trim: true }),
         chunks[1],
     );

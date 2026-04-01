@@ -27,7 +27,11 @@ impl CardGenerator for PreviewCardGenerator {
             .iter()
             .filter(|(heading, content)| !heading.trim().is_empty() || !content.trim().is_empty())
             .collect();
-        let count = if sections.is_empty() { 1 } else { sections.len() };
+        let count = if sections.is_empty() {
+            1
+        } else {
+            sections.len()
+        };
 
         (0..count)
             .map(|idx| GeneratedCardRef {

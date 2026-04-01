@@ -1,4 +1,7 @@
-use analytics::coverage::{GapType, TopicCoverage as AnalyticsTopicCoverage, TopicGap as AnalyticsTopicGap, WeakNote as AnalyticsWeakNote};
+use analytics::coverage::{
+    GapType, TopicCoverage as AnalyticsTopicCoverage, TopicGap as AnalyticsTopicGap,
+    WeakNote as AnalyticsWeakNote,
+};
 use analytics::duplicates::{
     DuplicateCluster as AnalyticsDuplicateCluster, DuplicateDetail as AnalyticsDuplicateDetail,
     DuplicateStats as AnalyticsDuplicateStats,
@@ -9,12 +12,12 @@ use search::error::SearchError;
 use search::fts::SearchFilters;
 use search::fusion::{FusionStats as SearchFusionStats, SearchResult};
 use search::service::{
-    ChunkSearchHit as SearchChunkSearchHit, ChunkSearchParams, ChunkSearchResult, HybridSearchResult,
-    SearchParams,
+    ChunkSearchHit as SearchChunkSearchHit, ChunkSearchParams, ChunkSearchResult,
+    HybridSearchResult, SearchParams,
 };
 use surface_contracts::analytics::{
-    DuplicateCluster, DuplicateDetail, DuplicateStats, GapKind, LabelingStats,
-    TaxonomyLoadSummary, TopicCoverage, TopicGap, WeakNote,
+    DuplicateCluster, DuplicateDetail, DuplicateStats, GapKind, LabelingStats, TaxonomyLoadSummary,
+    TopicCoverage, TopicGap, WeakNote,
 };
 use surface_contracts::search::{
     ChunkSearchHit, ChunkSearchRequest, ChunkSearchResponse, FusionStats, LexicalMode,
@@ -224,11 +227,7 @@ fn duplicate_cluster(value: AnalyticsDuplicateCluster) -> DuplicateCluster {
     DuplicateCluster {
         representative_id: value.representative_id,
         representative_text: value.representative_text,
-        duplicates: value
-            .duplicates
-            .into_iter()
-            .map(duplicate_detail)
-            .collect(),
+        duplicates: value.duplicates.into_iter().map(duplicate_detail).collect(),
         deck_names: value.deck_names,
         tags: value.tags,
     }

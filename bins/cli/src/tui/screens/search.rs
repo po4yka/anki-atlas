@@ -171,7 +171,10 @@ fn search_form_lines(state: &SearchState, content_focused: bool) -> Vec<Line<'st
     vec![
         field_line(
             state.selected_field == SearchField::Query && content_focused,
-            format!("query: {}", display_field_value(&state.query, state.editing)),
+            format!(
+                "query: {}",
+                display_field_value(&state.query, state.editing)
+            ),
         ),
         field_line(
             state.selected_field == SearchField::Decks && content_focused,

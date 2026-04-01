@@ -71,7 +71,11 @@ pub(crate) fn run_topics_task(app: &mut AppState, tx: &mpsc::UnboundedSender<App
         }
         TopicsTab::Duplicates => {
             let request = DuplicatesRequest {
-                threshold: app.topics.duplicates_threshold.parse::<f64>().unwrap_or(0.92),
+                threshold: app
+                    .topics
+                    .duplicates_threshold
+                    .parse::<f64>()
+                    .unwrap_or(0.92),
                 max: app.topics.duplicates_max.parse::<usize>().unwrap_or(50),
                 deck_names: split_csv(&app.topics.duplicates_decks),
                 tags: split_csv(&app.topics.duplicates_tags),
@@ -157,9 +161,13 @@ pub(crate) fn run_workflow_task(app: &mut AppState, tx: &mpsc::UnboundedSender<A
             let progress_tx = tx.clone();
             app.busy_label = Some("obsidian scan".to_string());
             spawn_task(tx.clone(), "obsidian scan", move || async move {
-                usecases::obsidian_scan(&service, &request, Some(progress_sink(progress_tx.clone())))
-                    .map(TaskResult::Obsidian)
-                    .map_err(|error| error.to_string())
+                usecases::obsidian_scan(
+                    &service,
+                    &request,
+                    Some(progress_sink(progress_tx.clone())),
+                )
+                .map(TaskResult::Obsidian)
+                .map_err(|error| error.to_string())
             });
         }
         WorkflowTab::TagAudit => {
@@ -184,11 +192,8 @@ fn progress_sink(tx: mpsc::UnboundedSender<AppEvent>) -> SurfaceProgressSink {
     })
 }
 
-pub(crate) fn spawn_task<F, Fut>(
-    tx: mpsc::UnboundedSender<AppEvent>,
-    label: &'static str,
-    task: F,
-) where
+pub(crate) fn spawn_task<F, Fut>(tx: mpsc::UnboundedSender<AppEvent>, label: &'static str, task: F)
+where
     F: FnOnce() -> Fut + Send + 'static,
     Fut: std::future::Future<Output = Result<TaskResult, String>> + 'static,
 {

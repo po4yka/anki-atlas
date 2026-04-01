@@ -13,9 +13,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use sqlx::{FromRow, PgPool};
 
-use super::progress::{
-    SurfaceOperation, SurfaceProgressSink, emit_progress, map_index_progress,
-};
+use super::progress::{SurfaceOperation, SurfaceProgressSink, emit_progress, map_index_progress};
 use crate::error::SurfaceError;
 
 #[derive(Debug, Clone, Serialize)]
@@ -584,7 +582,10 @@ impl IndexingService {
         );
         self.store_embedding_fingerprint().await?;
 
-        Ok(IndexExecutionSummary { force_reindex, stats })
+        Ok(IndexExecutionSummary {
+            force_reindex,
+            stats,
+        })
     }
 }
 

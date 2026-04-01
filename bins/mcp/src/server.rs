@@ -143,20 +143,18 @@ impl AnkiAtlasServer {
                     results: result
                         .results
                         .into_iter()
-                        .map(|item| {
-                            SearchResultView {
-                                note_id: item.note_id,
-                                rrf_score: item.rrf_score,
-                                semantic_score: item.semantic_score,
-                                fts_score: item.fts_score,
-                                rerank_score: item.rerank_score,
-                                headline: item.headline,
-                                sources: item.sources,
-                                match_modality: item.match_modality,
-                                match_chunk_kind: item.match_chunk_kind,
-                                match_source_field: item.match_source_field,
-                                match_asset_rel_path: item.match_asset_rel_path,
-                            }
+                        .map(|item| SearchResultView {
+                            note_id: item.note_id,
+                            rrf_score: item.rrf_score,
+                            semantic_score: item.semantic_score,
+                            fts_score: item.fts_score,
+                            rerank_score: item.rerank_score,
+                            headline: item.headline,
+                            sources: item.sources,
+                            match_modality: item.match_modality,
+                            match_chunk_kind: item.match_chunk_kind,
+                            match_source_field: item.match_source_field,
+                            match_asset_rel_path: item.match_asset_rel_path,
                         })
                         .collect(),
                 };

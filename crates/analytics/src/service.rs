@@ -23,11 +23,7 @@ where
     E: indexer::embeddings::EmbeddingProvider,
     V: indexer::qdrant::VectorRepository,
 {
-    pub fn new(
-        embedding: E,
-        vector_repo: V,
-        repository: Arc<dyn AnalyticsRepository>,
-    ) -> Self {
+    pub fn new(embedding: E, vector_repo: V, repository: Arc<dyn AnalyticsRepository>) -> Self {
         Self {
             embedding,
             vector_repo,
@@ -80,7 +76,9 @@ where
         topic_path: &str,
         min_coverage: i64,
     ) -> Result<Vec<TopicGap>, AnalyticsError> {
-        self.repository.get_topic_gaps(topic_path, min_coverage).await
+        self.repository
+            .get_topic_gaps(topic_path, min_coverage)
+            .await
     }
 
     /// Get weak notes (high lapse rate) in a topic subtree.

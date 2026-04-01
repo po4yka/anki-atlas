@@ -4,7 +4,7 @@ use axum::response::{IntoResponse, Response};
 use tracing::instrument;
 
 use crate::error::AppError;
-use crate::schemas::{ChunkSearchRequest, ChunkSearchResponse, SearchRequest, SearchResponse};
+use crate::schemas::{ChunkSearchRequest, SearchRequest};
 use crate::state::AppState;
 
 #[instrument(skip(state, req))]
@@ -16,9 +16,8 @@ pub async fn search(
     let result = state
         .services
         .search
-        .search(&req.into())
+        .search(&req)
         .await
-        .map(SearchResponse::from)
         .map_err(AppError::from)?;
 
     Ok(axum::Json(result).into_response())
@@ -33,9 +32,8 @@ pub async fn search_chunks(
     let result = state
         .services
         .search
-        .search_chunks(&req.into())
+        .search_chunks(&req)
         .await
-        .map(ChunkSearchResponse::from)
         .map_err(AppError::from)?;
 
     Ok(axum::Json(result).into_response())

@@ -8,9 +8,7 @@ use surface_runtime::{
     TagAuditSummary, ValidationSummary,
 };
 
-use super::super::{
-    AppState, checkbox, empty_placeholder, field_line, next_in, previous_in,
-};
+use super::super::{AppState, checkbox, empty_placeholder, field_line, next_in, previous_in};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WorkflowTab {
@@ -181,7 +179,11 @@ pub(crate) fn render_workflows(frame: &mut Frame<'_>, area: Rect, app: &AppState
                     .position(|tab| *tab == app.workflows.tab)
                     .unwrap_or(0),
             )
-            .block(Block::default().title("Workflow Views").borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .title("Workflow Views")
+                    .borders(Borders::ALL),
+            )
             .highlight_style(
                 Style::default()
                     .fg(Color::Yellow)
@@ -196,7 +198,11 @@ pub(crate) fn render_workflows(frame: &mut Frame<'_>, area: Rect, app: &AppState
     );
     frame.render_widget(
         Paragraph::new(Text::from(workflow_form_lines(&app.workflows)))
-            .block(Block::default().title("Workflow Controls").borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .title("Workflow Controls")
+                    .borders(Borders::ALL),
+            )
             .wrap(Wrap { trim: true }),
         Rect {
             x: sections[0].x,
@@ -207,7 +213,11 @@ pub(crate) fn render_workflows(frame: &mut Frame<'_>, area: Rect, app: &AppState
     );
     frame.render_widget(
         Paragraph::new(Text::from(workflow_result_lines(&app.workflows)))
-            .block(Block::default().title("Workflow Result").borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .title("Workflow Result")
+                    .borders(Borders::ALL),
+            )
             .wrap(Wrap { trim: true }),
         sections[1],
     );
@@ -321,7 +331,10 @@ fn workflow_result_lines(state: &WorkflowsState) -> Vec<Line<'static>> {
             .map(|summary| {
                 let mut lines = vec![
                     Line::from(format!("source: {}", summary.source.display())),
-                    Line::from(format!("migrations_applied: {}", summary.migrations_applied)),
+                    Line::from(format!(
+                        "migrations_applied: {}",
+                        summary.migrations_applied
+                    )),
                     Line::from(format!("notes_upserted: {}", summary.sync.notes_upserted)),
                     Line::from(format!("notes_deleted: {}", summary.sync.notes_deleted)),
                     Line::from(format!("cards_upserted: {}", summary.sync.cards_upserted)),
@@ -341,7 +354,10 @@ fn workflow_result_lines(state: &WorkflowsState) -> Vec<Line<'static>> {
             .map(|summary| {
                 vec![
                     Line::from(format!("force_reindex: {}", summary.force_reindex)),
-                    Line::from(format!("notes_processed: {}", summary.stats.notes_processed)),
+                    Line::from(format!(
+                        "notes_processed: {}",
+                        summary.stats.notes_processed
+                    )),
                     Line::from(format!("notes_embedded: {}", summary.stats.notes_embedded)),
                     Line::from(format!("notes_skipped: {}", summary.stats.notes_skipped)),
                     Line::from(format!("notes_deleted: {}", summary.stats.notes_deleted)),

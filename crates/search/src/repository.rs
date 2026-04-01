@@ -17,7 +17,10 @@ pub trait SearchReadRepository: Send + Sync {
         limit: i64,
     ) -> Result<LexicalSearchResult, SearchError>;
 
-    async fn get_note_details(&self, note_ids: &[i64]) -> Result<HashMap<i64, NoteDetail>, SearchError>;
+    async fn get_note_details(
+        &self,
+        note_ids: &[i64],
+    ) -> Result<HashMap<i64, NoteDetail>, SearchError>;
 }
 
 #[derive(Debug, Clone)]
@@ -54,7 +57,10 @@ impl SearchReadRepository for SqlxSearchReadRepository {
         crate::fts::search_lexical(&self.pool, query, filters, limit).await
     }
 
-    async fn get_note_details(&self, note_ids: &[i64]) -> Result<HashMap<i64, NoteDetail>, SearchError> {
+    async fn get_note_details(
+        &self,
+        note_ids: &[i64],
+    ) -> Result<HashMap<i64, NoteDetail>, SearchError> {
         if note_ids.is_empty() {
             return Ok(HashMap::new());
         }

@@ -200,8 +200,10 @@ impl AppState {
                     Ok(TaskResult::Sync(result)) => {
                         self.workflows.sync_result = Some(result.clone());
                         self.workflows.error = None;
-                        self.last_result_summary =
-                            Some(format!("sync upserted {} notes", result.sync.notes_upserted));
+                        self.last_result_summary = Some(format!(
+                            "sync upserted {} notes",
+                            result.sync.notes_upserted
+                        ));
                         self.push_activity("sync finished".to_string());
                     }
                     Ok(TaskResult::Index(result)) => {

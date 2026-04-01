@@ -643,7 +643,9 @@ mod tests {
             _limit: i64,
         ) -> Result<LexicalSearchResult, SearchError> {
             if self.lexical_error {
-                return Err(SearchError::InvalidRequest("lexical lookup failed".to_string()));
+                return Err(SearchError::InvalidRequest(
+                    "lexical lookup failed".to_string(),
+                ));
             }
             Ok(self.lexical.clone())
         }
@@ -1414,7 +1416,10 @@ mod tests {
             FakeEmbedding,
             FakeVectorRepo::empty(),
             Some(FakeReranker::new()),
-            Arc::new(FakeSearchReadRepository::with_lexical(lexical, LexicalMode::Fts)),
+            Arc::new(FakeSearchReadRepository::with_lexical(
+                lexical,
+                LexicalMode::Fts,
+            )),
             false,
             20,
         );
@@ -1423,6 +1428,9 @@ mod tests {
 
         assert_eq!(result.results.len(), 1);
         assert_eq!(result.results[0].note_id, 7);
-        assert_eq!(result.results[0].headline.as_deref(), Some("repository headline"));
+        assert_eq!(
+            result.results[0].headline.as_deref(),
+            Some("repository headline")
+        );
     }
 }

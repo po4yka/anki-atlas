@@ -2,9 +2,8 @@ use crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::mpsc;
 
 use super::{
-    AppEvent, AppState, FocusRegion, ModalState, RuntimeStatus, Screen, SearchField,
-    TopicsField, TopicsTab, WorkflowField, WorkflowTab, run_topics_task, run_workflow_task,
-    start_bootstrap,
+    AppEvent, AppState, FocusRegion, ModalState, RuntimeStatus, Screen, SearchField, TopicsField,
+    TopicsTab, WorkflowField, WorkflowTab, run_topics_task, run_workflow_task, start_bootstrap,
 };
 
 pub(crate) fn handle_key_event(
@@ -102,11 +101,7 @@ fn handle_navigation_input(app: &mut AppState, key: KeyEvent) {
     }
 }
 
-fn handle_content_input(
-    app: &mut AppState,
-    key: KeyEvent,
-    tx: &mpsc::UnboundedSender<AppEvent>,
-) {
+fn handle_content_input(app: &mut AppState, key: KeyEvent, tx: &mpsc::UnboundedSender<AppEvent>) {
     match app.screen {
         Screen::Home => handle_home_input(app, key, tx),
         Screen::Search => handle_search_input(app, key, tx),
@@ -149,7 +144,9 @@ fn handle_search_input(app: &mut AppState, key: KeyEvent, tx: &mpsc::UnboundedSe
             app.search.selected_result = app.search.selected_result.saturating_sub(1);
         }
         KeyCode::Right | KeyCode::Char('l') => {
-            if let Some(result) = &app.search.result && !result.results.is_empty() {
+            if let Some(result) = &app.search.result
+                && !result.results.is_empty()
+            {
                 app.search.selected_result =
                     (app.search.selected_result + 1).min(result.results.len() - 1);
             }
@@ -228,11 +225,7 @@ fn handle_topics_input(app: &mut AppState, key: KeyEvent, tx: &mpsc::UnboundedSe
     }
 }
 
-fn handle_workflows_input(
-    app: &mut AppState,
-    key: KeyEvent,
-    tx: &mpsc::UnboundedSender<AppEvent>,
-) {
+fn handle_workflows_input(app: &mut AppState, key: KeyEvent, tx: &mpsc::UnboundedSender<AppEvent>) {
     if app.workflows.editing {
         if handle_text_edit(app.workflows.current_text_field_mut(), key) {
             return;

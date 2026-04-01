@@ -16,8 +16,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use surface_contracts::analytics::{
-    DuplicateCluster, DuplicateDetail, DuplicateStats, GapKind, LabelingStats,
-    TaxonomyLoadSummary, TopicCoverage, TopicGap, WeakNote,
+    DuplicateCluster, DuplicateDetail, DuplicateStats, GapKind, LabelingStats, TaxonomyLoadSummary,
+    TopicCoverage, TopicGap, WeakNote,
 };
 use surface_contracts::search::{
     ChunkSearchRequest, ChunkSearchResponse, FusionStats, LexicalMode, SearchResponse,

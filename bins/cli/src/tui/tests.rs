@@ -2,8 +2,8 @@ use super::*;
 use std::collections::HashMap;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use surface_contracts::analytics::TopicCoverage;
 use surface_contracts::search::{FusionStats, LexicalMode, SearchResponse, SearchResultItem};
 use surface_runtime::{GeneratePreview, SurfaceOperation, SurfaceProgressEvent};

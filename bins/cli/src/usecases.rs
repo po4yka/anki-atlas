@@ -115,7 +115,9 @@ pub struct TagAuditRequest {
     pub apply_fixes: bool,
 }
 
-pub async fn run_migrations(settings: &common::config::Settings) -> anyhow::Result<MigrationResult> {
+pub async fn run_migrations(
+    settings: &common::config::Settings,
+) -> anyhow::Result<MigrationResult> {
     let pool = database::create_pool(&settings.database()).await?;
     database::run_migrations(&pool).await.map_err(Into::into)
 }
