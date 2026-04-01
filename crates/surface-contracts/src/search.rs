@@ -11,7 +11,7 @@ fn default_weight() -> f64 {
     1.0
 }
 
-fn normalize_strings(values: Option<Vec<String>>) -> Option<Vec<String>> {
+pub fn normalize_strings(values: Option<Vec<String>>) -> Option<Vec<String>> {
     values.and_then(|items| {
         let normalized = items
             .into_iter()
@@ -22,7 +22,7 @@ fn normalize_strings(values: Option<Vec<String>>) -> Option<Vec<String>> {
     })
 }
 
-fn normalize_i64s(values: Option<Vec<i64>>) -> Option<Vec<i64>> {
+pub fn normalize_i64s(values: Option<Vec<i64>>) -> Option<Vec<i64>> {
     values.and_then(|items| (!items.is_empty()).then_some(items))
 }
 

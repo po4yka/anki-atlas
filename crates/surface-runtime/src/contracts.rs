@@ -20,24 +20,9 @@ use surface_contracts::analytics::{
     TopicCoverage, TopicGap, WeakNote,
 };
 use surface_contracts::search::{
-    ChunkSearchHit, ChunkSearchRequest, ChunkSearchResponse, FusionStats, LexicalMode,
-    SearchFilterInput, SearchRequest, SearchResponse, SearchResultItem,
+    normalize_i64s, normalize_strings, ChunkSearchHit, ChunkSearchRequest, ChunkSearchResponse,
+    FusionStats, LexicalMode, SearchFilterInput, SearchRequest, SearchResponse, SearchResultItem,
 };
-
-fn normalize_strings(values: Option<Vec<String>>) -> Option<Vec<String>> {
-    values.and_then(|items| {
-        let normalized = items
-            .into_iter()
-            .map(|item| item.trim().to_string())
-            .filter(|item| !item.is_empty())
-            .collect::<Vec<_>>();
-        (!normalized.is_empty()).then_some(normalized)
-    })
-}
-
-fn normalize_i64s(values: Option<Vec<i64>>) -> Option<Vec<i64>> {
-    values.and_then(|items| (!items.is_empty()).then_some(items))
-}
 
 pub fn build_search_params(request: &SearchRequest) -> Result<SearchParams, SearchError> {
     request.validate().map_err(SearchError::InvalidRequest)?;
