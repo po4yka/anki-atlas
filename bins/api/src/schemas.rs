@@ -43,6 +43,15 @@ pub struct AsyncIndexRequest {
     pub run_at: Option<DateTime<Utc>>,
 }
 
+impl AsyncSyncRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.source.trim().is_empty() {
+            return Err("source must not be empty".to_string());
+        }
+        Ok(())
+    }
+}
+
 impl From<AsyncSyncRequest> for SyncJobPayload {
     fn from(request: AsyncSyncRequest) -> Self {
         Self {

@@ -62,6 +62,7 @@ pub async fn enqueue_sync_job(
     State(state): State<AppState>,
     Json(req): Json<AsyncSyncRequest>,
 ) -> Result<Response, AppError> {
+    req.validate().map_err(AppError::bad_request)?;
     let run_at = req.run_at;
     let payload = jobs::SyncJobPayload::from(req);
 
