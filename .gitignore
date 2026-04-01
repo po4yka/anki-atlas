@@ -31,6 +31,9 @@ db.sqlite3-journal
 .claude/skills/desloppify/
 scorecard.png
 
+# OMC state
+.omc/
+
 # Ralph orchestrator
 .ralph/
 
