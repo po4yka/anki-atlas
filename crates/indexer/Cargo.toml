@@ -7,7 +7,6 @@ license.workspace = true
 
 [dependencies]
 common = { path = "../common" }
-database = { path = "../database" }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -21,7 +20,6 @@ hex = "0.4"
 thiserror = { workspace = true }
 tracing = { workspace = true }
 regex = { workspace = true }
-sqlx = { workspace = true }
 
 [dev-dependencies]
 mockall = { workspace = true }
