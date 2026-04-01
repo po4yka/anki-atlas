@@ -41,7 +41,7 @@ mod tests {
     #[test]
     fn create_provider_openrouter_with_api_key() {
         let result = create_provider(ProviderConfig::OpenRouter(OpenRouterConfig {
-            api_key: "sk-test-key-123".to_string(),
+            api_key: "test-placeholder".to_string(),
             ..OpenRouterConfig::default()
         }));
         assert!(result.is_ok());
@@ -65,7 +65,7 @@ mod tests {
     #[test]
     fn create_provider_openrouter_custom_config() {
         let result = create_provider(ProviderConfig::OpenRouter(OpenRouterConfig {
-            api_key: "sk-test-key-456".to_string(),
+            api_key: "test-placeholder".to_string(),
             base_url: "https://custom.api.com/v1".to_string(),
             timeout_secs: 60,
             max_tokens: 4096,
