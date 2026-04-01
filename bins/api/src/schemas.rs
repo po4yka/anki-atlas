@@ -360,7 +360,7 @@ impl From<DuplicateDetail> for DuplicateNoteItem {
 
 #[derive(Debug, Serialize)]
 pub struct DuplicateClusterItem {
-    pub representative_id: i64,
+    pub representative_id: common::types::NoteId,
     pub representative_text: String,
     pub deck_names: Vec<String>,
     pub tags: Vec<String>,

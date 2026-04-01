@@ -72,7 +72,7 @@ pub struct DuplicateDetail {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct DuplicateCluster {
-    pub representative_id: i64,
+    pub representative_id: NoteId,
     pub representative_text: String,
     pub duplicates: Vec<DuplicateDetail>,
     pub deck_names: Vec<String>,

@@ -210,7 +210,7 @@ fn duplicate_detail(value: AnalyticsDuplicateDetail) -> DuplicateDetail {
 
 fn duplicate_cluster(value: AnalyticsDuplicateCluster) -> DuplicateCluster {
     DuplicateCluster {
-        representative_id: value.representative_id,
+        representative_id: value.representative_id.into(),
         representative_text: value.representative_text,
         duplicates: value.duplicates.into_iter().map(duplicate_detail).collect(),
         deck_names: value.deck_names,

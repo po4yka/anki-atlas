@@ -255,7 +255,7 @@ fn duplicates_query_parses_bracketed_filters() {
 fn duplicates_response_maps_from_domain() {
     let response = DuplicatesResponse {
         clusters: vec![DuplicateClusterItem::from(DuplicateCluster {
-            representative_id: 100,
+            representative_id: NoteId(100),
             representative_text: "What is X?".into(),
             duplicates: vec![DuplicateDetail {
                 note_id: NoteId(101),

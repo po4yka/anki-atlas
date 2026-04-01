@@ -637,7 +637,7 @@ async fn duplicates_forwards_query_filters() {
         .returning(|_, _, _, _| {
             Ok((
                 vec![DuplicateCluster {
-                    representative_id: 1,
+                    representative_id: NoteId(1),
                     representative_text: "What is ownership?".into(),
                     duplicates: vec![DuplicateDetail {
                         note_id: NoteId(2),
