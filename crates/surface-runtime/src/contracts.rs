@@ -20,7 +20,7 @@ use surface_contracts::analytics::{
     TopicCoverage, TopicGap, WeakNote,
 };
 use surface_contracts::search::{
-    normalize_i64s, normalize_strings, ChunkSearchHit, ChunkSearchRequest, ChunkSearchResponse,
+    ChunkSearchHit, ChunkSearchRequest, ChunkSearchResponse,
     FusionStats, LexicalMode, SearchFilterInput, SearchRequest, SearchResponse, SearchResultItem,
 };
 
@@ -56,11 +56,11 @@ fn build_search_filters(input: Option<SearchFilterInput>) -> Option<SearchFilter
     let normalized = input.and_then(|filters| filters.normalized())?;
 
     Some(SearchFilters {
-        deck_names: normalize_strings(normalized.deck_names),
-        deck_names_exclude: normalize_strings(normalized.deck_names_exclude),
-        tags: normalize_strings(normalized.tags),
-        tags_exclude: normalize_strings(normalized.tags_exclude),
-        model_ids: normalize_i64s(normalized.model_ids),
+        deck_names: normalized.deck_names,
+        deck_names_exclude: normalized.deck_names_exclude,
+        tags: normalized.tags,
+        tags_exclude: normalized.tags_exclude,
+        model_ids: normalized.model_ids,
         min_ivl: normalized.min_ivl,
         max_lapses: normalized.max_lapses,
         min_reps: normalized.min_reps,

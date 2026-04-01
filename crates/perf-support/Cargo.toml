@@ -10,7 +10,6 @@ common = { path = "../common" }
 database = { path = "../database" }
 indexer = { path = "../indexer" }
 jobs = { path = "../jobs" }
-surface-runtime = { path = "../surface-runtime" }
 
 anyhow = { workspace = true }
 qdrant-client = { workspace = true }
