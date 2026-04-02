@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use indexer::embeddings::{EmbeddingInput, EmbeddingTask};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
@@ -188,79 +187,6 @@ where
         }
     }
 
-    async fn build_rerank_documents(
-        &self,
-        results: &[SearchResult],
-        rerank_top_n: usize,
-    ) -> Result<Vec<(i64, String)>, SearchError> {
-        let top_note_ids: Vec<i64> = results
-            .iter()
-            .take(rerank_top_n)
-            .map(|result| result.note_id)
-            .collect();
-        let note_details = self.get_notes_details(&top_note_ids).await?;
-
-        Ok(results
-            .iter()
-            .take(rerank_top_n)
-            .filter_map(|result| {
-                let note_text = note_details
-                    .get(&result.note_id)
-                    .map(|detail| detail.normalized_text.clone())
-                    .or_else(|| result.headline.clone())?;
-
-                if note_text.trim().is_empty() {
-                    None
-                } else {
-                    Some((result.note_id, note_text))
-                }
-            })
-            .collect())
-    }
-
-    fn to_vector_filters(filters: Option<&SearchFilters>) -> indexer::qdrant::SearchFilters {
-        let Some(filters) = filters else {
-            return indexer::qdrant::SearchFilters::default();
-        };
-
-        indexer::qdrant::SearchFilters {
-            deck_names: filters.deck_names.clone(),
-            deck_names_exclude: filters.deck_names_exclude.clone(),
-            tags: filters.tags.clone(),
-            tags_exclude: filters.tags_exclude.clone(),
-            model_ids: filters.model_ids.clone(),
-            mature_only: filters.min_ivl.is_some_and(|min_ivl| min_ivl >= 21),
-            max_lapses: filters.max_lapses,
-            min_reps: filters.min_reps,
-        }
-    }
-
-    async fn run_semantic_chunk_search(
-        &self,
-        query: &str,
-        filters: Option<&SearchFilters>,
-        limit: usize,
-    ) -> Result<Vec<indexer::qdrant::SemanticSearchHit>, SearchError> {
-        let embedded = self
-            .embedding
-            .embed_inputs(&[EmbeddingInput::text_with_task(
-                query.to_string(),
-                EmbeddingTask::RetrievalQuery,
-            )])
-            .await?;
-        let query_vector = &embedded[0];
-        let vector_filters = Self::to_vector_filters(filters);
-        self.vector_repo
-            .search_chunks(
-                query_vector,
-                None,
-                limit.saturating_mul(4).max(limit),
-                &vector_filters,
-            )
-            .await
-            .map_err(Into::into)
-    }
-
     /// Execute hybrid search: semantic + FTS -> RRF fusion -> optional rerank.
     #[instrument(skip(self))]
     pub async fn search(&self, params: &SearchParams) -> Result<HybridSearchResult, SearchError> {
@@ -285,9 +211,14 @@ where
         let semantic_results = if search_mode == SearchMode::FtsOnly {
             vec![]
         } else {
-            let raw = self
-                .run_semantic_chunk_search(query, params.filters.as_ref(), limit)
-                .await?;
+            let raw = crate::semantic::run_semantic_chunk_search(
+                &self.embedding,
+                &self.vector_repo,
+                query,
+                params.filters.as_ref(),
+                limit,
+            )
+            .await?;
             let mut best_by_note = HashMap::<i64, f64>::new();
             for hit in raw {
                 let score = f64::from(hit.score);
@@ -379,34 +310,14 @@ where
 
         if should_rerank {
             if let Some(ref reranker) = self.reranker {
-                match self.build_rerank_documents(&results, rerank_top_n).await {
-                    Ok(documents) if !documents.is_empty() => {
-                        match reranker.rerank(query, &documents).await {
-                            Ok(scores) => {
-                                let score_map: HashMap<i64, f64> = scores.into_iter().collect();
-                                for result in &mut results {
-                                    if let Some(&score) = score_map.get(&result.note_id) {
-                                        result.rerank_score = Some(score);
-                                    }
-                                }
-                                results.sort_by(|a, b| {
-                                    b.rerank_score
-                                        .partial_cmp(&a.rerank_score)
-                                        .unwrap_or(std::cmp::Ordering::Equal)
-                                });
-                                rerank_applied = true;
-                                rerank_model = Some(reranker.model_name().to_string());
-                            }
-                            Err(e) => {
-                                tracing::warn!(error = %e, "reranking failed, falling back to RRF ordering");
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "failed to build rerank documents, skipping reranking");
-                    }
-                    _ => {}
-                }
+                (rerank_applied, rerank_model) = crate::reranking::apply_reranking(
+                    &mut results,
+                    query,
+                    reranker,
+                    rerank_top_n,
+                    &self.repository,
+                )
+                .await;
             }
             // No reranker provided: degrade gracefully
         }
@@ -446,9 +357,14 @@ where
             });
         }
 
-        let raw = self
-            .run_semantic_chunk_search(&params.query, params.filters.as_ref(), params.limit)
-            .await?;
+        let raw = crate::semantic::run_semantic_chunk_search(
+            &self.embedding,
+            &self.vector_repo,
+            &params.query,
+            params.filters.as_ref(),
+            params.limit,
+        )
+        .await?;
         let mut results: Vec<_> = raw
             .into_iter()
             .map(|hit| ChunkSearchHit {
@@ -489,6 +405,8 @@ where
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
+
+    use indexer::embeddings::EmbeddingInput;
 
     use super::*;
     use crate::fts::{FtsResult, FtsSource, LexicalSearchResult};

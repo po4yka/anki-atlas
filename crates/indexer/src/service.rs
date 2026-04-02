@@ -2,8 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::instrument;
 
-use crate::embeddings::{self, EmbeddingInput, EmbeddingProvider, EmbeddingTask};
-use crate::qdrant::{NotePayload, QdrantRepository, VectorRepository};
+use crate::batch;
+use crate::embeddings::{EmbeddingInput, EmbeddingProvider, EmbeddingTask};
+use crate::qdrant::VectorRepository;
 
 /// A note prepared for indexing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,7 +88,7 @@ pub struct IndexProgressEvent {
     pub message: String,
 }
 
-fn emit_progress(
+pub(crate) fn emit_progress(
     callback: Option<&IndexProgressCallback>,
     stage: IndexProgressStage,
     current: usize,
@@ -217,41 +218,13 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
 
         let model_name = self.embedding.model_name();
 
-        // Compute hashes once and determine which notes need embedding
-        let mut to_embed: Vec<(&MultimodalNoteForIndexing, String, Vec<ChunkForIndexing>)> =
-            Vec::new();
-        let mut skipped = 0usize;
-
-        for (idx, note) in notes.iter().enumerate() {
-            let chunks = note_effective_chunks(note);
-            let new_hash = embeddings::content_hash_parts(
-                model_name,
-                chunks.iter().map(|chunk| chunk.hash_component.as_str()),
-            );
-            if !force_reindex {
-                if let Some(existing) = existing_hashes.get(&note.note.note_id) {
-                    if *existing == new_hash {
-                        skipped += 1;
-                        emit_progress(
-                            progress.as_ref(),
-                            IndexProgressStage::Diffing,
-                            idx + 1,
-                            notes.len(),
-                            format!("skipped unchanged note {}", note.note.note_id),
-                        );
-                        continue;
-                    }
-                }
-            }
-            to_embed.push((note, new_hash, chunks));
-            emit_progress(
-                progress.as_ref(),
-                IndexProgressStage::Diffing,
-                idx + 1,
-                notes.len(),
-                format!("queued note {} for embedding", note.note.note_id),
-            );
-        }
+        let (to_embed, skipped) = batch::compute_changed_notes(
+            notes,
+            &existing_hashes,
+            model_name,
+            force_reindex,
+            progress.as_ref(),
+        );
 
         let mut stats = IndexStats {
             notes_processed: notes.len(),
@@ -270,8 +243,8 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
             return Ok(stats);
         }
 
-        // Embed texts
-        let chunk_count: usize = to_embed.iter().map(|(_, _, chunks)| chunks.len()).sum();
+        // Embed chunks
+        let chunk_count: usize = to_embed.iter().map(|e| e.chunks.len()).sum();
         emit_progress(
             progress.as_ref(),
             IndexProgressStage::Embedding,
@@ -282,12 +255,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
                 to_embed.len()
             ),
         );
-        let embedding_inputs: Vec<EmbeddingInput> = to_embed
-            .iter()
-            .flat_map(|(_, _, chunks)| chunks)
-            .map(|chunk| chunk.embedding_input.clone())
-            .collect();
-        let vectors = self.embedding.embed_inputs(&embedding_inputs).await?;
+        let vectors = batch::batch_embed_chunks(&*self.embedding, &to_embed).await?;
         emit_progress(
             progress.as_ref(),
             IndexProgressStage::Embedding,
@@ -299,42 +267,8 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
             ),
         );
 
-        let payloads: Vec<NotePayload> = to_embed
-            .iter()
-            .flat_map(|(note, hash, chunks)| {
-                chunks.iter().map(move |chunk| NotePayload {
-                    note_id: note.note.note_id,
-                    model_id: note.note.model_id,
-                    deck_names: note.note.deck_names.clone(),
-                    tags: note.note.tags.clone(),
-                    content_hash: hash.clone(),
-                    mature: note.note.mature,
-                    lapses: note.note.lapses,
-                    reps: note.note.reps,
-                    fail_rate: note.note.fail_rate,
-                    chunk_id: chunk.chunk_id.clone(),
-                    chunk_kind: chunk.chunk_kind.clone(),
-                    modality: chunk.modality.clone(),
-                    source_field: chunk.source_field.clone(),
-                    asset_rel_path: chunk.asset_rel_path.clone(),
-                    mime_type: chunk.mime_type.clone(),
-                    preview_label: chunk.preview_label.clone(),
-                })
-            })
-            .collect();
-
-        // Generate sparse vectors.
-        let sparse_vectors: Vec<_> = to_embed
-            .iter()
-            .flat_map(|(_, _, chunks)| chunks)
-            .map(|chunk| {
-                chunk
-                    .sparse_text
-                    .as_deref()
-                    .map(QdrantRepository::text_to_sparse_vector)
-                    .unwrap_or_default()
-            })
-            .collect();
+        let payloads = batch::build_upsert_payloads(&to_embed);
+        let sparse_vectors = batch::generate_sparse_vectors(&to_embed);
 
         emit_progress(
             progress.as_ref(),
@@ -385,7 +319,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
     }
 }
 
-fn default_text_chunk(normalized_text: &str, note_id: i64) -> ChunkForIndexing {
+pub(crate) fn default_text_chunk(normalized_text: &str, note_id: i64) -> ChunkForIndexing {
     let preview = normalized_text.chars().take(80).collect::<String>();
     ChunkForIndexing {
         chunk_id: format!("{note_id}:text_primary"),
@@ -401,17 +335,6 @@ fn default_text_chunk(normalized_text: &str, note_id: i64) -> ChunkForIndexing {
         mime_type: Some("text/plain".to_string()),
         preview_label: Some(preview),
         hash_component: normalized_text.to_string(),
-    }
-}
-
-fn note_effective_chunks(note: &MultimodalNoteForIndexing) -> Vec<ChunkForIndexing> {
-    if note.chunks.is_empty() {
-        vec![default_text_chunk(
-            &note.note.normalized_text,
-            note.note.note_id,
-        )]
-    } else {
-        note.chunks.clone()
     }
 }
 

@@ -3,6 +3,8 @@ pub mod fts;
 pub mod fusion;
 pub mod repository;
 pub mod reranker;
+pub mod reranking;
+pub mod semantic;
 pub mod service;
 
 pub use error::SearchError;
