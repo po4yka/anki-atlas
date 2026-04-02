@@ -143,11 +143,11 @@ Implementation notes:
 ```rust
 /// Mock embedding provider for tests. Returns deterministic vectors from SHA-256-derived bytes.
 #[derive(Debug, Clone)]
-pub struct MockEmbeddingProvider {
+pub struct DeterministicEmbeddingProvider {
     dimension: usize,
 }
 
-impl MockEmbeddingProvider {
+impl DeterministicEmbeddingProvider {
     pub fn new(dimension: usize) -> Self;
 }
 ```
@@ -479,7 +479,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
 - [ ] `cargo test -p indexer` passes
 - [ ] `cargo clippy -p indexer -- -D warnings` clean
 - [ ] All public types are `Send + Sync`
-- [ ] `MockEmbeddingProvider` produces deterministic, dimension-correct vectors
+- [ ] `DeterministicEmbeddingProvider` produces deterministic, dimension-correct vectors
 - [ ] `text_to_sparse_vector("")` returns empty indices/values
 - [ ] `text_to_sparse_vector` output is sorted by index and L2-normalized
 - [ ] `content_hash_parts` includes model name and all chunk hash parts

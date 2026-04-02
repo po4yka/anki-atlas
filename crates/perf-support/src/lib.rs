@@ -6,7 +6,7 @@ use common::config::Settings;
 mod error;
 use database::run_migrations;
 pub use error::PerfError;
-use indexer::embeddings::{EmbeddingProvider, MockEmbeddingProvider, content_hash};
+use indexer::embeddings::{DeterministicEmbeddingProvider, EmbeddingProvider, content_hash};
 use indexer::qdrant::{NotePayload, QdrantRepository, VectorRepository};
 use rustis::commands::{FlushingMode, ServerCommands};
 use serde::{Deserialize, Serialize};
@@ -236,7 +236,7 @@ async fn reset_qdrant(settings: &Settings, notes: &[SeededNote]) -> Result<(), P
         .recreate_collection(settings.embedding_dimension as usize)
         .await?;
 
-    let embedding = MockEmbeddingProvider::new(settings.embedding_dimension as usize);
+    let embedding = DeterministicEmbeddingProvider::new(settings.embedding_dimension as usize);
     let texts = notes
         .iter()
         .map(|note| note.normalized_text.clone())

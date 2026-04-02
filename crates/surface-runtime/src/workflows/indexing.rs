@@ -243,7 +243,7 @@ impl IndexingService {
     pub fn unsupported(db: PgPool) -> Self {
         Self {
             db,
-            embedding: Arc::new(indexer::embeddings::MockEmbeddingProvider::new(1)),
+            embedding: Arc::new(indexer::embeddings::DeterministicEmbeddingProvider::new(1)),
             vector_repo: Arc::new(UnsupportedVectorRepository),
             anki_collection_path: None,
             anki_media_root: None,

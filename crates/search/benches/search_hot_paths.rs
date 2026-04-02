@@ -138,10 +138,13 @@ fn build_service(
     pool: sqlx::PgPool,
     vector_results: Vec<(i64, f32)>,
     reranker: Option<BenchReranker>,
-) -> SearchService<indexer::embeddings::MockEmbeddingProvider, Arc<BenchVectorRepo>, BenchReranker>
-{
+) -> SearchService<
+    indexer::embeddings::DeterministicEmbeddingProvider,
+    Arc<BenchVectorRepo>,
+    BenchReranker,
+> {
     SearchService::new(
-        indexer::embeddings::MockEmbeddingProvider::new(384),
+        indexer::embeddings::DeterministicEmbeddingProvider::new(384),
         Arc::new(BenchVectorRepo::new(vector_results)),
         reranker,
         pool,

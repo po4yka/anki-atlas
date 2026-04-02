@@ -147,6 +147,7 @@ impl EmbeddingInput {
 
 /// Trait for embedding providers. All impls must be Send + Sync.
 #[async_trait]
+#[cfg_attr(test, mockall::automock)]
 pub trait EmbeddingProvider: Send + Sync {
     /// Model identifier for version tracking.
     fn model_name(&self) -> &str;
@@ -264,18 +265,18 @@ where
 
 /// Mock embedding provider for tests. Returns deterministic vectors from MD5 hash.
 #[derive(Debug, Clone)]
-pub struct MockEmbeddingProvider {
+pub struct DeterministicEmbeddingProvider {
     dimension: usize,
 }
 
-impl MockEmbeddingProvider {
+impl DeterministicEmbeddingProvider {
     pub fn new(dimension: usize) -> Self {
         Self { dimension }
     }
 }
 
 #[async_trait]
-impl EmbeddingProvider for MockEmbeddingProvider {
+impl EmbeddingProvider for DeterministicEmbeddingProvider {
     fn model_name(&self) -> &str {
         "mock/test"
     }
@@ -926,7 +927,7 @@ pub fn create_embedding_provider(
 ) -> Result<Box<dyn EmbeddingProvider>, EmbeddingError> {
     match config {
         EmbeddingProviderConfig::Mock { dimension } => {
-            Ok(Box::new(MockEmbeddingProvider::new(*dimension)))
+            Ok(Box::new(DeterministicEmbeddingProvider::new(*dimension)))
         }
         EmbeddingProviderConfig::OpenAi {
             model,

@@ -418,7 +418,7 @@ fn note_effective_chunks(note: &MultimodalNoteForIndexing) -> Vec<ChunkForIndexi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::embeddings::{EmbeddingError, MockEmbeddingProvider};
+    use crate::embeddings::{DeterministicEmbeddingProvider, EmbeddingError};
     use crate::qdrant::{MockVectorRepository, VectorStoreError};
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
@@ -546,8 +546,8 @@ mod tests {
 
     #[test]
     fn index_service_is_send_sync() {
-        assert_send::<IndexService<MockEmbeddingProvider, MockVectorRepository>>();
-        assert_sync::<IndexService<MockEmbeddingProvider, MockVectorRepository>>();
+        assert_send::<IndexService<DeterministicEmbeddingProvider, MockVectorRepository>>();
+        assert_sync::<IndexService<DeterministicEmbeddingProvider, MockVectorRepository>>();
     }
 
     // ====================================================================
@@ -556,7 +556,7 @@ mod tests {
 
     #[test]
     fn service_new_constructs() {
-        let embedding = MockEmbeddingProvider::new(128);
+        let embedding = DeterministicEmbeddingProvider::new(128);
         let repo = MockVectorRepository::new();
         let _service = IndexService::new(embedding, repo);
     }
@@ -567,7 +567,7 @@ mod tests {
 
     #[tokio::test]
     async fn index_notes_empty_input_returns_zero_stats() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         repo.expect_get_existing_hashes()
@@ -583,7 +583,7 @@ mod tests {
 
     #[tokio::test]
     async fn index_notes_all_new_embeds_all() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         repo.expect_get_existing_hashes()
@@ -607,7 +607,7 @@ mod tests {
 
     #[tokio::test]
     async fn index_notes_with_progress_emits_stages_in_order() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         repo.expect_get_existing_hashes()
@@ -658,7 +658,7 @@ mod tests {
 
     #[tokio::test]
     async fn index_notes_skips_unchanged_hashes() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         let hash = crate::embeddings::content_hash("mock/test", "hello");
@@ -688,7 +688,7 @@ mod tests {
 
     #[tokio::test]
     async fn index_notes_force_reindex_embeds_all_even_with_matching_hashes() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         let hash = crate::embeddings::content_hash("mock/test", "hello");
@@ -722,7 +722,7 @@ mod tests {
 
     #[tokio::test]
     async fn index_notes_builds_correct_payloads() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         repo.expect_get_existing_hashes()
@@ -752,7 +752,7 @@ mod tests {
 
     #[tokio::test]
     async fn index_notes_payload_includes_content_hash() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         repo.expect_get_existing_hashes()
@@ -779,7 +779,7 @@ mod tests {
     #[tokio::test]
     async fn index_notes_vectors_have_correct_dimension() {
         let dim = 8;
-        let embedding = MockEmbeddingProvider::new(dim);
+        let embedding = DeterministicEmbeddingProvider::new(dim);
         let mut repo = MockVectorRepository::new();
 
         repo.expect_get_existing_hashes()
@@ -803,7 +803,7 @@ mod tests {
 
     #[tokio::test]
     async fn index_notes_generates_sparse_vectors() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         repo.expect_get_existing_hashes()
@@ -868,7 +868,7 @@ mod tests {
 
     #[tokio::test]
     async fn index_notes_propagates_vector_store_error() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         repo.expect_get_existing_hashes()
@@ -892,7 +892,7 @@ mod tests {
 
     #[tokio::test]
     async fn delete_notes_delegates_to_repo() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         repo.expect_delete_vectors()
@@ -909,7 +909,7 @@ mod tests {
 
     #[tokio::test]
     async fn delete_notes_empty_input() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         repo.expect_delete_vectors()
@@ -923,7 +923,7 @@ mod tests {
 
     #[tokio::test]
     async fn delete_notes_propagates_error() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         repo.expect_delete_vectors().returning(|_| {
@@ -943,7 +943,7 @@ mod tests {
 
     #[tokio::test]
     async fn index_notes_mixed_new_and_existing() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         let hash1 = crate::embeddings::content_hash("mock/test", "text1");
@@ -986,7 +986,7 @@ mod tests {
 
     #[tokio::test]
     async fn index_notes_preserves_note_metadata_in_payload() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         repo.expect_get_existing_hashes()
@@ -1028,7 +1028,7 @@ mod tests {
 
     #[tokio::test]
     async fn index_notes_reembeds_when_hash_differs() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         let mut existing = HashMap::new();
@@ -1060,7 +1060,7 @@ mod tests {
 
     #[tokio::test]
     async fn full_roundtrip_index_and_delete() {
-        let embedding = MockEmbeddingProvider::new(4);
+        let embedding = DeterministicEmbeddingProvider::new(4);
         let mut repo = MockVectorRepository::new();
 
         repo.expect_get_existing_hashes()

@@ -1,25 +1,25 @@
 use indexer::embeddings::{
-    EmbeddingError, EmbeddingProvider, EmbeddingProviderConfig, MockEmbeddingProvider,
+    DeterministicEmbeddingProvider, EmbeddingError, EmbeddingProvider, EmbeddingProviderConfig,
     content_hash, create_embedding_provider,
 };
 
-// ── MockEmbeddingProvider ──────────────────────────────────────────
+// ── DeterministicEmbeddingProvider ──────────────────────────────────────────
 
 #[test]
 fn mock_provider_model_name() {
-    let provider = MockEmbeddingProvider::new(384);
+    let provider = DeterministicEmbeddingProvider::new(384);
     assert_eq!(provider.model_name(), "mock/test");
 }
 
 #[test]
 fn mock_provider_dimension() {
-    let provider = MockEmbeddingProvider::new(384);
+    let provider = DeterministicEmbeddingProvider::new(384);
     assert_eq!(provider.dimension(), 384);
 }
 
 #[tokio::test]
 async fn mock_provider_embed_returns_correct_count() {
-    let provider = MockEmbeddingProvider::new(384);
+    let provider = DeterministicEmbeddingProvider::new(384);
     let texts = vec!["hello".to_string(), "world".to_string()];
     let result = provider.embed(&texts).await.unwrap();
     assert_eq!(result.len(), 2);
@@ -27,7 +27,7 @@ async fn mock_provider_embed_returns_correct_count() {
 
 #[tokio::test]
 async fn mock_provider_embed_returns_correct_dimension() {
-    let provider = MockEmbeddingProvider::new(128);
+    let provider = DeterministicEmbeddingProvider::new(128);
     let texts = vec!["test".to_string()];
     let result = provider.embed(&texts).await.unwrap();
     assert_eq!(result[0].len(), 128);
@@ -35,7 +35,7 @@ async fn mock_provider_embed_returns_correct_dimension() {
 
 #[tokio::test]
 async fn mock_provider_embed_is_deterministic() {
-    let provider = MockEmbeddingProvider::new(64);
+    let provider = DeterministicEmbeddingProvider::new(64);
     let texts = vec!["deterministic".to_string()];
     let result1 = provider.embed(&texts).await.unwrap();
     let result2 = provider.embed(&texts).await.unwrap();
@@ -44,7 +44,7 @@ async fn mock_provider_embed_is_deterministic() {
 
 #[tokio::test]
 async fn mock_provider_different_texts_produce_different_vectors() {
-    let provider = MockEmbeddingProvider::new(64);
+    let provider = DeterministicEmbeddingProvider::new(64);
     let result1 = provider.embed(&["hello".to_string()]).await.unwrap();
     let result2 = provider.embed(&["world".to_string()]).await.unwrap();
     assert_ne!(result1[0], result2[0]);
@@ -52,7 +52,7 @@ async fn mock_provider_different_texts_produce_different_vectors() {
 
 #[tokio::test]
 async fn mock_provider_values_in_range() {
-    let provider = MockEmbeddingProvider::new(384);
+    let provider = DeterministicEmbeddingProvider::new(384);
     let result = provider.embed(&["range test".to_string()]).await.unwrap();
     for val in &result[0] {
         assert!(
@@ -64,7 +64,7 @@ async fn mock_provider_values_in_range() {
 
 #[tokio::test]
 async fn mock_provider_empty_batch_returns_empty() {
-    let provider = MockEmbeddingProvider::new(64);
+    let provider = DeterministicEmbeddingProvider::new(64);
     let result = provider.embed(&[]).await.unwrap();
     assert!(result.is_empty());
 }
@@ -188,7 +188,7 @@ fn factory_openai_provider_requires_api_key() {
 
 // ── Send + Sync bounds ────────────────────────────────────────────
 
-common::assert_send_sync!(MockEmbeddingProvider, EmbeddingError);
+common::assert_send_sync!(DeterministicEmbeddingProvider, EmbeddingError);
 
 #[test]
 fn embedding_error_http_preserves_status_and_body() {
@@ -224,7 +224,7 @@ fn content_hash_empty_text() {
 
 #[tokio::test]
 async fn mock_provider_large_batch() {
-    let provider = MockEmbeddingProvider::new(16);
+    let provider = DeterministicEmbeddingProvider::new(16);
     let texts: Vec<String> = (0..100).map(|i| format!("text_{i}")).collect();
     let result = provider.embed(&texts).await.unwrap();
     assert_eq!(result.len(), 100);
@@ -235,7 +235,7 @@ async fn mock_provider_large_batch() {
 
 #[tokio::test]
 async fn mock_provider_dimension_1() {
-    let provider = MockEmbeddingProvider::new(1);
+    let provider = DeterministicEmbeddingProvider::new(1);
     let result = provider.embed(&["x".to_string()]).await.unwrap();
     assert_eq!(result[0].len(), 1);
 }
