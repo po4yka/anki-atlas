@@ -365,11 +365,12 @@ where
 
         if should_rerank {
             if let Some(ref reranker) = self.reranker {
-                if let Ok(documents) = self.build_rerank_documents(&results, rerank_top_n).await {
-                    if !documents.is_empty() {
+                match self.build_rerank_documents(&results, rerank_top_n).await {
+                    Ok(documents) if !documents.is_empty() => {
                         match reranker.rerank(query, &documents).await {
                             Ok(scores) => {
-                                let score_map: HashMap<i64, f64> = scores.into_iter().collect();
+                                let score_map: HashMap<i64, f64> =
+                                    scores.into_iter().collect();
                                 for result in &mut results {
                                     if let Some(&score) = score_map.get(&result.note_id) {
                                         result.rerank_score = Some(score);
@@ -383,11 +384,15 @@ where
                                 rerank_applied = true;
                                 rerank_model = Some(reranker.model_name().to_string());
                             }
-                            Err(_) => {
-                                // Degrade gracefully: skip reranking
+                            Err(e) => {
+                                tracing::warn!(error = %e, "reranking failed, falling back to RRF ordering");
                             }
                         }
                     }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "failed to build rerank documents, skipping reranking");
+                    }
+                    _ => {}
                 }
             }
             // No reranker provided: degrade gracefully
