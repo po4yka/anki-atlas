@@ -212,6 +212,9 @@ pub struct CardloopNextArgs {
     /// Filter by loop kind: audit or generation
     #[arg(long)]
     pub loop_kind: Option<String>,
+    /// Filter by cluster ID (slug or kind:batch)
+    #[arg(long)]
+    pub cluster: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -224,6 +227,9 @@ pub struct CardloopResolveArgs {
     /// Attestation: explain what was done
     #[arg(long)]
     pub attest: Option<String>,
+    /// Path to card registry SQLite database (used for verification gate)
+    #[arg(long)]
+    pub registry: Option<std::path::PathBuf>,
 }
 
 #[derive(Args, Debug)]

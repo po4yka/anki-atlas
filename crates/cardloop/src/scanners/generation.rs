@@ -93,6 +93,8 @@ impl Scanner for GenerationScanner<'_> {
                 resolved_at: None,
                 attestation: None,
                 scan_number,
+                cluster_id: None,
+                confidence: Some(0.9),
             });
         }
 

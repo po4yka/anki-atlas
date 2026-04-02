@@ -2,7 +2,7 @@ use std::path::Path;
 
 use card::CardRegistry;
 use cardloop::{
-    CardloopStore, ItemStatus, LoopKind, ProgressionLog, QueueBuilder,
+    CardloopStore, ClusterBuilder, ItemStatus, LoopKind, ProgressionLog, QueueBuilder,
     models::ProgressionEvent,
     scanners::{Scanner, audit::AuditScanner},
 };
@@ -72,6 +72,9 @@ fn cmd_scan(args: &crate::args::CardloopScanArgs) -> anyhow::Result<()> {
     }
 
     // TODO: Run generation scanner when implemented
+
+    // Assign cluster IDs before persisting.
+    let all_items = ClusterBuilder::assign(all_items);
 
     let new_count = all_items.len();
 
@@ -152,7 +155,8 @@ fn cmd_next(args: &crate::args::CardloopNextArgs) -> anyhow::Result<()> {
         })
         .transpose()?;
 
-    let items = QueueBuilder::build(&store, loop_kind, args.count)?;
+    let items =
+        QueueBuilder::build_filtered(&store, loop_kind, args.count, args.cluster.as_deref())?;
 
     if items.is_empty() {
         println!("Queue is empty. Run `cardloop scan` to populate.");
@@ -199,6 +203,37 @@ fn cmd_resolve(args: &crate::args::CardloopResolveArgs) -> anyhow::Result<()> {
 
     let scores_before = store.compute_scores()?;
     let updated = store.transition(&item.id, new_status, args.attest.as_deref())?;
+
+    // Verification gate: if resolving as Fixed and we have a registry, re-run audit
+    // on this card to confirm the issue is actually gone. If the same issue is still
+    // present, reopen the item automatically.
+    if new_status == ItemStatus::Fixed {
+        if let (Some(slug), Some(registry_path)) = (&updated.slug, &args.registry) {
+            let registry = CardRegistry::open(registry_path.to_str().unwrap_or(""))?;
+            let pipeline = default_pipeline();
+            let scanner = AuditScanner::new(&registry, &pipeline);
+            // Use scan_number=0 as a probe — we only care about IDs, not persisting.
+            let probe_items = scanner.scan(0)?;
+            let still_present = probe_items
+                .iter()
+                .any(|i| i.id == updated.id && i.slug.as_deref() == Some(slug.as_str()));
+            if still_present {
+                // Reopen: transition back to Open
+                store.transition(
+                    &updated.id,
+                    ItemStatus::Open,
+                    Some("auto-reopened: issue still detected after resolve"),
+                )?;
+                eprintln!(
+                    "WARNING: Issue still detected for '{}' after resolve. Item {} reopened.",
+                    slug,
+                    &updated.id[..8.min(updated.id.len())]
+                );
+                return Ok(());
+            }
+        }
+    }
+
     let scores_after = store.compute_scores()?;
 
     log.append(&ProgressionEvent {

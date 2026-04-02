@@ -108,17 +108,40 @@ impl Tier {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum IssueKind {
     // -- Audit issues --
-    LowQuality { dimension: String, score: f64 },
-    ValidationError { severity: String, message: String },
-    Duplicate { other_slug: String, similarity: f64 },
-    SplitCandidate { suggested_count: u32 },
+    LowQuality {
+        dimension: String,
+        score: f64,
+    },
+    ValidationError {
+        severity: String,
+        message: String,
+    },
+    /// Near-identical duplicate: similarity >= 0.92.
+    Duplicate {
+        other_slug: String,
+        similarity: f64,
+    },
+    /// Semantic overlap: similarity in [0.82, 0.92). Softer signal than Duplicate.
+    ///
+    /// TODO: Wire analytics crate duplicate detector to populate these.
+    SemanticOverlap {
+        other_slug: String,
+        similarity: f64,
+    },
+    SplitCandidate {
+        suggested_count: u32,
+    },
     StaleContent,
     DeadSkill,
     MissingTags,
 
     // -- Generation issues --
-    UncoveredTopic { topic: String },
-    MissingLanguage { expected: String },
+    UncoveredTopic {
+        topic: String,
+    },
+    MissingLanguage {
+        expected: String,
+    },
 }
 
 /// A single work item in the queue.
@@ -143,6 +166,10 @@ pub struct WorkItem {
     pub attestation: Option<String>,
     /// Which scan number produced this item.
     pub scan_number: u32,
+    /// Cluster this item belongs to (slug-based or kind-based).
+    pub cluster_id: Option<String>,
+    /// Scanner-assigned confidence in [0.0, 1.0]. None = not assessed.
+    pub confidence: Option<f64>,
 }
 
 /// Immutable event for the progression log.
@@ -162,8 +189,10 @@ pub struct ProgressionEvent {
 /// Dashboard score snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScoreSummary {
-    /// Weighted quality average across all cards (0.0-1.0).
+    /// Lenient score: fixed / (fixed + open). WontFix/Skipped excluded.
     pub overall: f64,
+    /// Strict score: fixed / total (wontfix counts against you).
+    pub strict_score: f64,
     /// Mean QualityScore.overall() across scanned cards.
     pub quality_avg: f64,
     pub open_count: usize,
@@ -173,6 +202,9 @@ pub struct ScoreSummary {
     pub by_tier: [usize; 4],
     /// (generation_open, audit_open).
     pub by_loop: (usize, usize),
+    /// FSRS-based health score. Formula: (1 - D/10) * stability_growth_rate * (1 - lapse_rate).
+    /// Always None until anki-reader FSRS integration is wired.
+    pub health_score: Option<f64>,
 }
 
 #[cfg(test)]

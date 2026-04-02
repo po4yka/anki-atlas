@@ -11,18 +11,39 @@ pub struct QueueBuilder;
 impl QueueBuilder {
     /// Build a queue of the next `count` items to work on.
     ///
-    /// The store's `query_open` already returns items sorted by tier then first_seen,
-    /// so we over-fetch slightly to allow for any future filtering, then truncate.
+    /// When `cluster` is `Some`, only items belonging to that cluster are returned.
+    /// Otherwise items are returned in tier+age order up to `count`.
     pub fn build(
         store: &CardloopStore,
         loop_kind: Option<LoopKind>,
         count: usize,
     ) -> Result<Vec<WorkItem>, CardloopError> {
-        let mut items = store.query_open(loop_kind, count * 3)?;
+        Self::build_filtered(store, loop_kind, count, None)
+    }
+
+    /// Build a queue filtered to a specific cluster_id.
+    pub fn build_filtered(
+        store: &CardloopStore,
+        loop_kind: Option<LoopKind>,
+        count: usize,
+        cluster: Option<&str>,
+    ) -> Result<Vec<WorkItem>, CardloopError> {
+        // Over-fetch to accommodate cluster filtering.
+        let fetch_limit = if cluster.is_some() {
+            count * 10
+        } else {
+            count * 3
+        };
+        let mut items = store.query_open(loop_kind, fetch_limit)?;
 
         // Store already sorts by tier ASC, first_seen ASC.
         // Re-sort here to guarantee ordering even if store implementation changes.
         items.sort_by(|a, b| a.tier.cmp(&b.tier).then(a.first_seen.cmp(&b.first_seen)));
+
+        // Filter by cluster if requested.
+        if let Some(cluster_id) = cluster {
+            items.retain(|item| item.cluster_id.as_deref() == Some(cluster_id));
+        }
 
         items.truncate(count);
         Ok(items)
@@ -51,6 +72,8 @@ mod tests {
             resolved_at: None,
             attestation: None,
             scan_number: 1,
+            cluster_id: None,
+            confidence: None,
         }
     }
 
@@ -118,5 +141,33 @@ mod tests {
         let store = CardloopStore::open(":memory:").unwrap();
         let queue = QueueBuilder::build(&store, None, 10).unwrap();
         assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn queue_filters_by_cluster() {
+        let store = CardloopStore::open(":memory:").unwrap();
+
+        let mut item_a1 = make_item(Tier::AutoFix, LoopKind::Audit, 10);
+        item_a1.cluster_id = Some("card-a".into());
+        let mut item_a2 = make_item(Tier::QuickFix, LoopKind::Audit, 5);
+        item_a2.cluster_id = Some("card-a".into());
+        let mut item_b = make_item(Tier::AutoFix, LoopKind::Audit, 8);
+        item_b.cluster_id = Some("card-b".into());
+
+        store.upsert_items(&[item_a1, item_a2, item_b]).unwrap();
+
+        let queue = QueueBuilder::build_filtered(&store, None, 10, Some("card-a")).unwrap();
+        assert_eq!(queue.len(), 2);
+        assert!(
+            queue
+                .iter()
+                .all(|i| i.cluster_id.as_deref() == Some("card-a"))
+        );
+
+        let queue_b = QueueBuilder::build_filtered(&store, None, 10, Some("card-b")).unwrap();
+        assert_eq!(queue_b.len(), 1);
+
+        let queue_none = QueueBuilder::build_filtered(&store, None, 10, Some("card-x")).unwrap();
+        assert!(queue_none.is_empty());
     }
 }

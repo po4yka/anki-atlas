@@ -75,6 +75,8 @@ impl Scanner for AuditScanner<'_> {
                     resolved_at: None,
                     attestation: None,
                     scan_number,
+                    cluster_id: None,
+                    confidence: Some(1.0),
                 });
             }
 
@@ -110,6 +112,8 @@ impl Scanner for AuditScanner<'_> {
                         resolved_at: None,
                         attestation: None,
                         scan_number,
+                        cluster_id: None,
+                        confidence: Some(0.8),
                     });
                 }
             }
@@ -131,6 +135,8 @@ impl Scanner for AuditScanner<'_> {
                     resolved_at: None,
                     attestation: None,
                     scan_number,
+                    cluster_id: None,
+                    confidence: Some(0.9),
                 });
             }
 
@@ -153,6 +159,8 @@ impl Scanner for AuditScanner<'_> {
                     resolved_at: None,
                     attestation: None,
                     scan_number,
+                    cluster_id: None,
+                    confidence: Some(1.0),
                 });
             }
         }

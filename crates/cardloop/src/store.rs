@@ -8,11 +8,11 @@ use crate::error::CardloopError;
 use crate::models::{IssueKind, ItemStatus, LoopKind, ScoreSummary, Tier, WorkItem};
 
 /// Schema version for migration tracking.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Column list for work_items queries (must match row_to_work_item field order).
 const ITEM_COLUMNS: &str = "id, loop_kind, issue_kind_json, tier, status, slug, source_path, \
-     summary, detail, first_seen, resolved_at, attestation, scan_number";
+     summary, detail, first_seen, resolved_at, attestation, scan_number, cluster_id, confidence";
 
 /// SQLite-backed persistent store for cardloop work items.
 pub struct CardloopStore {
@@ -55,6 +55,8 @@ fn row_to_work_item(row: &rusqlite::Row) -> rusqlite::Result<WorkItem> {
         resolved_at: resolved_at_str.as_deref().and_then(parse_datetime),
         attestation: row.get(11)?,
         scan_number: row.get::<_, i64>(12)? as u32,
+        cluster_id: row.get(13)?,
+        confidence: row.get(14)?,
     })
 }
 
@@ -83,8 +85,10 @@ impl CardloopStore {
 
     fn run_migrations(&self) -> Result<(), CardloopError> {
         let version = self.get_schema_version()?;
-        if version == 0 {
-            self.create_schema_v1()?;
+        match version {
+            0 => self.create_schema_v2()?,
+            1 => self.migrate_v1_to_v2()?,
+            _ => {} // Already at current version
         }
         Ok(())
     }
@@ -109,7 +113,7 @@ impl CardloopStore {
         Ok(version)
     }
 
-    fn create_schema_v1(&self) -> Result<(), CardloopError> {
+    fn create_schema_v2(&self) -> Result<(), CardloopError> {
         self.conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS work_items (
@@ -125,7 +129,9 @@ impl CardloopStore {
                 first_seen TEXT NOT NULL,
                 resolved_at TEXT,
                 attestation TEXT,
-                scan_number INTEGER NOT NULL
+                scan_number INTEGER NOT NULL,
+                cluster_id TEXT,
+                confidence REAL
             );
 
             CREATE TABLE IF NOT EXISTS session_meta (
@@ -141,13 +147,15 @@ impl CardloopStore {
                 ON work_items(tier, status);
             CREATE INDEX IF NOT EXISTS idx_work_items_slug
                 ON work_items(slug);
+            CREATE INDEX IF NOT EXISTS idx_work_items_cluster
+                ON work_items(cluster_id);
 
             CREATE TABLE IF NOT EXISTS schema_version (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 version INTEGER NOT NULL
             );
 
-            INSERT OR REPLACE INTO schema_version (id, version) VALUES (1, 1);
+            INSERT OR REPLACE INTO schema_version (id, version) VALUES (1, 2);
             ",
         )?;
 
@@ -164,6 +172,15 @@ impl CardloopStore {
         Ok(())
     }
 
+    fn migrate_v1_to_v2(&self) -> Result<(), CardloopError> {
+        self.conn.execute_batch(
+            "ALTER TABLE work_items ADD COLUMN cluster_id TEXT;
+             ALTER TABLE work_items ADD COLUMN confidence REAL;
+             UPDATE schema_version SET version = 2 WHERE id = 1;",
+        )?;
+        Ok(())
+    }
+
     // --- Work Item CRUD ---
 
     /// Insert or update work items. On conflict (same id), updates status-independent fields.
@@ -174,14 +191,16 @@ impl CardloopStore {
             let mut stmt = tx.prepare(
                 "INSERT INTO work_items (id, loop_kind, issue_kind_json, tier, status,
                     slug, source_path, summary, detail, first_seen, resolved_at,
-                    attestation, scan_number)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                    attestation, scan_number, cluster_id, confidence)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
                  ON CONFLICT(id) DO UPDATE SET
                     issue_kind_json = excluded.issue_kind_json,
                     tier = excluded.tier,
                     summary = excluded.summary,
                     detail = excluded.detail,
-                    scan_number = excluded.scan_number",
+                    scan_number = excluded.scan_number,
+                    cluster_id = excluded.cluster_id,
+                    confidence = excluded.confidence",
             )?;
 
             for item in items {
@@ -204,6 +223,8 @@ impl CardloopStore {
                     resolved_at_str,
                     item.attestation,
                     item.scan_number as i64,
+                    item.cluster_id,
+                    item.confidence,
                 ])?;
             }
         }
@@ -258,6 +279,7 @@ impl CardloopStore {
                 | (ItemStatus::InProgress, ItemStatus::Skipped)
                 | (ItemStatus::InProgress, ItemStatus::WontFix)
                 | (ItemStatus::InProgress, ItemStatus::Open)
+                | (ItemStatus::Fixed, ItemStatus::Open) // auto-reopen after verification gate
         );
 
         if !valid {
@@ -381,9 +403,16 @@ impl CardloopStore {
             |row| row.get(0),
         )?;
 
-        // Overall score: ratio of fixed to total (simple for MVP)
+        // Lenient score: fixed / (fixed + open). WontFix/Skipped excluded from denominator.
+        let overall = if fixed_count + open_count > 0 {
+            fixed_count as f64 / (fixed_count + open_count) as f64
+        } else {
+            1.0
+        };
+
+        // Strict score: fixed / total (wontfix/skipped count against you).
         let total = open_count + fixed_count + skipped_count;
-        let overall = if total > 0 {
+        let strict_score = if total > 0 {
             fixed_count as f64 / total as f64
         } else {
             1.0
@@ -391,12 +420,14 @@ impl CardloopStore {
 
         Ok(ScoreSummary {
             overall,
+            strict_score,
             quality_avg: 0.0, // Populated by scanner, not from DB alone
             open_count: open_count as usize,
             fixed_count: fixed_count as usize,
             skipped_count: skipped_count as usize,
             by_tier,
             by_loop: (gen_open as usize, audit_open as usize),
+            health_score: None, // Requires anki-reader FSRS integration
         })
     }
 
@@ -488,6 +519,8 @@ mod tests {
             resolved_at: None,
             attestation: None,
             scan_number: 1,
+            cluster_id: None,
+            confidence: None,
         }
     }
 
@@ -556,12 +589,30 @@ mod tests {
         let id = item.id.clone();
         store.upsert_items(&[item]).unwrap();
 
-        // Resolve it first
-        store.transition(&id, ItemStatus::Fixed, None).unwrap();
+        // Skip it first
+        store.transition(&id, ItemStatus::Skipped, None).unwrap();
 
-        // Fixed -> Open should fail
-        let result = store.transition(&id, ItemStatus::Open, None);
+        // Skipped -> InProgress should fail (not a valid transition)
+        let result = store.transition(&id, ItemStatus::InProgress, None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn transition_fixed_to_open_reopen() {
+        let store = CardloopStore::open(":memory:").unwrap();
+        let item = make_item(Tier::AutoFix, LoopKind::Audit);
+        let id = item.id.clone();
+        store.upsert_items(&[item]).unwrap();
+
+        store
+            .transition(&id, ItemStatus::Fixed, Some("done"))
+            .unwrap();
+
+        // Fixed -> Open is valid (auto-reopen after verification gate)
+        let reopened = store
+            .transition(&id, ItemStatus::Open, Some("auto-reopened"))
+            .unwrap();
+        assert_eq!(reopened.status, ItemStatus::Open);
     }
 
     #[test]
@@ -620,7 +671,10 @@ mod tests {
         assert_eq!(scores.fixed_count, 1);
         assert_eq!(scores.skipped_count, 0);
         assert_eq!(scores.by_loop, (1, 1)); // gen=1 open, audit=1 open
+        // overall is lenient: fixed/(fixed+open) = 1/3
         assert!((scores.overall - 1.0 / 3.0).abs() < 0.01);
+        // strict_score: fixed/total = 1/3 (same here since no skipped)
+        assert!((scores.strict_score - 1.0 / 3.0).abs() < 0.01);
     }
 
     #[test]
