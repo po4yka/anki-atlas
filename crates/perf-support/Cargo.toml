@@ -11,7 +11,7 @@ database = { path = "../database" }
 indexer = { path = "../indexer" }
 jobs = { path = "../jobs" }
 
-anyhow = { workspace = true }
+thiserror = { workspace = true }
 qdrant-client = { workspace = true }
 rustis = { workspace = true }
 serde = { workspace = true }

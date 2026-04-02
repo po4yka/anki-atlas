@@ -52,6 +52,16 @@ pub const VALID_STATS: &[&str] = &[
     "errors",
 ];
 
+/// Type-safe stat selector for [`ProgressTracker::increment`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncStat {
+    NotesProcessed,
+    CardsCreated,
+    CardsUpdated,
+    CardsDeleted,
+    Errors,
+}
+
 struct ProgressState {
     session_id: String,
     phase: SyncPhase,
@@ -107,17 +117,15 @@ impl ProgressTracker {
         state.updated_at = now_secs();
     }
 
-    /// Increment a named stat by `count`.
-    /// Panics if `stat` is not in VALID_STATS.
-    pub fn increment(&self, stat: &str, count: i32) {
+    /// Increment a stat by `count`.
+    pub fn increment(&self, stat: SyncStat, count: i32) {
         let mut state = self.inner.lock().expect("poisoned lock");
         match stat {
-            "notes_processed" => state.notes_processed += count,
-            "cards_created" => state.cards_created += count,
-            "cards_updated" => state.cards_updated += count,
-            "cards_deleted" => state.cards_deleted += count,
-            "errors" => state.errors += count,
-            _ => panic!("invalid stat name: {stat}"),
+            SyncStat::NotesProcessed => state.notes_processed += count,
+            SyncStat::CardsCreated => state.cards_created += count,
+            SyncStat::CardsUpdated => state.cards_updated += count,
+            SyncStat::CardsDeleted => state.cards_deleted += count,
+            SyncStat::Errors => state.errors += count,
         }
         state.updated_at = now_secs();
     }

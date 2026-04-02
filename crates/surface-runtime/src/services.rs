@@ -5,7 +5,6 @@ use std::sync::Arc;
 use analytics::AnalyticsError;
 use analytics::repository::SqlxAnalyticsRepository;
 use analytics::service::AnalyticsService;
-use anyhow::{Context, Result as AnyhowResult};
 use common::config::{EmbeddingProviderKind, Settings};
 use database::create_pool;
 use indexer::embeddings::{EmbeddingProvider, EmbeddingProviderConfig, create_embedding_provider};
@@ -301,7 +300,7 @@ impl SurfaceServices {
     }
 }
 
-fn build_embedding_config(settings: &Settings) -> AnyhowResult<EmbeddingProviderConfig> {
+fn build_embedding_config(settings: &Settings) -> Result<EmbeddingProviderConfig, SurfaceError> {
     let embedding = settings.embedding();
     let config = match embedding.provider {
         EmbeddingProviderKind::Mock => EmbeddingProviderConfig::Mock {
@@ -311,8 +310,11 @@ fn build_embedding_config(settings: &Settings) -> AnyhowResult<EmbeddingProvider
             model: embedding.model,
             dimension: embedding.dimension as usize,
             batch_size: None,
-            api_key: env::var("OPENAI_API_KEY")
-                .context("OPENAI_API_KEY must be set for the OpenAI embedding provider")?,
+            api_key: env::var("OPENAI_API_KEY").map_err(|_| {
+                SurfaceError::Configuration(
+                    "OPENAI_API_KEY must be set for the OpenAI embedding provider".into(),
+                )
+            })?,
         },
         EmbeddingProviderKind::Google => EmbeddingProviderConfig::Google {
             model: embedding.model,
@@ -320,21 +322,23 @@ fn build_embedding_config(settings: &Settings) -> AnyhowResult<EmbeddingProvider
             batch_size: None,
             api_key: env::var("GEMINI_API_KEY")
                 .or_else(|_| env::var("GOOGLE_API_KEY"))
-                .context(
-                    "GEMINI_API_KEY or GOOGLE_API_KEY must be set for the Google embedding provider",
-                )?,
+                .map_err(|_| {
+                    SurfaceError::Configuration(
+                        "GEMINI_API_KEY or GOOGLE_API_KEY must be set for the Google embedding provider".into(),
+                    )
+                })?,
         },
     };
 
     Ok(config)
 }
 
-async fn load_sync_metadata_value(db: &PgPool, key: &str) -> AnyhowResult<Option<String>> {
+async fn load_sync_metadata_value(db: &PgPool, key: &str) -> Result<Option<String>, SurfaceError> {
     sqlx::query_scalar::<_, String>("SELECT value #>> '{}' FROM sync_metadata WHERE key = $1")
         .bind(key)
         .fetch_optional(db)
         .await
-        .with_context(|| format!("load sync metadata key `{key}`"))
+        .map_err(SurfaceError::Database)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -344,7 +348,9 @@ pub(crate) struct EmbeddingFingerprint {
     pub(crate) vector_schema: String,
 }
 
-async fn load_embedding_fingerprint(db: &PgPool) -> AnyhowResult<Option<EmbeddingFingerprint>> {
+async fn load_embedding_fingerprint(
+    db: &PgPool,
+) -> Result<Option<EmbeddingFingerprint>, SurfaceError> {
     let model = load_sync_metadata_value(db, "embedding_model").await?;
     let dimension = load_sync_metadata_value(db, "embedding_dimension").await?;
     let vector_schema = load_sync_metadata_value(db, "embedding_vector_schema").await?;
@@ -354,8 +360,8 @@ async fn load_embedding_fingerprint(db: &PgPool) -> AnyhowResult<Option<Embeddin
         return Ok(None);
     };
 
-    let dimension = dimension.parse::<usize>().with_context(|| {
-        format!("parse sync metadata `embedding_dimension` value `{dimension}`")
+    let dimension = dimension.parse::<usize>().map_err(|e| {
+        SurfaceError::Configuration(format!("invalid embedding_dimension value: {e}"))
     })?;
 
     Ok(Some(EmbeddingFingerprint {
@@ -463,19 +469,24 @@ fn build_reranker(settings: &Settings) -> Option<SharedReranker> {
 pub async fn build_surface_services(
     settings: &Settings,
     options: BuildSurfaceServicesOptions,
-) -> AnyhowResult<SurfaceServices> {
-    let db = create_pool(&settings.database())
-        .await
-        .context("create PostgreSQL pool for surface runtime")?;
+) -> Result<SurfaceServices, SurfaceError> {
+    let db = create_pool(&settings.database()).await?;
     let embedding: SharedEmbeddingProvider = Arc::from(
-        create_embedding_provider(&build_embedding_config(settings)?)
-            .context("create embedding provider for surface runtime")?,
+        create_embedding_provider(&build_embedding_config(settings)?).map_err(|e| {
+            SurfaceError::Configuration(format!(
+                "create embedding provider for surface runtime: {e}"
+            ))
+        })?,
     );
     let collection_name = "anki_notes";
     let vector_store = Arc::new(
         QdrantRepository::new(&settings.qdrant_url, collection_name)
             .await
-            .context("connect Qdrant repository for surface runtime")?,
+            .map_err(|e| {
+                SurfaceError::Configuration(format!(
+                    "connect Qdrant repository for surface runtime: {e}"
+                ))
+            })?,
     );
     if !options.enable_direct_execution {
         validate_read_only_vector_store(&db, &vector_store, embedding.as_ref()).await?;
@@ -512,7 +523,11 @@ pub async fn build_surface_services(
             u64::from(job_settings.result_ttl_seconds),
         )
         .await
-        .context("create Redis job manager for surface runtime")?,
+        .map_err(|e| {
+            SurfaceError::Configuration(format!(
+                "create Redis job manager for surface runtime: {e}"
+            ))
+        })?,
     ) as Arc<dyn JobManager>;
 
     let mut services = SurfaceServices::new(db.clone(), job_manager, search, analytics);

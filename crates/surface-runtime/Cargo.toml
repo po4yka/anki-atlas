@@ -19,7 +19,6 @@ surface-contracts = { path = "../surface-contracts" }
 taxonomy = { path = "../taxonomy" }
 validation = { path = "../validation" }
 
-anyhow = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
 qdrant-client = { workspace = true }

@@ -1,4 +1,4 @@
-use anki_sync::{ProgressTracker, SyncPhase, VALID_STATS};
+use anki_sync::{ProgressTracker, SyncPhase, VALID_STATS, progress::SyncStat};
 use std::thread;
 
 #[test]
@@ -57,8 +57,8 @@ fn set_total_updates_total_notes() {
 #[test]
 fn increment_notes_processed() {
     let tracker = ProgressTracker::new(None);
-    tracker.increment("notes_processed", 5);
-    tracker.increment("notes_processed", 3);
+    tracker.increment(SyncStat::NotesProcessed, 5);
+    tracker.increment(SyncStat::NotesProcessed, 3);
 
     let snap = tracker.snapshot();
     assert_eq!(snap.notes_processed, 8);
@@ -67,7 +67,7 @@ fn increment_notes_processed() {
 #[test]
 fn increment_cards_created() {
     let tracker = ProgressTracker::new(None);
-    tracker.increment("cards_created", 10);
+    tracker.increment(SyncStat::CardsCreated, 10);
 
     let snap = tracker.snapshot();
     assert_eq!(snap.cards_created, 10);
@@ -76,7 +76,7 @@ fn increment_cards_created() {
 #[test]
 fn increment_cards_updated() {
     let tracker = ProgressTracker::new(None);
-    tracker.increment("cards_updated", 7);
+    tracker.increment(SyncStat::CardsUpdated, 7);
 
     let snap = tracker.snapshot();
     assert_eq!(snap.cards_updated, 7);
@@ -85,7 +85,7 @@ fn increment_cards_updated() {
 #[test]
 fn increment_cards_deleted() {
     let tracker = ProgressTracker::new(None);
-    tracker.increment("cards_deleted", 2);
+    tracker.increment(SyncStat::CardsDeleted, 2);
 
     let snap = tracker.snapshot();
     assert_eq!(snap.cards_deleted, 2);
@@ -94,17 +94,10 @@ fn increment_cards_deleted() {
 #[test]
 fn increment_errors() {
     let tracker = ProgressTracker::new(None);
-    tracker.increment("errors", 1);
+    tracker.increment(SyncStat::Errors, 1);
 
     let snap = tracker.snapshot();
     assert_eq!(snap.errors, 1);
-}
-
-#[test]
-#[should_panic]
-fn increment_panics_on_invalid_stat() {
-    let tracker = ProgressTracker::new(None);
-    tracker.increment("invalid_stat", 1);
 }
 
 #[test]
@@ -135,7 +128,7 @@ fn progress_pct_zero_when_total_is_zero() {
 fn progress_pct_correct_percentage() {
     let tracker = ProgressTracker::new(None);
     tracker.set_total(100);
-    tracker.increment("notes_processed", 25);
+    tracker.increment(SyncStat::NotesProcessed, 25);
 
     assert!((tracker.progress_pct() - 25.0).abs() < f64::EPSILON);
 }
@@ -144,7 +137,7 @@ fn progress_pct_correct_percentage() {
 fn progress_pct_caps_at_100() {
     let tracker = ProgressTracker::new(None);
     tracker.set_total(10);
-    tracker.increment("notes_processed", 20);
+    tracker.increment(SyncStat::NotesProcessed, 20);
 
     assert!(tracker.progress_pct() <= 100.0);
 }
@@ -158,7 +151,7 @@ fn thread_safety_concurrent_increments() {
         let t = tracker.clone();
         handles.push(thread::spawn(move || {
             for _ in 0..100 {
-                t.increment("notes_processed", 1);
+                t.increment(SyncStat::NotesProcessed, 1);
             }
         }));
     }
@@ -176,7 +169,7 @@ fn clone_shares_state() {
     let tracker1 = ProgressTracker::new(Some("shared".to_string()));
     let tracker2 = tracker1.clone();
 
-    tracker1.increment("cards_created", 5);
+    tracker1.increment(SyncStat::CardsCreated, 5);
     let snap = tracker2.snapshot();
     assert_eq!(snap.cards_created, 5);
 }

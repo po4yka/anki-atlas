@@ -1,3 +1,4 @@
+use crate::error::RagError;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -149,13 +150,11 @@ impl DocumentChunker {
     }
 
     /// Read and chunk a single markdown file.
-    pub fn chunk_file(&self, path: &std::path::Path) -> Vec<DocumentChunk> {
-        let content = match std::fs::read_to_string(path) {
-            Ok(c) => c,
-            Err(_) => return Vec::new(),
-        };
+    pub fn chunk_file(&self, path: &std::path::Path) -> Result<Vec<DocumentChunk>, RagError> {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| RagError::Chunking(format!("read {}: {e}", path.display())))?;
         let source = path.to_string_lossy().to_string();
-        self.chunk_content(&content, &source, None)
+        Ok(self.chunk_content(&content, &source, None))
     }
 
     fn make_chunk(
@@ -537,15 +536,15 @@ mod tests {
             .unwrap();
         }
 
-        let chunks = chunker.chunk_file(&file_path);
+        let chunks = chunker.chunk_file(&file_path).unwrap();
         assert!(!chunks.is_empty(), "Expected chunks from file");
     }
 
     #[test]
-    fn chunk_file_nonexistent_returns_empty() {
+    fn chunk_file_nonexistent_returns_error() {
         let chunker = default_chunker();
-        let chunks = chunker.chunk_file(std::path::Path::new("/nonexistent/file.md"));
-        assert!(chunks.is_empty(), "Expected empty for nonexistent file");
+        let result = chunker.chunk_file(std::path::Path::new("/nonexistent/file.md"));
+        assert!(result.is_err(), "Expected error for nonexistent file");
     }
 
     // --- Send + Sync compile-time assertions ---

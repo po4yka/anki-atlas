@@ -9,11 +9,11 @@ pub use surface_runtime::services::{
 pub async fn build_api_services(
     settings: &common::config::Settings,
 ) -> anyhow::Result<ApiServices> {
-    surface_runtime::build_surface_services(
+    Ok(surface_runtime::build_surface_services(
         settings,
         surface_runtime::BuildSurfaceServicesOptions::default(),
     )
-    .await
+    .await?)
 }
 
 pub fn build_app_state(api_settings: ApiSettings, services: ApiServices) -> AppState {

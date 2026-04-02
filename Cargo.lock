@@ -3373,7 +3373,6 @@ dependencies = [
 name = "perf-support"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "common",
  "database",
  "indexer",
@@ -3385,6 +3384,7 @@ dependencies = [
  "sqlx",
  "testcontainers",
  "testcontainers-modules",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
 ]
@@ -5205,7 +5205,6 @@ version = "0.1.0"
 dependencies = [
  "analytics",
  "anki-sync",
- "anyhow",
  "async-trait",
  "chrono",
  "common",

@@ -1,9 +1,11 @@
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
-use anyhow::{Context, Result};
 use common::config::Settings;
+
+mod error;
 use database::run_migrations;
+pub use error::PerfError;
 use indexer::embeddings::{EmbeddingProvider, MockEmbeddingProvider, content_hash};
 use indexer::qdrant::{NotePayload, QdrantRepository, VectorRepository};
 use rustis::commands::{FlushingMode, ServerCommands};
@@ -55,13 +57,15 @@ impl DatasetProfile {
 }
 
 impl FromStr for DatasetProfile {
-    type Err = anyhow::Error;
+    type Err = PerfError;
 
-    fn from_str(value: &str) -> Result<Self> {
+    fn from_str(value: &str) -> Result<Self, PerfError> {
         match value {
             "pr" => Ok(Self::Pr),
             "nightly" => Ok(Self::Nightly),
-            other => anyhow::bail!("unsupported dataset profile: {other}"),
+            other => Err(PerfError::InvalidInput(format!(
+                "unsupported dataset profile: {other}"
+            ))),
         }
     }
 }
@@ -119,13 +123,12 @@ struct SeedState {
     notes: Vec<SeededNote>,
 }
 
-pub async fn reset_and_seed(settings: &Settings, profile: DatasetProfile) -> Result<SeedManifest> {
-    let pool = database::create_pool(&settings.database())
-        .await
-        .context("create PostgreSQL pool for perf seeding")?;
-    run_migrations(&pool)
-        .await
-        .context("run migrations for perf seeding")?;
+pub async fn reset_and_seed(
+    settings: &Settings,
+    profile: DatasetProfile,
+) -> Result<SeedManifest, PerfError> {
+    let pool = database::create_pool(&settings.database()).await?;
+    run_migrations(&pool).await?;
     truncate_runtime_tables(&pool).await?;
     flush_redis(&settings.redis_url).await?;
 
@@ -134,10 +137,11 @@ pub async fn reset_and_seed(settings: &Settings, profile: DatasetProfile) -> Res
     Ok(state.manifest)
 }
 
-pub async fn seed_postgres_only(pool: &PgPool, profile: DatasetProfile) -> Result<SeedManifest> {
-    run_migrations(pool)
-        .await
-        .context("run migrations for Postgres bench fixture")?;
+pub async fn seed_postgres_only(
+    pool: &PgPool,
+    profile: DatasetProfile,
+) -> Result<SeedManifest, PerfError> {
+    run_migrations(pool).await?;
     truncate_runtime_tables(pool).await?;
     Ok(seed_postgres_internal(pool, profile).await?.manifest)
 }
@@ -182,18 +186,22 @@ pub fn profile_manifest(profile: DatasetProfile) -> SeedManifest {
     }
 }
 
-async fn flush_redis(redis_url: &str) -> Result<()> {
+async fn flush_redis(redis_url: &str) -> Result<(), PerfError> {
     let client = jobs::connection::create_redis_client(redis_url)
         .await
-        .context("connect Redis for perf reset")?;
+        .map_err(|e| PerfError::Redis {
+            message: format!("{e}"),
+        })?;
     client
         .flushdb(FlushingMode::Sync)
         .await
-        .context("flush Redis for perf reset")?;
+        .map_err(|e| PerfError::Redis {
+            message: format!("{e}"),
+        })?;
     Ok(())
 }
 
-async fn truncate_runtime_tables(pool: &PgPool) -> Result<()> {
+async fn truncate_runtime_tables(pool: &PgPool) -> Result<(), PerfError> {
     sqlx::query(
         "TRUNCATE TABLE \
             note_topics, \
@@ -207,8 +215,7 @@ async fn truncate_runtime_tables(pool: &PgPool) -> Result<()> {
          RESTART IDENTITY CASCADE",
     )
     .execute(pool)
-    .await
-    .context("truncate runtime tables for perf reset")?;
+    .await?;
 
     sqlx::query(
         "INSERT INTO sync_metadata (key, value) VALUES \
@@ -218,30 +225,23 @@ async fn truncate_runtime_tables(pool: &PgPool) -> Result<()> {
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
     )
     .execute(pool)
-    .await
-    .context("rebuild sync metadata after perf reset")?;
+    .await?;
 
     Ok(())
 }
 
-async fn reset_qdrant(settings: &Settings, notes: &[SeededNote]) -> Result<()> {
-    let vector_store = QdrantRepository::new(&settings.qdrant_url, PERF_COLLECTION_NAME)
-        .await
-        .context("connect Qdrant for perf seeding")?;
+async fn reset_qdrant(settings: &Settings, notes: &[SeededNote]) -> Result<(), PerfError> {
+    let vector_store = QdrantRepository::new(&settings.qdrant_url, PERF_COLLECTION_NAME).await?;
     vector_store
         .recreate_collection(settings.embedding_dimension as usize)
-        .await
-        .context("reset Qdrant collection for perf seeding")?;
+        .await?;
 
     let embedding = MockEmbeddingProvider::new(settings.embedding_dimension as usize);
     let texts = notes
         .iter()
         .map(|note| note.normalized_text.clone())
         .collect::<Vec<_>>();
-    let vectors = embedding
-        .embed(&texts)
-        .await
-        .context("embed perf notes for Qdrant")?;
+    let vectors = embedding.embed(&texts).await?;
     let payloads = notes
         .iter()
         .map(|note| NotePayload {
@@ -267,17 +267,19 @@ async fn reset_qdrant(settings: &Settings, notes: &[SeededNote]) -> Result<()> {
     for (vector_chunk, payload_chunk) in vectors.chunks(256).zip(payloads.chunks(256)) {
         vector_store
             .upsert_vectors(vector_chunk, payload_chunk, None)
-            .await
-            .context("upsert Qdrant perf vectors")?;
+            .await?;
     }
 
     Ok(())
 }
 
-async fn seed_postgres_internal(pool: &PgPool, profile: DatasetProfile) -> Result<SeedState> {
+async fn seed_postgres_internal(
+    pool: &PgPool,
+    profile: DatasetProfile,
+) -> Result<SeedState, PerfError> {
     let spec = profile.spec();
     let topics = build_topics(spec);
-    let mut txn = pool.begin().await.context("begin perf seed transaction")?;
+    let mut txn = pool.begin().await?;
 
     let deck_count = 12_i64;
     for deck_id in 0..deck_count {
@@ -286,8 +288,7 @@ async fn seed_postgres_internal(pool: &PgPool, profile: DatasetProfile) -> Resul
             .bind(100_i64 + deck_id)
             .bind(&name)
             .execute(&mut *txn)
-            .await
-            .with_context(|| format!("insert deck {name}"))?;
+            .await?;
     }
 
     let mut topic_handles = Vec::with_capacity(topics.len());
@@ -299,8 +300,7 @@ async fn seed_postgres_internal(pool: &PgPool, profile: DatasetProfile) -> Resul
         .bind(&topic.label)
         .bind(&topic.description)
         .fetch_one(&mut *txn)
-        .await
-        .with_context(|| format!("insert topic {}", topic.path))?;
+        .await?;
 
         topic_handles.push(TopicHandle {
             topic_id: row.0,
@@ -397,8 +397,7 @@ async fn seed_postgres_internal(pool: &PgPool, profile: DatasetProfile) -> Resul
         .bind(note_id)
         .bind(0_i32)
         .execute(&mut *txn)
-        .await
-        .with_context(|| format!("insert note {note_id}"))?;
+        .await?;
 
         let card_id = 10_000_i64 + note_id;
         sqlx::query(
@@ -414,8 +413,7 @@ async fn seed_postgres_internal(pool: &PgPool, profile: DatasetProfile) -> Resul
         .bind(reps)
         .bind(note_id)
         .execute(&mut *txn)
-        .await
-        .with_context(|| format!("insert card for note {note_id}"))?;
+        .await?;
 
         sqlx::query(
             "INSERT INTO card_stats \
@@ -427,8 +425,7 @@ async fn seed_postgres_internal(pool: &PgPool, profile: DatasetProfile) -> Resul
         .bind(fail_rate)
         .bind(i64::from(reps) * 850_i64)
         .execute(&mut *txn)
-        .await
-        .with_context(|| format!("insert card stats for note {note_id}"))?;
+        .await?;
 
         let confidence = 0.68_f32 + (idx % 5) as f32 * 0.04_f32;
         sqlx::query(
@@ -439,8 +436,7 @@ async fn seed_postgres_internal(pool: &PgPool, profile: DatasetProfile) -> Resul
         .bind(confidence)
         .bind("perf_seed")
         .execute(&mut *txn)
-        .await
-        .with_context(|| format!("assign leaf topic to note {note_id}"))?;
+        .await?;
 
         if idx % 5 == 0 {
             sqlx::query(
@@ -451,8 +447,7 @@ async fn seed_postgres_internal(pool: &PgPool, profile: DatasetProfile) -> Resul
             .bind((confidence - 0.08_f32).max(0.5_f32))
             .bind("perf_seed")
             .execute(&mut *txn)
-            .await
-            .with_context(|| format!("assign root topic to note {note_id}"))?;
+            .await?;
         }
 
         notes.push(SeededNote {
@@ -480,8 +475,7 @@ async fn seed_postgres_internal(pool: &PgPool, profile: DatasetProfile) -> Resul
             .bind(format!("sparse topic {}", leaf.path))
             .bind(synthetic_note_id)
             .execute(&mut *txn)
-            .await
-            .with_context(|| format!("insert sparse note for {}", leaf.path))?;
+            .await?;
 
             sqlx::query(
                 "INSERT INTO note_topics (note_id, topic_id, confidence, method) VALUES ($1, $2, 0.55, $3)",
@@ -490,12 +484,11 @@ async fn seed_postgres_internal(pool: &PgPool, profile: DatasetProfile) -> Resul
             .bind(sparse_root.topic_id)
             .bind("perf_seed")
             .execute(&mut *txn)
-            .await
-            .context("assign sparse root topic")?;
+            .await?;
         }
     }
 
-    txn.commit().await.context("commit perf seed transaction")?;
+    txn.commit().await?;
 
     Ok(SeedState {
         manifest: profile_manifest(profile),
@@ -542,8 +535,8 @@ fn build_topics(spec: DatasetSpec) -> Vec<TopicSeed> {
     topics
 }
 
-pub fn manifest_json(manifest: &SeedManifest) -> Result<String> {
-    serde_json::to_string_pretty(manifest).context("serialize perf seed manifest")
+pub fn manifest_json(manifest: &SeedManifest) -> Result<String, PerfError> {
+    Ok(serde_json::to_string_pretty(manifest)?)
 }
 
 pub fn summarize_requests(
