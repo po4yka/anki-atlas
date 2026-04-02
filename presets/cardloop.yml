@@ -1,0 +1,116 @@
+event_loop:
+  starting_event: "loop.start"
+  max_iterations: 100
+  max_runtime_seconds: 7200  # 2 hours
+  checkpoint_interval: 1
+  completion_promise: "loop.complete"
+
+cli:
+  backend: "claude"
+
+skills:
+  enabled: true
+  dirs:
+    - ".claude/skills"
+
+hats:
+  scanner:
+    name: "Scanner"
+    description: "Scan cards, check queue status, and decide whether to continue or complete"
+    triggers:
+      - "loop.start"
+      - "batch.done"
+    publishes:
+      - "scan.done"
+      - "loop.complete"
+    instructions: |
+      ## Scanner
+
+      You are the Scanner. Your job is to run the cardloop scan, check the queue,
+      and decide whether there is work to do.
+
+      ### Process
+
+      1. Run the scan to populate or refresh the queue:
+         ```bash
+         anki-atlas cardloop scan --registry .cardloop/cards.db
+         ```
+
+      2. Check the score dashboard:
+         ```bash
+         anki-atlas cardloop status --json
+         ```
+
+      3. Parse `open_count` from the JSON output.
+
+      4. **If `open_count == 0`**:
+         - Print: "Queue is empty. All items resolved."
+         - Publish event: `loop.complete`
+
+      5. **If `open_count > 0`**:
+         - Print: "Queue has <open_count> open items. Proceeding."
+         - Publish event: `scan.done`
+
+  worker:
+    name: "Worker"
+    description: "Get the next work item, fix the card, resolve, and commit"
+    triggers:
+      - "scan.done"
+    publishes:
+      - "batch.done"
+    instructions: |
+      ## Worker
+
+      You are the Worker. Your job is to take one item from the queue, fix the
+      underlying card, resolve the item with attestation, and commit.
+
+      ### Process
+
+      1. Get the next highest-priority item:
+         ```bash
+         anki-atlas cardloop next -n 1
+         ```
+         Note the `id`, `slug`, `summary`, `issue_kind`, and `tier`.
+
+      2. Fix the card based on `issue_kind`:
+
+         **MissingTags**:
+         - Run `anki-atlas tag-audit <file> --fix` if a file path is available.
+         - Or update tags via MCP: `mcp__anki__tagActions` (replaceTags).
+
+         **LowQuality**:
+         - Edit the card file directly to improve the question/answer.
+         - Or use MCP: `mcp__anki__updateNoteFields` with updated fields.
+         - Validate: `anki-atlas validate <file> --quality`
+
+         **DeadSkill**:
+         - Transform syntax-recall questions to "when/why" reasoning questions.
+         - If transformation is not viable, suspend via MCP and tag `skill::dead`.
+
+         **Duplicate / SemanticOverlap**:
+         - Check `--cluster` for related items.
+         - Score > 0.95: delete the weaker card via MCP (`mcp__anki__deleteNotes`).
+         - Score 0.85-0.95: add `[Context]` prefix to distinguish.
+         - Score 0.70-0.85: add cross-reference note, keep both.
+
+         **UncoveredTopic**:
+         - Generate cards: `anki-atlas generate path/to/source-note.md`
+
+      3. Resolve the item (with verification gate):
+         ```bash
+         anki-atlas cardloop resolve <id> \
+           --status fixed \
+           --attest "<what was changed and why>" \
+           --registry .cardloop/cards.db
+         ```
+         If skipping: `--status skipped --attest "<reason>"`
+         If won't fix: `--status wontfix --attest "<reason>"`
+
+      4. Git commit:
+         ```bash
+         git add -A && git commit -m "improve(cards): <slug> - <action>"
+         ```
+         Where `<action>` is one of: fixed-tags, rewrote-question, merged-duplicate,
+         deleted-duplicate, transformed-dead, suspended-dead, generated-cards, skipped.
+
+      5. Publish event: `batch.done`

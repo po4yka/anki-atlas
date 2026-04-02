@@ -6,6 +6,16 @@ allowed-tools: [Read, mcp__anki__findNotes, mcp__anki__notesInfo, mcp__anki__upd
 
 # Improve Anki Card
 
+## Queue-Driven Mode (Preferred)
+
+If the cardloop system is initialized (`.cardloop/` directory exists), prefer the queue-driven workflow:
+
+1. Check the queue: `anki-atlas cardloop next -n 1`
+2. If items exist, work on the next item instead of ad-hoc searching
+3. After fixing, resolve: `anki-atlas cardloop resolve <id> --attest "..." --registry .cardloop/cards.db`
+
+This ensures systematic coverage and prevents re-work on already-addressed cards.
+
 ## Task
 
 Analyze an existing Anki card against best practices and suggest (or apply) improvements.
