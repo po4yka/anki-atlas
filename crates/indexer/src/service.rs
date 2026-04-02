@@ -218,16 +218,15 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         let model_name = self.embedding.model_name();
 
         // Compute hashes once and determine which notes need embedding
-        let mut to_embed: Vec<(&MultimodalNoteForIndexing, String)> = Vec::new();
+        let mut to_embed: Vec<(&MultimodalNoteForIndexing, String, Vec<ChunkForIndexing>)> =
+            Vec::new();
         let mut skipped = 0usize;
 
         for (idx, note) in notes.iter().enumerate() {
-            let effective_chunks = note_effective_chunks(note);
+            let chunks = note_effective_chunks(note);
             let new_hash = embeddings::content_hash_parts(
                 model_name,
-                effective_chunks
-                    .iter()
-                    .map(|chunk| chunk.hash_component.as_str()),
+                chunks.iter().map(|chunk| chunk.hash_component.as_str()),
             );
             if !force_reindex {
                 if let Some(existing) = existing_hashes.get(&note.note.note_id) {
@@ -244,7 +243,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
                     }
                 }
             }
-            to_embed.push((note, new_hash));
+            to_embed.push((note, new_hash, chunks));
             emit_progress(
                 progress.as_ref(),
                 IndexProgressStage::Diffing,
@@ -272,10 +271,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         }
 
         // Embed texts
-        let chunk_count: usize = to_embed
-            .iter()
-            .map(|(note, _)| note_effective_chunks(note).len())
-            .sum();
+        let chunk_count: usize = to_embed.iter().map(|(_, _, chunks)| chunks.len()).sum();
         emit_progress(
             progress.as_ref(),
             IndexProgressStage::Embedding,
@@ -288,8 +284,8 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         );
         let embedding_inputs: Vec<EmbeddingInput> = to_embed
             .iter()
-            .flat_map(|(note, _)| note_effective_chunks(note))
-            .map(|chunk| chunk.embedding_input)
+            .flat_map(|(_, _, chunks)| chunks)
+            .map(|chunk| chunk.embedding_input.clone())
             .collect();
         let vectors = self.embedding.embed_inputs(&embedding_inputs).await?;
         emit_progress(
@@ -305,10 +301,8 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
 
         let payloads: Vec<NotePayload> = to_embed
             .iter()
-            .flat_map(|(note, hash)| {
-                note_effective_chunks(note)
-                    .into_iter()
-                    .map(move |chunk| NotePayload {
+            .flat_map(|(note, hash, chunks)| {
+                chunks.iter().map(move |chunk| NotePayload {
                         note_id: note.note.note_id,
                         model_id: note.note.model_id,
                         deck_names: note.note.deck_names.clone(),
@@ -318,13 +312,13 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
                         lapses: note.note.lapses,
                         reps: note.note.reps,
                         fail_rate: note.note.fail_rate,
-                        chunk_id: chunk.chunk_id,
-                        chunk_kind: chunk.chunk_kind,
-                        modality: chunk.modality,
-                        source_field: chunk.source_field,
-                        asset_rel_path: chunk.asset_rel_path,
-                        mime_type: chunk.mime_type,
-                        preview_label: chunk.preview_label,
+                        chunk_id: chunk.chunk_id.clone(),
+                        chunk_kind: chunk.chunk_kind.clone(),
+                        modality: chunk.modality.clone(),
+                        source_field: chunk.source_field.clone(),
+                        asset_rel_path: chunk.asset_rel_path.clone(),
+                        mime_type: chunk.mime_type.clone(),
+                        preview_label: chunk.preview_label.clone(),
                     })
             })
             .collect();
@@ -332,7 +326,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
         // Generate sparse vectors.
         let sparse_vectors: Vec<_> = to_embed
             .iter()
-            .flat_map(|(note, _)| note_effective_chunks(note))
+            .flat_map(|(_, _, chunks)| chunks)
             .map(|chunk| {
                 chunk
                     .sparse_text
