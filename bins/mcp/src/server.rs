@@ -119,8 +119,7 @@ impl AnkiAtlasServer {
             limit: input.limit,
             semantic_weight: 1.0,
             fts_weight: 1.0,
-            semantic_only: input.semantic_only,
-            fts_only: input.fts_only,
+            search_mode: input.search_mode.into(),
             rerank_override: None,
             rerank_top_n_override: None,
         };

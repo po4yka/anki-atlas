@@ -58,7 +58,7 @@ fn search_request_deserializes_nested_filters() {
             "tags": ["ownership"]
         },
         "limit": 10,
-        "semantic_only": true,
+        "search_mode": "semantic_only",
         "rerank_override": true,
         "rerank_top_n_override": 5
     }))
@@ -66,7 +66,7 @@ fn search_request_deserializes_nested_filters() {
 
     assert_eq!(req.query, "ownership");
     assert_eq!(req.limit, 10);
-    assert!(req.semantic_only);
+    assert_eq!(req.search_mode, SearchMode::SemanticOnly);
     assert_eq!(req.rerank_override, Some(true));
     assert_eq!(req.rerank_top_n_override, Some(5));
     assert_eq!(
@@ -76,19 +76,24 @@ fn search_request_deserializes_nested_filters() {
 }
 
 #[test]
-fn search_request_validation_rejects_conflicting_modes() {
-    let req = SearchRequest {
-        query: "ownership".into(),
-        filters: None,
-        limit: 50,
-        semantic_weight: 1.0,
-        fts_weight: 1.0,
-        semantic_only: true,
-        fts_only: true,
-        rerank_override: None,
-        rerank_top_n_override: None,
-    };
-    assert!(req.validate().is_err());
+fn search_request_validation_accepts_all_search_modes() {
+    for mode in [
+        SearchMode::Hybrid,
+        SearchMode::SemanticOnly,
+        SearchMode::FtsOnly,
+    ] {
+        let req = SearchRequest {
+            query: "ownership".into(),
+            filters: None,
+            limit: 50,
+            semantic_weight: 1.0,
+            fts_weight: 1.0,
+            search_mode: mode,
+            rerank_override: None,
+            rerank_top_n_override: None,
+        };
+        req.validate().expect("all search modes should be valid");
+    }
 }
 
 #[test]
@@ -103,8 +108,7 @@ fn search_request_preserves_valid_filter_payload() {
         limit: 15,
         semantic_weight: 0.8,
         fts_weight: 0.2,
-        semantic_only: false,
-        fts_only: true,
+        search_mode: SearchMode::FtsOnly,
         rerank_override: Some(false),
         rerank_top_n_override: Some(3),
     };
@@ -113,7 +117,7 @@ fn search_request_preserves_valid_filter_payload() {
 
     assert_eq!(request.query, "lifetimes");
     assert_eq!(request.limit, 15);
-    assert!(request.fts_only);
+    assert_eq!(request.search_mode, SearchMode::FtsOnly);
     assert_eq!(request.rerank_override, Some(false));
     let filters = request.filters.expect("filters");
     assert_eq!(filters.deck_names, Some(vec!["Rust".into()]));

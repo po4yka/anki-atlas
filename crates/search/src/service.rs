@@ -11,6 +11,16 @@ use crate::fusion::{FusionStats, SearchResult};
 use crate::repository::SearchReadRepository;
 use crate::reranker::Reranker;
 
+/// Controls which retrieval sources are used during search.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchMode {
+    #[default]
+    Hybrid,
+    SemanticOnly,
+    FtsOnly,
+}
+
 /// Parameters for a hybrid search query.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchParams {
@@ -23,9 +33,7 @@ pub struct SearchParams {
     #[serde(default = "default_weight")]
     pub fts_weight: f64,
     #[serde(default)]
-    pub semantic_only: bool,
-    #[serde(default)]
-    pub fts_only: bool,
+    pub search_mode: SearchMode,
     pub rerank_override: Option<bool>,
     pub rerank_top_n_override: Option<usize>,
 }
@@ -64,8 +72,7 @@ impl Default for SearchParams {
             limit: default_limit(),
             semantic_weight: default_weight(),
             fts_weight: default_weight(),
-            semantic_only: false,
-            fts_only: false,
+            search_mode: SearchMode::Hybrid,
             rerank_override: None,
             rerank_top_n_override: None,
         }
@@ -263,8 +270,7 @@ where
             limit,
             semantic_weight,
             fts_weight,
-            semantic_only,
-            fts_only,
+            search_mode,
             rerank_override,
             rerank_top_n_override,
         } = *params;
@@ -276,7 +282,7 @@ where
 
         // Semantic search
         let mut semantic_matches = HashMap::<i64, indexer::qdrant::SemanticSearchHit>::new();
-        let semantic_results = if fts_only {
+        let semantic_results = if search_mode == SearchMode::FtsOnly {
             vec![]
         } else {
             let raw = self
@@ -316,7 +322,7 @@ where
             lexical_fallback_used,
             query_suggestions,
             autocomplete_suggestions,
-        ) = if semantic_only {
+        ) = if search_mode == SearchMode::SemanticOnly {
             (vec![], LexicalMode::None, false, vec![], vec![])
         } else {
             let lexical = self
@@ -343,8 +349,16 @@ where
             &fts_results,
             60,
             limit,
-            if fts_only { 0.0 } else { semantic_weight },
-            if semantic_only { 0.0 } else { fts_weight },
+            if search_mode == SearchMode::FtsOnly {
+                0.0
+            } else {
+                semantic_weight
+            },
+            if search_mode == SearchMode::SemanticOnly {
+                0.0
+            } else {
+                fts_weight
+            },
         );
 
         for result in &mut results {
@@ -496,7 +510,7 @@ mod tests {
     fn params_semantic_only(query: &str) -> SearchParams {
         SearchParams {
             query: query.to_string(),
-            semantic_only: true,
+            search_mode: SearchMode::SemanticOnly,
             ..Default::default()
         }
     }
@@ -504,7 +518,7 @@ mod tests {
     fn params_fts_only(query: &str) -> SearchParams {
         SearchParams {
             query: query.to_string(),
-            fts_only: true,
+            search_mode: SearchMode::FtsOnly,
             ..Default::default()
         }
     }
@@ -745,7 +759,7 @@ mod tests {
             _min_score: f32,
             _deck_names: Option<&[String]>,
             _tags: Option<&[String]>,
-        ) -> Result<Vec<(i64, f32)>, indexer::qdrant::VectorStoreError> {
+        ) -> Result<Vec<indexer::qdrant::ScoredNote>, indexer::qdrant::VectorStoreError> {
             Ok(vec![])
         }
 
@@ -1217,7 +1231,7 @@ mod tests {
         let result = svc
             .search(&SearchParams {
                 query: "test query".into(),
-                semantic_only: true,
+                search_mode: SearchMode::SemanticOnly,
                 rerank_override: Some(true),
                 ..Default::default()
             })
@@ -1244,7 +1258,7 @@ mod tests {
         let result = svc
             .search(&SearchParams {
                 query: "test query".into(),
-                semantic_only: true,
+                search_mode: SearchMode::SemanticOnly,
                 rerank_override: Some(false),
                 ..Default::default()
             })
@@ -1290,7 +1304,7 @@ mod tests {
             .search(&SearchParams {
                 query: "test query".into(),
                 limit: 5,
-                semantic_only: true,
+                search_mode: SearchMode::SemanticOnly,
                 ..Default::default()
             })
             .await
@@ -1320,7 +1334,7 @@ mod tests {
         let result = svc
             .search(&SearchParams {
                 query: "rust ownership".into(),
-                semantic_only: true,
+                search_mode: SearchMode::SemanticOnly,
                 ..Default::default()
             })
             .await

@@ -65,6 +65,15 @@ impl SearchFilterInput {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchMode {
+    #[default]
+    Hybrid,
+    SemanticOnly,
+    FtsOnly,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SearchRequest {
     pub query: String,
@@ -77,9 +86,7 @@ pub struct SearchRequest {
     #[serde(default = "default_weight")]
     pub fts_weight: f64,
     #[serde(default)]
-    pub semantic_only: bool,
-    #[serde(default)]
-    pub fts_only: bool,
+    pub search_mode: SearchMode,
     pub rerank_override: Option<bool>,
     pub rerank_top_n_override: Option<usize>,
 }
@@ -92,8 +99,7 @@ impl Default for SearchRequest {
             limit: default_limit(),
             semantic_weight: default_weight(),
             fts_weight: default_weight(),
-            semantic_only: false,
-            fts_only: false,
+            search_mode: SearchMode::Hybrid,
             rerank_override: None,
             rerank_top_n_override: None,
         }
@@ -104,9 +110,6 @@ impl SearchRequest {
     pub fn validate(&self) -> Result<(), String> {
         if self.limit == 0 {
             return Err("limit must be greater than 0".to_string());
-        }
-        if self.semantic_only && self.fts_only {
-            return Err("semantic_only and fts_only cannot both be true".to_string());
         }
         if self.semantic_weight < 0.0 {
             return Err("semantic_weight must be non-negative".to_string());
@@ -225,8 +228,8 @@ pub struct ChunkSearchResponse {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChunkSearchRequest, FusionStats, LexicalMode, NoteId, SearchFilterInput, SearchRequest,
-        SearchResponse, SearchResultItem,
+        ChunkSearchRequest, FusionStats, LexicalMode, NoteId, SearchFilterInput, SearchMode,
+        SearchRequest, SearchResponse, SearchResultItem,
     };
 
     #[test]
@@ -244,16 +247,27 @@ mod tests {
     }
 
     #[test]
-    fn search_request_validates_exclusive_modes() {
-        let error = SearchRequest {
-            semantic_only: true,
-            fts_only: true,
+    fn search_request_validates_search_mode_is_represented() {
+        // SemanticOnly and FtsOnly are valid individual modes — no invalid state possible
+        let req_semantic = SearchRequest {
+            search_mode: SearchMode::SemanticOnly,
             ..Default::default()
-        }
-        .validate()
-        .expect_err("expected validation error");
+        };
+        req_semantic
+            .validate()
+            .expect("SemanticOnly should be valid");
 
-        assert_eq!(error, "semantic_only and fts_only cannot both be true");
+        let req_fts = SearchRequest {
+            search_mode: SearchMode::FtsOnly,
+            ..Default::default()
+        };
+        req_fts.validate().expect("FtsOnly should be valid");
+
+        let req_hybrid = SearchRequest {
+            search_mode: SearchMode::Hybrid,
+            ..Default::default()
+        };
+        req_hybrid.validate().expect("Hybrid should be valid");
     }
 
     #[test]

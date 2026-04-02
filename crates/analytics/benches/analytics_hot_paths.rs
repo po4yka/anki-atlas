@@ -50,7 +50,7 @@ impl indexer::qdrant::VectorRepository for DuplicateVectorRepo {
         _query_sparse: Option<&indexer::qdrant::SparseVector>,
         _limit: usize,
         _filters: &indexer::qdrant::SearchFilters,
-    ) -> Result<Vec<(i64, f32)>, indexer::qdrant::VectorStoreError> {
+    ) -> Result<Vec<indexer::qdrant::ScoredNote>, indexer::qdrant::VectorStoreError> {
         Ok(Vec::new())
     }
 
@@ -61,7 +61,7 @@ impl indexer::qdrant::VectorRepository for DuplicateVectorRepo {
         _min_score: f32,
         _deck_names: Option<&[String]>,
         _tags: Option<&[String]>,
-    ) -> Result<Vec<(i64, f32)>, indexer::qdrant::VectorStoreError> {
+    ) -> Result<Vec<indexer::qdrant::ScoredNote>, indexer::qdrant::VectorStoreError> {
         if !(1..=75).contains(&note_id) {
             return Ok(Vec::new());
         }
@@ -70,7 +70,10 @@ impl indexer::qdrant::VectorRepository for DuplicateVectorRepo {
         let cluster_start = cluster_index * 3 + 1;
         Ok((cluster_start..cluster_start + 3)
             .filter(|other| *other != note_id)
-            .map(|other| (other, 0.97))
+            .map(|other| indexer::qdrant::ScoredNote {
+                note_id: other,
+                score: 0.97,
+            })
             .collect())
     }
 

@@ -7,6 +7,18 @@ use crate::AnalyticsError;
 use crate::coverage::{TopicCoverage, TopicGap, WeakNote};
 use crate::taxonomy::Taxonomy;
 
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ActiveNote {
+    pub note_id: i64,
+    pub normalized_text: String,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct NoteExcerptAndTags {
+    pub excerpt: String,
+    pub tags: Vec<String>,
+}
+
 #[async_trait]
 #[cfg_attr(test, mockall::automock)]
 pub trait AnalyticsRepository: Send + Sync {
@@ -35,7 +47,7 @@ pub trait AnalyticsRepository: Send + Sync {
         &self,
         batch_size: usize,
         offset: i64,
-    ) -> Result<Vec<(i64, String)>, AnalyticsError>;
+    ) -> Result<Vec<ActiveNote>, AnalyticsError>;
     async fn upsert_note_topic_assignment(
         &self,
         note_id: i64,
@@ -49,7 +61,7 @@ pub trait AnalyticsRepository: Send + Sync {
     async fn fetch_note_excerpt_and_tags(
         &self,
         note_id: i64,
-    ) -> Result<(String, Vec<String>), AnalyticsError>;
+    ) -> Result<NoteExcerptAndTags, AnalyticsError>;
     async fn fetch_note_deck_names(&self, note_id: i64) -> Result<Vec<String>, AnalyticsError>;
 }
 
@@ -106,7 +118,7 @@ impl AnalyticsRepository for SqlxAnalyticsRepository {
         &self,
         batch_size: usize,
         offset: i64,
-    ) -> Result<Vec<(i64, String)>, AnalyticsError> {
+    ) -> Result<Vec<ActiveNote>, AnalyticsError> {
         sqlx::query_as(
             "SELECT note_id, normalized_text FROM notes \
              WHERE deleted_at IS NULL \
@@ -170,9 +182,9 @@ impl AnalyticsRepository for SqlxAnalyticsRepository {
     async fn fetch_note_excerpt_and_tags(
         &self,
         note_id: i64,
-    ) -> Result<(String, Vec<String>), AnalyticsError> {
+    ) -> Result<NoteExcerptAndTags, AnalyticsError> {
         sqlx::query_as(
-            "SELECT LEFT(n.normalized_text, 200), COALESCE(n.tags, '{}') \
+            "SELECT LEFT(n.normalized_text, 200) AS excerpt, COALESCE(n.tags, '{}') AS tags \
              FROM notes n WHERE n.note_id = $1",
         )
         .bind(note_id)

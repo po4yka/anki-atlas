@@ -379,8 +379,7 @@ async fn search_forwards_filters_and_returns_typed_response() {
         .withf(|params| {
             params.query == "ownership"
                 && params.limit == 10
-                && params.semantic_only
-                && !params.fts_only
+                && params.search_mode == surface_contracts::search::SearchMode::SemanticOnly
                 && params.rerank_override == Some(true)
                 && params.rerank_top_n_override == Some(10)
                 && params
@@ -401,8 +400,7 @@ async fn search_forwards_filters_and_returns_typed_response() {
         limit: 10,
         semantic_weight: 1.0,
         fts_weight: 0.5,
-        semantic_only: true,
-        fts_only: false,
+        search_mode: surface_contracts::search::SearchMode::SemanticOnly,
         rerank_override: Some(true),
         rerank_top_n_override: Some(10),
     };
@@ -425,12 +423,11 @@ async fn search_forwards_filters_and_returns_typed_response() {
 }
 
 #[tokio::test]
-async fn search_rejects_invalid_flags_with_400() {
+async fn search_rejects_invalid_limit_with_400() {
     let app = test_app(MockJobs::new(), MockSearch::new(), MockAnalytics::new());
     let body = json!({
         "query": "ownership",
-        "semantic_only": true,
-        "fts_only": true
+        "limit": 0
     });
     let resp = app
         .oneshot(

@@ -13,7 +13,7 @@ use search::fts::SearchFilters;
 use search::fusion::{FusionStats as SearchFusionStats, SearchResult};
 use search::service::{
     ChunkSearchHit as SearchChunkSearchHit, ChunkSearchParams, ChunkSearchResult,
-    HybridSearchResult, SearchParams,
+    HybridSearchResult, SearchMode as ServiceSearchMode, SearchParams,
 };
 use surface_contracts::analytics::{
     DuplicateCluster, DuplicateDetail, DuplicateStats, GapKind, LabelingStats, TaxonomyLoadSummary,
@@ -21,8 +21,16 @@ use surface_contracts::analytics::{
 };
 use surface_contracts::search::{
     ChunkSearchHit, ChunkSearchRequest, ChunkSearchResponse, FusionStats, LexicalMode,
-    SearchFilterInput, SearchRequest, SearchResponse, SearchResultItem,
+    SearchFilterInput, SearchMode, SearchRequest, SearchResponse, SearchResultItem,
 };
+
+fn map_search_mode(mode: SearchMode) -> ServiceSearchMode {
+    match mode {
+        SearchMode::Hybrid => ServiceSearchMode::Hybrid,
+        SearchMode::SemanticOnly => ServiceSearchMode::SemanticOnly,
+        SearchMode::FtsOnly => ServiceSearchMode::FtsOnly,
+    }
+}
 
 pub fn build_search_params(request: &SearchRequest) -> Result<SearchParams, SearchError> {
     request.validate().map_err(SearchError::InvalidRequest)?;
@@ -33,8 +41,7 @@ pub fn build_search_params(request: &SearchRequest) -> Result<SearchParams, Sear
         limit: request.limit,
         semantic_weight: request.semantic_weight,
         fts_weight: request.fts_weight,
-        semantic_only: request.semantic_only,
-        fts_only: request.fts_only,
+        search_mode: map_search_mode(request.search_mode),
         rerank_override: request.rerank_override,
         rerank_top_n_override: request.rerank_top_n_override,
     })

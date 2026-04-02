@@ -3,7 +3,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
-use surface_contracts::search::SearchResponse;
+use surface_contracts::search::{SearchMode, SearchResponse};
 
 use crate::usecases::SearchRequest;
 
@@ -53,8 +53,7 @@ pub(crate) struct SearchState {
     pub(crate) deck_names: String,
     pub(crate) tags: String,
     pub(crate) limit: String,
-    pub(crate) semantic_only: bool,
-    pub(crate) fts_only: bool,
+    pub(crate) search_mode: SearchMode,
     pub(crate) verbose: bool,
     pub(crate) selected_field: SearchField,
     pub(crate) editing: bool,
@@ -70,8 +69,7 @@ impl Default for SearchState {
             deck_names: String::new(),
             tags: String::new(),
             limit: "10".to_string(),
-            semantic_only: false,
-            fts_only: false,
+            search_mode: SearchMode::Hybrid,
             verbose: false,
             selected_field: SearchField::Query,
             editing: false,
@@ -107,9 +105,22 @@ impl SearchState {
             deck_names: split_csv(&self.deck_names),
             tags: split_csv(&self.tags),
             limit: self.limit.parse::<usize>().unwrap_or(10).max(1),
-            semantic_only: self.semantic_only,
-            fts_only: self.fts_only,
+            search_mode: self.search_mode,
         }
+    }
+
+    pub(crate) fn toggle_semantic(&mut self) {
+        self.search_mode = match self.search_mode {
+            SearchMode::SemanticOnly => SearchMode::Hybrid,
+            _ => SearchMode::SemanticOnly,
+        };
+    }
+
+    pub(crate) fn toggle_fts(&mut self) {
+        self.search_mode = match self.search_mode {
+            SearchMode::FtsOnly => SearchMode::Hybrid,
+            _ => SearchMode::FtsOnly,
+        };
     }
 }
 
@@ -190,11 +201,17 @@ fn search_form_lines(state: &SearchState, content_focused: bool) -> Vec<Line<'st
         ),
         field_line(
             state.selected_field == SearchField::Semantic && content_focused,
-            format!("semantic only: {}", checkbox(state.semantic_only)),
+            format!(
+                "semantic only: {}",
+                checkbox(state.search_mode == SearchMode::SemanticOnly)
+            ),
         ),
         field_line(
             state.selected_field == SearchField::Fts && content_focused,
-            format!("fts only: {}", checkbox(state.fts_only)),
+            format!(
+                "fts only: {}",
+                checkbox(state.search_mode == SearchMode::FtsOnly)
+            ),
         ),
         field_line(
             state.selected_field == SearchField::Verbose && content_focused,

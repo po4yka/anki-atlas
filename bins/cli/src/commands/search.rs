@@ -1,3 +1,4 @@
+use surface_contracts::search::SearchMode;
 use surface_runtime::SurfaceServices;
 
 use crate::args::SearchArgs;
@@ -23,6 +24,13 @@ pub async fn run(args: &SearchArgs, services: &SurfaceServices) -> anyhow::Resul
         .await?;
         output::print_chunk_search_result(&result, args.verbose);
     } else {
+        let search_mode = if args.semantic {
+            SearchMode::SemanticOnly
+        } else if args.fts {
+            SearchMode::FtsOnly
+        } else {
+            SearchMode::Hybrid
+        };
         let result = usecases::search(
             handles,
             SearchRequest {
@@ -30,8 +38,7 @@ pub async fn run(args: &SearchArgs, services: &SurfaceServices) -> anyhow::Resul
                 deck_names: args.deck_names.clone(),
                 tags: args.tags.clone(),
                 limit: args.limit,
-                semantic_only: args.semantic,
-                fts_only: args.fts,
+                search_mode,
             },
         )
         .await?;

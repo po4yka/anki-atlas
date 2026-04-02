@@ -169,12 +169,15 @@ impl<E: indexer::embeddings::EmbeddingProvider> TopicLabeler<E> {
                 break;
             }
 
-            let texts: Vec<String> = notes.iter().map(|(_, text)| text.clone()).collect();
+            let texts: Vec<String> = notes
+                .iter()
+                .map(|note| note.normalized_text.clone())
+                .collect();
             let note_embeddings = self.embedding.embed(&texts).await?;
 
-            for ((note_id, _), note_emb) in notes.iter().zip(note_embeddings.iter()) {
+            for (note, note_emb) in notes.iter().zip(note_embeddings.iter()) {
                 let assignments = rank_topics_for_note(
-                    *note_id,
+                    note.note_id,
                     note_emb,
                     &topic_embedding_index,
                     min_confidence,

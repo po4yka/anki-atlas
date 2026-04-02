@@ -74,6 +74,13 @@ pub struct SemanticSearchHit {
     pub score: f32,
 }
 
+/// A note ID paired with its similarity score, returned from vector search.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScoredNote {
+    pub note_id: i64,
+    pub score: f32,
+}
+
 /// Sparse vector (indices + values) for BM25-style retrieval.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SparseVector {
@@ -158,14 +165,14 @@ pub trait VectorRepository: Send + Sync {
         filters: &SearchFilters,
     ) -> Result<Vec<SemanticSearchHit>, VectorStoreError>;
 
-    /// Semantic search. Returns (note_id, score) pairs.
+    /// Semantic search. Returns scored notes sorted by descending score.
     async fn search(
         &self,
         query_vector: &[f32],
         query_sparse: Option<&SparseVector>,
         limit: usize,
         filters: &SearchFilters,
-    ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+    ) -> Result<Vec<ScoredNote>, VectorStoreError> {
         let mut by_note = HashMap::<i64, f32>::new();
         for hit in self
             .search_chunks(
@@ -185,8 +192,15 @@ pub trait VectorRepository: Send + Sync {
                 })
                 .or_insert(hit.score);
         }
-        let mut results: Vec<_> = by_note.into_iter().collect();
-        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let mut results: Vec<ScoredNote> = by_note
+            .into_iter()
+            .map(|(note_id, score)| ScoredNote { note_id, score })
+            .collect();
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(limit);
         Ok(results)
     }
@@ -199,7 +213,7 @@ pub trait VectorRepository: Send + Sync {
         min_score: f32,
         deck_names: Option<&[String]>,
         tags: Option<&[String]>,
-    ) -> Result<Vec<(i64, f32)>, VectorStoreError>;
+    ) -> Result<Vec<ScoredNote>, VectorStoreError>;
 
     /// Close connection / cleanup.
     async fn close(&self) -> Result<(), VectorStoreError>;
@@ -262,7 +276,7 @@ where
         query_sparse: Option<&SparseVector>,
         limit: usize,
         filters: &SearchFilters,
-    ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+    ) -> Result<Vec<ScoredNote>, VectorStoreError> {
         (*self)
             .search(query_vector, query_sparse, limit, filters)
             .await
@@ -275,7 +289,7 @@ where
         min_score: f32,
         deck_names: Option<&[String]>,
         tags: Option<&[String]>,
-    ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+    ) -> Result<Vec<ScoredNote>, VectorStoreError> {
         (*self)
             .find_similar_to_note(note_id, limit, min_score, deck_names, tags)
             .await
@@ -343,7 +357,7 @@ where
         query_sparse: Option<&SparseVector>,
         limit: usize,
         filters: &SearchFilters,
-    ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+    ) -> Result<Vec<ScoredNote>, VectorStoreError> {
         (**self)
             .search(query_vector, query_sparse, limit, filters)
             .await
@@ -356,7 +370,7 @@ where
         min_score: f32,
         deck_names: Option<&[String]>,
         tags: Option<&[String]>,
-    ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+    ) -> Result<Vec<ScoredNote>, VectorStoreError> {
         (**self)
             .find_similar_to_note(note_id, limit, min_score, deck_names, tags)
             .await
@@ -424,7 +438,7 @@ where
         query_sparse: Option<&SparseVector>,
         limit: usize,
         filters: &SearchFilters,
-    ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+    ) -> Result<Vec<ScoredNote>, VectorStoreError> {
         (**self)
             .search(query_vector, query_sparse, limit, filters)
             .await
@@ -437,7 +451,7 @@ where
         min_score: f32,
         deck_names: Option<&[String]>,
         tags: Option<&[String]>,
-    ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+    ) -> Result<Vec<ScoredNote>, VectorStoreError> {
         (**self)
             .find_similar_to_note(note_id, limit, min_score, deck_names, tags)
             .await
@@ -919,7 +933,7 @@ impl VectorRepository for QdrantRepository {
         min_score: f32,
         deck_names: Option<&[String]>,
         tags: Option<&[String]>,
-    ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+    ) -> Result<Vec<ScoredNote>, VectorStoreError> {
         let Some(query_vector) = self.find_text_primary_vector(note_id).await? else {
             return Ok(Vec::new());
         };
@@ -940,7 +954,7 @@ impl VectorRepository for QdrantRepository {
 
         Ok(similar_notes
             .into_iter()
-            .filter(|(other_note_id, score)| *other_note_id != note_id && *score >= min_score)
+            .filter(|hit| hit.note_id != note_id && hit.score >= min_score)
             .take(limit)
             .collect())
     }

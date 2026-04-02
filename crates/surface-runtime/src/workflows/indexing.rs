@@ -679,7 +679,7 @@ impl VectorRepository for UnsupportedVectorRepository {
         _query_sparse: Option<&SparseVector>,
         _limit: usize,
         _filters: &indexer::qdrant::SearchFilters,
-    ) -> Result<Vec<(i64, f32)>, indexer::qdrant::VectorStoreError> {
+    ) -> Result<Vec<indexer::qdrant::ScoredNote>, indexer::qdrant::VectorStoreError> {
         Err(indexer::qdrant::VectorStoreError::Client(
             "vector repository is not configured".to_string(),
         ))
@@ -692,7 +692,7 @@ impl VectorRepository for UnsupportedVectorRepository {
         _min_score: f32,
         _deck_names: Option<&[String]>,
         _tags: Option<&[String]>,
-    ) -> Result<Vec<(i64, f32)>, indexer::qdrant::VectorStoreError> {
+    ) -> Result<Vec<indexer::qdrant::ScoredNote>, indexer::qdrant::VectorStoreError> {
         Err(indexer::qdrant::VectorStoreError::Client(
             "vector repository is not configured".to_string(),
         ))

@@ -7,7 +7,7 @@ use surface_contracts::analytics::{
 };
 pub use surface_contracts::search::{
     ChunkSearchHit as ChunkSearchHitItem, ChunkSearchRequest, ChunkSearchResponse, FusionStats,
-    LexicalMode, SearchFilterInput as SearchFiltersDto, SearchRequest, SearchResponse,
+    LexicalMode, SearchFilterInput as SearchFiltersDto, SearchMode, SearchRequest, SearchResponse,
     SearchResultItem,
 };
 

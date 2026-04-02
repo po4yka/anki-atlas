@@ -155,8 +155,8 @@ fn handle_search_input(app: &mut AppState, key: KeyEvent, tx: &mpsc::UnboundedSe
             SearchField::Query | SearchField::Decks | SearchField::Tags | SearchField::Limit => {
                 app.search.editing = true;
             }
-            SearchField::Semantic => app.search.semantic_only = !app.search.semantic_only,
-            SearchField::Fts => app.search.fts_only = !app.search.fts_only,
+            SearchField::Semantic => app.search.toggle_semantic(),
+            SearchField::Fts => app.search.toggle_fts(),
             SearchField::Verbose => app.search.verbose = !app.search.verbose,
             SearchField::Run => {
                 if let Some(handles) = app.runtime_handles() {
@@ -173,8 +173,8 @@ fn handle_search_input(app: &mut AppState, key: KeyEvent, tx: &mpsc::UnboundedSe
             SearchField::Results => {}
         },
         KeyCode::Char(' ') => match app.search.selected_field {
-            SearchField::Semantic => app.search.semantic_only = !app.search.semantic_only,
-            SearchField::Fts => app.search.fts_only = !app.search.fts_only,
+            SearchField::Semantic => app.search.toggle_semantic(),
+            SearchField::Fts => app.search.toggle_fts(),
             SearchField::Verbose => app.search.verbose = !app.search.verbose,
             _ => {}
         },

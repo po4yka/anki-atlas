@@ -7,8 +7,8 @@ use surface_contracts::analytics::{
 };
 use surface_contracts::search::{
     ChunkSearchRequest as SurfaceChunkSearchRequest, ChunkSearchResponse,
-    SearchFilterInput as SurfaceSearchFilterInput, SearchRequest as SurfaceSearchRequest,
-    SearchResponse,
+    SearchFilterInput as SurfaceSearchFilterInput, SearchMode,
+    SearchRequest as SurfaceSearchRequest, SearchResponse,
 };
 use surface_runtime::{
     GeneratePreview, GeneratePreviewService, IndexExecutionSummary, ObsidianScanPreview,
@@ -24,8 +24,7 @@ pub struct SearchRequest {
     pub deck_names: Vec<String>,
     pub tags: Vec<String>,
     pub limit: usize,
-    pub semantic_only: bool,
-    pub fts_only: bool,
+    pub search_mode: SearchMode,
 }
 
 #[derive(Debug, Clone)]
@@ -136,8 +135,7 @@ pub async fn search(
         limit: request.limit,
         semantic_weight: 1.0,
         fts_weight: 1.0,
-        semantic_only: request.semantic_only,
-        fts_only: request.fts_only,
+        search_mode: request.search_mode,
         rerank_override: None,
         rerank_top_n_override: None,
     };

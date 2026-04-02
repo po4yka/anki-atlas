@@ -35,6 +35,29 @@ pub enum OutputMode {
     Json,
 }
 
+/// Search mode for controlling which retrieval sources are used.
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum McpSearchMode {
+    /// Use both semantic and FTS sources with RRF fusion (default).
+    #[default]
+    Hybrid,
+    /// Use semantic (vector) search only.
+    SemanticOnly,
+    /// Use full-text search only.
+    FtsOnly,
+}
+
+impl From<McpSearchMode> for surface_contracts::search::SearchMode {
+    fn from(mode: McpSearchMode) -> Self {
+        match mode {
+            McpSearchMode::Hybrid => surface_contracts::search::SearchMode::Hybrid,
+            McpSearchMode::SemanticOnly => surface_contracts::search::SearchMode::SemanticOnly,
+            McpSearchMode::FtsOnly => surface_contracts::search::SearchMode::FtsOnly,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct SearchToolInput {
     #[serde(default)]
@@ -47,9 +70,7 @@ pub struct SearchToolInput {
     #[serde(default = "default_limit")]
     pub limit: usize,
     #[serde(default)]
-    pub semantic_only: bool,
-    #[serde(default)]
-    pub fts_only: bool,
+    pub search_mode: McpSearchMode,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]

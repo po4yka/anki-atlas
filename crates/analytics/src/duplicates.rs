@@ -95,19 +95,19 @@ impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
                 }
             };
 
-            for (other_note_id, score) in similar_notes {
-                if other_note_id == note_id {
+            for hit in similar_notes {
+                if hit.note_id == note_id {
                     continue;
                 }
 
-                let note_pair = if note_id < other_note_id {
-                    (note_id, other_note_id)
+                let note_pair = if note_id < hit.note_id {
+                    (note_id, hit.note_id)
                 } else {
-                    (other_note_id, note_id)
+                    (hit.note_id, note_id)
                 };
 
-                pair_scores.entry(note_pair).or_insert(f64::from(score));
-                union_find.union(note_id, other_note_id);
+                pair_scores.entry(note_pair).or_insert(f64::from(hit.score));
+                union_find.union(note_id, hit.note_id);
             }
         }
 
@@ -159,7 +159,7 @@ impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
     async fn fetch_note_excerpt_and_tags(
         &self,
         note_id: i64,
-    ) -> Result<(String, Vec<String>), AnalyticsError> {
+    ) -> Result<crate::repository::NoteExcerptAndTags, AnalyticsError> {
         self.repository.fetch_note_excerpt_and_tags(note_id).await
     }
 
@@ -177,13 +177,12 @@ impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
         }
 
         let representative_id = self.select_representative_id(member_note_ids).await?;
-        let (representative_text, representative_tags) =
-            self.fetch_note_excerpt_and_tags(representative_id).await?;
+        let representative_result = self.fetch_note_excerpt_and_tags(representative_id).await?;
         let representative_deck_names = self.fetch_note_deck_names(representative_id).await?;
 
         let mut duplicate_details = Vec::new();
         let mut cluster_deck_names = representative_deck_names.clone();
-        let mut cluster_tags = representative_tags.clone();
+        let mut cluster_tags = representative_result.tags.clone();
 
         for &note_id in member_note_ids {
             if note_id == representative_id {
@@ -196,18 +195,17 @@ impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
                 (note_id, representative_id)
             };
             let similarity = pair_scores.get(&note_pair).copied().unwrap_or(0.0);
-            let (duplicate_text, duplicate_tags) =
-                self.fetch_note_excerpt_and_tags(note_id).await?;
+            let duplicate_result = self.fetch_note_excerpt_and_tags(note_id).await?;
             let duplicate_deck_names = self.fetch_note_deck_names(note_id).await?;
 
             cluster_deck_names.extend(duplicate_deck_names.clone());
-            cluster_tags.extend(duplicate_tags.clone());
+            cluster_tags.extend(duplicate_result.tags.clone());
             duplicate_details.push(DuplicateDetail {
                 note_id,
                 similarity,
-                text: duplicate_text,
+                text: duplicate_result.excerpt,
                 deck_names: duplicate_deck_names,
-                tags: duplicate_tags,
+                tags: duplicate_result.tags,
             });
         }
 
@@ -218,7 +216,7 @@ impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
 
         Ok(Some(DuplicateCluster {
             representative_id,
-            representative_text,
+            representative_text: representative_result.excerpt,
             duplicates: duplicate_details,
             deck_names: cluster_deck_names,
             tags: cluster_tags,
@@ -331,7 +329,7 @@ mod tests {
     use crate::repository::SqlxAnalyticsRepository;
     use async_trait::async_trait;
     use indexer::qdrant::{
-        NotePayload, SearchFilters, SemanticSearchHit, SparseVector, VectorRepository,
+        NotePayload, ScoredNote, SearchFilters, SemanticSearchHit, SparseVector, VectorRepository,
         VectorStoreError,
     };
     use sqlx::postgres::PgPoolOptions;
@@ -343,7 +341,7 @@ mod tests {
 
     #[derive(Debug, Clone)]
     enum StubResult {
-        Ok(Vec<(i64, f32)>),
+        Ok(Vec<ScoredNote>),
         ClientError(&'static str),
         ConnectionError(&'static str),
     }
@@ -399,7 +397,7 @@ mod tests {
             _min_score: f32,
             _deck_names: Option<&[String]>,
             _tags: Option<&[String]>,
-        ) -> Result<Vec<(i64, f32)>, VectorStoreError> {
+        ) -> Result<Vec<ScoredNote>, VectorStoreError> {
             match self.results.get(&note_id).cloned() {
                 Some(StubResult::Ok(results)) => Ok(results),
                 Some(StubResult::ClientError(message)) => {
@@ -528,7 +526,13 @@ mod tests {
         let detector = DuplicateDetector::new(
             StubVectorRepo {
                 results: HashMap::from([
-                    (1, StubResult::Ok(vec![(2, 0.995)])),
+                    (
+                        1,
+                        StubResult::Ok(vec![ScoredNote {
+                            note_id: 2,
+                            score: 0.995,
+                        }]),
+                    ),
                     (2, StubResult::ClientError("transient qdrant error")),
                 ]),
             },

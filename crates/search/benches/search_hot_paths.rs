@@ -6,19 +6,24 @@ use perf_support::{DatasetProfile, SeedManifest, seed_postgres_only};
 use search::error::SearchError;
 use search::fts::SearchFilters;
 use search::reranker::Reranker;
-use search::service::{SearchParams, SearchService};
+use search::service::{SearchMode, SearchParams, SearchService};
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::ContainerAsync;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
 struct BenchVectorRepo {
-    results: Vec<(i64, f32)>,
+    results: Vec<indexer::qdrant::ScoredNote>,
 }
 
 impl BenchVectorRepo {
     fn new(results: Vec<(i64, f32)>) -> Self {
-        Self { results }
+        Self {
+            results: results
+                .into_iter()
+                .map(|(note_id, score)| indexer::qdrant::ScoredNote { note_id, score })
+                .collect(),
+        }
     }
 }
 
@@ -60,7 +65,7 @@ impl indexer::qdrant::VectorRepository for BenchVectorRepo {
         _query_sparse: Option<&indexer::qdrant::SparseVector>,
         _limit: usize,
         _filters: &indexer::qdrant::SearchFilters,
-    ) -> Result<Vec<(i64, f32)>, indexer::qdrant::VectorStoreError> {
+    ) -> Result<Vec<indexer::qdrant::ScoredNote>, indexer::qdrant::VectorStoreError> {
         Ok(self.results.clone())
     }
 
@@ -71,7 +76,7 @@ impl indexer::qdrant::VectorRepository for BenchVectorRepo {
         _min_score: f32,
         _deck_names: Option<&[String]>,
         _tags: Option<&[String]>,
-    ) -> Result<Vec<(i64, f32)>, indexer::qdrant::VectorStoreError> {
+    ) -> Result<Vec<indexer::qdrant::ScoredNote>, indexer::qdrant::VectorStoreError> {
         Ok(Vec::new())
     }
 
@@ -136,7 +141,7 @@ async fn setup_fixture() -> BenchFixture {
 
 fn build_service(
     pool: sqlx::PgPool,
-    vector_results: Vec<(i64, f32)>,
+    vector_results: Vec<indexer::qdrant::ScoredNote>,
     reranker: Option<BenchReranker>,
 ) -> SearchService<
     indexer::embeddings::DeterministicEmbeddingProvider,
@@ -161,12 +166,54 @@ fn bench_search_hot_paths(c: &mut Criterion) {
     let fts_only_service = build_service(fixture.pool.clone(), Vec::new(), None);
     let hybrid_service = build_service(
         fixture.pool.clone(),
-        vec![(1, 0.99), (2, 0.95), (3, 0.91), (4, 0.88), (5, 0.84)],
+        vec![
+            indexer::qdrant::ScoredNote {
+                note_id: 1,
+                score: 0.99,
+            },
+            indexer::qdrant::ScoredNote {
+                note_id: 2,
+                score: 0.95,
+            },
+            indexer::qdrant::ScoredNote {
+                note_id: 3,
+                score: 0.91,
+            },
+            indexer::qdrant::ScoredNote {
+                note_id: 4,
+                score: 0.88,
+            },
+            indexer::qdrant::ScoredNote {
+                note_id: 5,
+                score: 0.84,
+            },
+        ],
         None,
     );
     let rerank_service = build_service(
         fixture.pool.clone(),
-        vec![(1, 0.99), (2, 0.95), (3, 0.91), (4, 0.88), (5, 0.84)],
+        vec![
+            indexer::qdrant::ScoredNote {
+                note_id: 1,
+                score: 0.99,
+            },
+            indexer::qdrant::ScoredNote {
+                note_id: 2,
+                score: 0.95,
+            },
+            indexer::qdrant::ScoredNote {
+                note_id: 3,
+                score: 0.91,
+            },
+            indexer::qdrant::ScoredNote {
+                note_id: 4,
+                score: 0.88,
+            },
+            indexer::qdrant::ScoredNote {
+                note_id: 5,
+                score: 0.84,
+            },
+        ],
         Some(BenchReranker),
     );
 
@@ -175,7 +222,7 @@ fn bench_search_hot_paths(c: &mut Criterion) {
     group.bench_function("fts_only", |b| {
         let params = SearchParams {
             query: query.clone(),
-            fts_only: true,
+            search_mode: SearchMode::FtsOnly,
             ..Default::default()
         };
         b.to_async(&runtime).iter(|| async {
@@ -196,7 +243,7 @@ fn bench_search_hot_paths(c: &mut Criterion) {
     group.bench_function("semantic_only", |b| {
         let params = SearchParams {
             query: query.clone(),
-            semantic_only: true,
+            search_mode: SearchMode::SemanticOnly,
             ..Default::default()
         };
         b.to_async(&runtime).iter(|| async {
