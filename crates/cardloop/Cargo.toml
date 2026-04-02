@@ -11,6 +11,8 @@ validation = { path = "../validation" }
 taxonomy = { path = "../taxonomy" }
 obsidian = { path = "../obsidian" }
 common = { path = "../common" }
+anki-reader = { path = "../anki-reader" }
+llm = { path = "../llm" }
 sha2 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -19,6 +21,9 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 rusqlite = { workspace = true }
 tracing = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tokio = { workspace = true }

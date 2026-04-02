@@ -142,9 +142,11 @@ dependencies = [
  "crossterm",
  "database",
  "dotenvy",
+ "llm",
  "predicates",
  "ratatui",
  "serde_json",
+ "sha2",
  "surface-contracts",
  "surface-runtime",
  "tempfile",
@@ -749,9 +751,12 @@ dependencies = [
 name = "cardloop"
 version = "0.1.0"
 dependencies = [
+ "anki-reader",
+ "async-trait",
  "card",
  "chrono",
  "common",
+ "llm",
  "obsidian",
  "rusqlite",
  "serde",
@@ -760,6 +765,7 @@ dependencies = [
  "taxonomy",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
  "tracing",
  "uuid",
  "validation",

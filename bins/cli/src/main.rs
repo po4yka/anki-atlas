@@ -25,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Validate(args) => commands::validate::run(args).await,
         Commands::ObsidianSync(args) => commands::obsidian_sync::run(args).await,
         Commands::TagAudit(args) => commands::tag_audit::run(args).await,
-        Commands::Cardloop(args) => commands::cardloop::run(args),
+        Commands::Cardloop(args) => commands::cardloop::run(args).await,
         Commands::Sync(_)
         | Commands::Index(_)
         | Commands::Search(_)

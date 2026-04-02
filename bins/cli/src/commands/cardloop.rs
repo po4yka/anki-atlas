@@ -1,10 +1,12 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use card::CardRegistry;
 use cardloop::{
-    CardloopStore, ClusterBuilder, ItemStatus, LoopKind, ProgressionLog, QueueBuilder,
+    AsyncScanner, CardloopStore, ClusterBuilder, IssueKind, ItemStatus, LoopKind, ProgressionLog,
+    QueueBuilder, Tier,
     models::ProgressionEvent,
-    scanners::{Scanner, audit::AuditScanner},
+    scanners::{Scanner, audit::AuditScanner, fsrs::FsrsScanner, llm_review::LlmReviewScanner},
 };
 use chrono::Utc;
 use validation::{
@@ -35,9 +37,9 @@ fn default_pipeline() -> ValidationPipeline {
     ])
 }
 
-pub fn run(args: &CardloopArgs) -> anyhow::Result<()> {
+pub async fn run(args: &CardloopArgs) -> anyhow::Result<()> {
     match &args.command {
-        CardloopCommand::Scan(scan_args) => cmd_scan(scan_args),
+        CardloopCommand::Scan(scan_args) => cmd_scan(scan_args).await,
         CardloopCommand::Status(status_args) => cmd_status(status_args),
         CardloopCommand::Next(next_args) => cmd_next(next_args),
         CardloopCommand::Resolve(resolve_args) => cmd_resolve(resolve_args),
@@ -45,7 +47,7 @@ pub fn run(args: &CardloopArgs) -> anyhow::Result<()> {
     }
 }
 
-fn cmd_scan(args: &crate::args::CardloopScanArgs) -> anyhow::Result<()> {
+async fn cmd_scan(args: &crate::args::CardloopScanArgs) -> anyhow::Result<()> {
     let store = CardloopStore::open(&store_path())?;
     let log = ProgressionLog::open(&progression_path())?;
 
@@ -69,6 +71,62 @@ fn cmd_scan(args: &crate::args::CardloopScanArgs) -> anyhow::Result<()> {
         let scanner = AuditScanner::new(&registry, &pipeline);
         let items = scanner.scan(scan_number)?;
         all_items.extend(items);
+    }
+
+    // Run FSRS scanner when an Anki collection path is provided
+    if let Some(collection_path) = &args.anki_collection {
+        let registry_path = args.registry.to_str().unwrap_or("");
+        let registry = CardRegistry::open(registry_path)?;
+        let scanner = FsrsScanner::new(&registry, collection_path.as_path());
+        match scanner.scan(scan_number) {
+            Ok(items) => {
+                println!("FSRS scanner: {} items found", items.len());
+                all_items.extend(items);
+            }
+            Err(e) => {
+                eprintln!("WARNING: FSRS scanner failed: {e}");
+            }
+        }
+    }
+
+    // Run LLM review scanner when requested
+    if args.llm_review {
+        let registry_path = args.registry.to_str().unwrap_or("");
+        let registry = CardRegistry::open(registry_path)?;
+        let cards = registry.find_cards(None, None, None)?;
+
+        match build_llm_provider() {
+            Ok((provider, model_name)) => {
+                let scanner = LlmReviewScanner::new(cards, provider, model_name);
+                match scanner.scan(scan_number).await {
+                    Ok(items) => {
+                        println!("LLM review scanner: {} items found", items.len());
+                        all_items.extend(items);
+                    }
+                    Err(e) => {
+                        eprintln!("WARNING: LLM review scanner failed: {e}");
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("WARNING: LLM provider not configured, skipping LLM review: {e}");
+            }
+        }
+    }
+
+    // Run duplicate detection when requested (requires Qdrant + PostgreSQL)
+    if args.detect_duplicates {
+        match run_duplicate_detection(args.dup_threshold, scan_number, &args.registry).await {
+            Ok(items) => {
+                println!("Duplicate detection: {} items found", items.len());
+                all_items.extend(items);
+            }
+            Err(e) => {
+                eprintln!(
+                    "WARNING: Duplicate detection failed (ensure DB + Qdrant are running): {e}"
+                );
+            }
+        }
     }
 
     // TODO: Run generation scanner when implemented
@@ -110,6 +168,157 @@ fn cmd_scan(args: &crate::args::CardloopScanArgs) -> anyhow::Result<()> {
     println!("  Score:          {:.1}%", scores_after.overall * 100.0);
 
     Ok(())
+}
+
+/// Build an LLM provider from environment variables.
+///
+/// Checks OPENROUTER_API_KEY first, then falls back to Ollama.
+fn build_llm_provider() -> anyhow::Result<(Box<dyn llm::provider::LlmProvider>, String)> {
+    use llm::factory::{ProviderConfig, create_provider};
+    use llm::ollama::OllamaConfig;
+    use llm::openrouter::OpenRouterConfig;
+
+    if let Ok(api_key) = std::env::var("OPENROUTER_API_KEY") {
+        if !api_key.is_empty() {
+            let config = ProviderConfig::OpenRouter(OpenRouterConfig {
+                api_key,
+                ..OpenRouterConfig::default()
+            });
+            let provider = create_provider(config)
+                .map_err(|e| anyhow::anyhow!("OpenRouter provider error: {e}"))?;
+            let model =
+                std::env::var("LLM_MODEL").unwrap_or_else(|_| "openai/gpt-4o-mini".to_string());
+            return Ok((provider, model));
+        }
+    }
+
+    // Fall back to Ollama
+    let base_url =
+        std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let config = ProviderConfig::Ollama(OllamaConfig {
+        base_url,
+        ..OllamaConfig::default()
+    });
+    let provider =
+        create_provider(config).map_err(|e| anyhow::anyhow!("Ollama provider error: {e}"))?;
+    let model = std::env::var("LLM_MODEL").unwrap_or_else(|_| "llama3.2".to_string());
+    Ok((provider, model))
+}
+
+/// Run duplicate detection via the surface runtime and emit WorkItems.
+async fn run_duplicate_detection(
+    threshold: f64,
+    scan_number: u32,
+    registry_path: &std::path::Path,
+) -> anyhow::Result<Vec<cardloop::WorkItem>> {
+    use crate::runtime::{ExecutionMode, bootstrap_runtime};
+    use cardloop::models::WorkItem;
+
+    let runtime = bootstrap_runtime(ExecutionMode::ReadOnly).await?;
+
+    // find_duplicates returns (clusters, stats)
+    let (clusters, _stats) = runtime
+        .services
+        .analytics
+        .find_duplicates(threshold, 100, None, None)
+        .await?;
+
+    // Build anki_note_id -> slug map from registry for cross-referencing
+    let registry = CardRegistry::open(registry_path.to_str().unwrap_or(""))?;
+    let entries = registry.find_cards(None, None, None)?;
+    let mut note_id_to_slug: HashMap<i64, String> = HashMap::new();
+    let mut slug_to_source: HashMap<String, String> = HashMap::new();
+    for entry in &entries {
+        if let Some(anki_id) = entry.anki_note_id {
+            note_id_to_slug.insert(anki_id, entry.slug.clone());
+        }
+        slug_to_source.insert(entry.slug.clone(), entry.source_path.clone());
+    }
+
+    let now = Utc::now();
+    let mut items = Vec::new();
+
+    for cluster in &clusters {
+        let rep_note_id = cluster.representative_id.0;
+        let rep_slug = note_id_to_slug.get(&rep_note_id);
+
+        for detail in &cluster.duplicates {
+            let dup_note_id = detail.note_id.0;
+            let dup_slug = match note_id_to_slug.get(&dup_note_id) {
+                Some(s) => s.clone(),
+                None => continue,
+            };
+
+            let other_slug = rep_slug
+                .cloned()
+                .unwrap_or_else(|| format!("note:{rep_note_id}"));
+
+            let source_path = slug_to_source
+                .get(&dup_slug)
+                .cloned()
+                .unwrap_or_else(|| dup_slug.clone());
+
+            let (issue_kind, tier, summary) = if detail.similarity >= 0.92 {
+                (
+                    IssueKind::Duplicate {
+                        other_slug: other_slug.clone(),
+                        similarity: detail.similarity,
+                    },
+                    Tier::AutoFix,
+                    format!(
+                        "Near-identical duplicate ({:.0}%): {dup_slug} ≈ {other_slug}",
+                        detail.similarity * 100.0
+                    ),
+                )
+            } else {
+                (
+                    IssueKind::SemanticOverlap {
+                        other_slug: other_slug.clone(),
+                        similarity: detail.similarity,
+                    },
+                    Tier::QuickFix,
+                    format!(
+                        "Semantic overlap ({:.0}%): {dup_slug} ~ {other_slug}",
+                        detail.similarity * 100.0
+                    ),
+                )
+            };
+
+            let id = {
+                use sha2::{Digest, Sha256};
+                let mut hasher = Sha256::new();
+                hasher.update(b"dup:");
+                hasher.update(dup_slug.as_bytes());
+                hasher.update(b":");
+                hasher.update(other_slug.as_bytes());
+                let hash = hasher.finalize();
+                hash.iter()
+                    .take(8)
+                    .map(|b| format!("{b:02x}"))
+                    .collect::<String>()
+            };
+
+            items.push(WorkItem {
+                id,
+                loop_kind: LoopKind::Audit,
+                issue_kind,
+                tier,
+                status: ItemStatus::Open,
+                slug: Some(dup_slug.clone()),
+                source_path,
+                summary,
+                detail: Some(format!("similarity={:.4}", detail.similarity)),
+                first_seen: now,
+                resolved_at: None,
+                attestation: None,
+                scan_number,
+                cluster_id: None,
+                confidence: Some(detail.similarity),
+            });
+        }
+    }
+
+    Ok(items)
 }
 
 fn cmd_status(args: &crate::args::CardloopStatusArgs) -> anyhow::Result<()> {

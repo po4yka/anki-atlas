@@ -195,6 +195,18 @@ pub struct CardloopScanArgs {
     /// Path to card registry SQLite database
     #[arg(long)]
     pub registry: PathBuf,
+    /// Path to Anki collection file (.anki2) for FSRS-based retention analysis
+    #[arg(long)]
+    pub anki_collection: Option<PathBuf>,
+    /// Run LLM-powered quality review on all cards
+    #[arg(long, default_value_t = false)]
+    pub llm_review: bool,
+    /// Detect semantic duplicates using Qdrant (requires database + Qdrant running)
+    #[arg(long, default_value_t = false)]
+    pub detect_duplicates: bool,
+    /// Similarity threshold for duplicate detection
+    #[arg(long, default_value_t = 0.82)]
+    pub dup_threshold: f64,
 }
 
 #[derive(Args, Debug)]

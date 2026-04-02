@@ -16,9 +16,11 @@ surface-contracts = { path = "../../crates/surface-contracts" }
 surface-runtime = { path = "../../crates/surface-runtime" }
 card = { path = "../../crates/card" }
 cardloop = { path = "../../crates/cardloop" }
+llm = { path = "../../crates/llm" }
 validation = { path = "../../crates/validation" }
 
 anyhow.workspace = true
+sha2.workspace = true
 chrono.workspace = true
 dotenvy.workspace = true
 clap.workspace = true
