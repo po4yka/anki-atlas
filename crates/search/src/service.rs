@@ -88,6 +88,25 @@ pub struct HybridSearchResult {
     pub rerank_top_n: Option<usize>,
 }
 
+impl HybridSearchResult {
+    /// Create an empty result for short-circuit returns (e.g. blank queries).
+    pub fn empty(query: String) -> Self {
+        Self {
+            results: vec![],
+            stats: FusionStats::default(),
+            query,
+            filters_applied: HashMap::new(),
+            lexical_mode: LexicalMode::None,
+            lexical_fallback_used: false,
+            query_suggestions: vec![],
+            autocomplete_suggestions: vec![],
+            rerank_applied: false,
+            rerank_model: None,
+            rerank_top_n: None,
+        }
+    }
+}
+
 /// Single semantic chunk hit.
 #[derive(Debug, Clone, Serialize)]
 pub struct ChunkSearchHit {
@@ -252,19 +271,7 @@ where
 
         // Empty/whitespace query short-circuit
         if query.trim().is_empty() {
-            return Ok(HybridSearchResult {
-                results: vec![],
-                stats: FusionStats::default(),
-                query: query.to_string(),
-                filters_applied: HashMap::new(),
-                lexical_mode: LexicalMode::None,
-                lexical_fallback_used: false,
-                query_suggestions: vec![],
-                autocomplete_suggestions: vec![],
-                rerank_applied: false,
-                rerank_model: None,
-                rerank_top_n: None,
-            });
+            return Ok(HybridSearchResult::empty(query.to_string()));
         }
 
         // Semantic search
