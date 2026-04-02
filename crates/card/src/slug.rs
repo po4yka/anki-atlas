@@ -61,7 +61,11 @@ fn slugify_or(input: &str, fallback: &str) -> String {
         return fallback.to_string();
     }
     let slug = SlugService::slugify(input);
-    if slug.is_empty() { fallback.to_string() } else { slug }
+    if slug.is_empty() {
+        fallback.to_string()
+    } else {
+        slug
+    }
 }
 
 /// Slugify topic and keyword with defaults for empty inputs.

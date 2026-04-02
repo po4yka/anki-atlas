@@ -41,7 +41,6 @@ impl RedisQueueBackend {
     }
 }
 
-#[async_trait::async_trait]
 impl QueueBackend for RedisQueueBackend {
     async fn brpop(&self, key: &str, timeout: f64) -> anyhow::Result<Option<String>> {
         use rustis::commands::BlockingCommands;

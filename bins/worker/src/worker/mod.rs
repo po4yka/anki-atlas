@@ -8,8 +8,8 @@ use tokio::sync::Semaphore;
 /// Trait abstracting Redis queue operations for testability.
 ///
 /// Every external boundary behind a trait (project convention).
-#[async_trait::async_trait]
 #[cfg_attr(test, mockall::automock)]
+#[allow(async_fn_in_trait)]
 pub trait QueueBackend: Send + Sync {
     /// Blocking pop from the right of a Redis list. Returns None on timeout.
     async fn brpop(&self, key: &str, timeout: f64) -> anyhow::Result<Option<String>>;
@@ -29,7 +29,7 @@ pub trait QueueBackend: Send + Sync {
     ) -> anyhow::Result<()>;
 }
 
-#[async_trait::async_trait]
+#[allow(async_fn_in_trait)]
 pub trait JobDispatcher: Send + Sync {
     async fn dispatch(
         &self,
@@ -40,7 +40,6 @@ pub trait JobDispatcher: Send + Sync {
 
 pub struct RuntimeDispatcher;
 
-#[async_trait::async_trait]
 impl JobDispatcher for RuntimeDispatcher {
     async fn dispatch(
         &self,
@@ -66,7 +65,7 @@ impl JobDispatcher for RuntimeDispatcher {
 pub struct TestDispatcher;
 
 #[cfg(test)]
-#[async_trait::async_trait]
+
 impl JobDispatcher for TestDispatcher {
     async fn dispatch(
         &self,
