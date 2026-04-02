@@ -99,20 +99,4 @@ async fn mock_provider_list_models() {
 
 // ─── Send + Sync assertions ──────────────────────────────
 
-#[test]
-fn generate_options_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<GenerateOptions>();
-}
-
-#[test]
-fn llm_provider_trait_object_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync + ?Sized>() {}
-    assert_send_sync::<dyn LlmProvider>();
-}
-
-#[test]
-fn provider_can_be_wrapped_in_arc() {
-    fn assert_arc_compatible<T: Send + Sync + ?Sized>() {}
-    assert_arc_compatible::<Arc<dyn LlmProvider>>();
-}
+common::assert_send_sync!(GenerateOptions, dyn LlmProvider, Arc<dyn LlmProvider>);

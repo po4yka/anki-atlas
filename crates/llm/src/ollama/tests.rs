@@ -500,8 +500,4 @@ fn ollama_provider_is_sync() {
     assert_sync::<OllamaProvider>();
 }
 
-#[test]
-fn ollama_config_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<OllamaConfig>();
-}
+common::assert_send_sync!(OllamaConfig);

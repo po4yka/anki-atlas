@@ -25,22 +25,19 @@ pub use state::{CardState, StateDB, StateDbError};
 
 #[cfg(test)]
 mod send_sync_tests {
-    fn assert_send_sync<T: Send + Sync>() {}
-
-    #[test]
-    fn public_types_are_send_sync() {
-        assert_send_sync::<super::CardState>();
-        assert_send_sync::<super::SyncPhase>();
-        assert_send_sync::<super::SyncProgress>();
-        assert_send_sync::<super::ProgressTracker>();
-        assert_send_sync::<super::SyncResult>();
-        assert_send_sync::<super::SyncProgressEvent>();
-        assert_send_sync::<super::SyncProgressCallback>();
-        assert_send_sync::<super::CardTransaction>();
-        assert_send_sync::<super::RollbackAction>();
-        assert_send_sync::<super::SyncStats>();
-        assert_send_sync::<super::SyncService>();
-        assert_send_sync::<super::StateDB>();
-        assert_send_sync::<super::SyncEngine>();
-    }
+    common::assert_send_sync!(
+        super::CardState,
+        super::SyncPhase,
+        super::SyncProgress,
+        super::ProgressTracker,
+        super::SyncResult,
+        super::SyncProgressEvent,
+        super::SyncProgressCallback,
+        super::CardTransaction,
+        super::RollbackAction,
+        super::SyncStats,
+        super::SyncService,
+        super::StateDB,
+        super::SyncEngine,
+    );
 }

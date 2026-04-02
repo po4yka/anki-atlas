@@ -72,11 +72,7 @@ fn error_is_std_error() {
     let _: &dyn Error = &err;
 }
 
-#[test]
-fn error_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<LlmError>();
-}
+common::assert_send_sync!(LlmError);
 
 #[test]
 fn error_debug_format() {

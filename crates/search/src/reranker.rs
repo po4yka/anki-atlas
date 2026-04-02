@@ -199,17 +199,7 @@ mod tests {
 
     // ── Send + Sync ──────────────────────────────────────────────
 
-    #[test]
-    fn cross_encoder_reranker_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<CrossEncoderReranker>();
-    }
-
-    #[test]
-    fn reranker_trait_object_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<Box<dyn Reranker>>();
-    }
+    common::assert_send_sync!(CrossEncoderReranker, Box<dyn Reranker>);
 
     // ── MockReranker ──────────────────────────────────────────────
 

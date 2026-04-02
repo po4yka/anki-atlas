@@ -789,11 +789,5 @@ mod tests {
 
     // ========== Send + Sync ==========
 
-    #[test]
-    fn slug_types_are_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<SlugService>();
-        assert_send_sync::<SlugComponents>();
-        assert_send_sync::<SlugError>();
-    }
+    common::assert_send_sync!(SlugService, SlugComponents, SlugError);
 }

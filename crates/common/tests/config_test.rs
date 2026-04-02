@@ -2,14 +2,7 @@ use common::config::*;
 
 // ── Send + Sync ──────────────────────────────────────────────────────────
 
-fn assert_send_sync<T: Send + Sync>() {}
-
-#[test]
-fn settings_and_quantization_are_send_and_sync() {
-    assert_send_sync::<Settings>();
-    assert_send_sync::<Quantization>();
-    assert_send_sync::<EmbeddingProviderKind>();
-}
+common::assert_send_sync!(Settings, Quantization, EmbeddingProviderKind);
 
 // ── Quantization enum ───────────────────────────────────────────────────
 

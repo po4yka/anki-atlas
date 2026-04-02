@@ -369,8 +369,7 @@ where
                     Ok(documents) if !documents.is_empty() => {
                         match reranker.rerank(query, &documents).await {
                             Ok(scores) => {
-                                let score_map: HashMap<i64, f64> =
-                                    scores.into_iter().collect();
+                                let score_map: HashMap<i64, f64> = scores.into_iter().collect();
                                 for result in &mut results {
                                     if let Some(&score) = score_map.get(&result.note_id) {
                                         result.rerank_score = Some(score);
@@ -1342,23 +1341,11 @@ mod tests {
 
     // ── Send + Sync ──────────────────────────────────────────────
 
-    #[test]
-    fn search_service_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<SearchService<FakeEmbedding, FakeVectorRepo, FakeReranker>>();
-    }
-
-    #[test]
-    fn hybrid_search_result_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<HybridSearchResult>();
-    }
-
-    #[test]
-    fn note_detail_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<NoteDetail>();
-    }
+    common::assert_send_sync!(
+        SearchService<FakeEmbedding, FakeVectorRepo, FakeReranker>,
+        HybridSearchResult,
+        NoteDetail,
+    );
 
     // ── get_notes_details tests ─────────────────────────────────
 

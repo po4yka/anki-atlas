@@ -126,11 +126,5 @@ mod tests {
 
     // --- Send + Sync assertions ---
 
-    #[test]
-    fn store_types_are_send_and_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<SearchResult>();
-        assert_send_sync::<MetadataFilter>();
-        assert_send_sync::<StoreStats>();
-    }
+    common::assert_send_sync!(SearchResult, MetadataFilter, StoreStats);
 }

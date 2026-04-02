@@ -303,23 +303,23 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
             .iter()
             .flat_map(|(note, hash, chunks)| {
                 chunks.iter().map(move |chunk| NotePayload {
-                        note_id: note.note.note_id,
-                        model_id: note.note.model_id,
-                        deck_names: note.note.deck_names.clone(),
-                        tags: note.note.tags.clone(),
-                        content_hash: hash.clone(),
-                        mature: note.note.mature,
-                        lapses: note.note.lapses,
-                        reps: note.note.reps,
-                        fail_rate: note.note.fail_rate,
-                        chunk_id: chunk.chunk_id.clone(),
-                        chunk_kind: chunk.chunk_kind.clone(),
-                        modality: chunk.modality.clone(),
-                        source_field: chunk.source_field.clone(),
-                        asset_rel_path: chunk.asset_rel_path.clone(),
-                        mime_type: chunk.mime_type.clone(),
-                        preview_label: chunk.preview_label.clone(),
-                    })
+                    note_id: note.note.note_id,
+                    model_id: note.note.model_id,
+                    deck_names: note.note.deck_names.clone(),
+                    tags: note.note.tags.clone(),
+                    content_hash: hash.clone(),
+                    mature: note.note.mature,
+                    lapses: note.note.lapses,
+                    reps: note.note.reps,
+                    fail_rate: note.note.fail_rate,
+                    chunk_id: chunk.chunk_id.clone(),
+                    chunk_kind: chunk.chunk_kind.clone(),
+                    modality: chunk.modality.clone(),
+                    source_field: chunk.source_field.clone(),
+                    asset_rel_path: chunk.asset_rel_path.clone(),
+                    mime_type: chunk.mime_type.clone(),
+                    preview_label: chunk.preview_label.clone(),
+                })
             })
             .collect();
 

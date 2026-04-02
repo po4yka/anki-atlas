@@ -215,11 +215,9 @@ fn pipeline_merges_multiple_validators() {
 
 // --- Send + Sync ---
 
-#[test]
-fn types_are_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<Severity>();
-    assert_send_sync::<ValidationIssue>();
-    assert_send_sync::<ValidationResult>();
-    assert_send_sync::<ValidationPipeline>();
-}
+common::assert_send_sync!(
+    Severity,
+    ValidationIssue,
+    ValidationResult,
+    ValidationPipeline
+);

@@ -60,9 +60,5 @@ mod tests {
         assert!(err.to_string().contains("gone"));
     }
 
-    #[test]
-    fn surface_error_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<SurfaceError>();
-    }
+    common::assert_send_sync!(SurfaceError);
 }

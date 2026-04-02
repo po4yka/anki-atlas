@@ -511,12 +511,10 @@ mod tests {
 
     // ===== Send + Sync =====
 
-    #[test]
-    fn service_types_are_send_and_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<RelatedConcept>();
-        assert_send_sync::<DuplicateCheckResult>();
-        assert_send_sync::<FewShotExample>();
-        assert_send_sync::<RagService<MockVectorStore>>();
-    }
+    common::assert_send_sync!(
+        RelatedConcept,
+        DuplicateCheckResult,
+        FewShotExample,
+        RagService<MockVectorStore>,
+    );
 }

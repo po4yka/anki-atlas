@@ -139,41 +139,14 @@ fn vector_store_error_connection_display() {
 
 // ── Send + Sync bounds ──────────────────────────────────────────
 
-#[test]
-fn note_payload_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<NotePayload>();
-}
-
-#[test]
-fn sparse_vector_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<SparseVector>();
-}
-
-#[test]
-fn search_filters_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<SearchFilters>();
-}
-
-#[test]
-fn upsert_result_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<UpsertResult>();
-}
-
-#[test]
-fn vector_store_error_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<VectorStoreError>();
-}
-
-#[test]
-fn qdrant_repository_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<QdrantRepository>();
-}
+common::assert_send_sync!(
+    NotePayload,
+    SparseVector,
+    SearchFilters,
+    UpsertResult,
+    VectorStoreError,
+    QdrantRepository,
+);
 
 // ── text_to_sparse_vector ───────────────────────────────────────
 

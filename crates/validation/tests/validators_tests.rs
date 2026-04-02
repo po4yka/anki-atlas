@@ -429,11 +429,9 @@ fn tag_special_valid_chars() {
 
 // ─── Send + Sync ────────────────────────────────────────────────────────────
 
-#[test]
-fn validators_are_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<ContentValidator>();
-    assert_send_sync::<FormatValidator>();
-    assert_send_sync::<HtmlValidator>();
-    assert_send_sync::<TagValidator>();
-}
+common::assert_send_sync!(
+    ContentValidator,
+    FormatValidator,
+    HtmlValidator,
+    TagValidator
+);

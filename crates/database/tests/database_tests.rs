@@ -367,11 +367,7 @@ async fn test_with_transaction_rolls_back_on_error() {
 // Send + Sync compile-time checks
 // ============================================================
 
-#[test]
-fn migration_result_is_send_and_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<MigrationResult>();
-}
+common::assert_send_sync!(MigrationResult);
 
 // ============================================================
 // Embedded SQL file identity check

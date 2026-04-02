@@ -295,11 +295,7 @@ fn topic_prefixes_contents() {
 
 // === Send + Sync ===
 
-#[test]
-fn tag_prefix_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<TagPrefix>();
-}
+common::assert_send_sync!(TagPrefix);
 
 // === Sample lookup coverage ===
 

@@ -18,21 +18,19 @@ pub use validation::{ValidationService, ValidationSummary};
 mod tests {
     use super::*;
 
-    #[test]
-    fn all_public_types_are_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<GeneratePreview>();
-        assert_send_sync::<ValidationSummary>();
-        assert_send_sync::<ObsidianNotePreview>();
-        assert_send_sync::<ObsidianScanPreview>();
-        assert_send_sync::<TagAuditEntry>();
-        assert_send_sync::<TagAuditSummary>();
-        assert_send_sync::<SyncExecutionSummary>();
-        assert_send_sync::<IndexExecutionSummary>();
-        assert_send_sync::<SyncStatsSummary>();
-        assert_send_sync::<GeneratePreviewService>();
-        assert_send_sync::<ValidationService>();
-        assert_send_sync::<ObsidianScanService>();
-        assert_send_sync::<TagAuditService>();
-    }
+    common::assert_send_sync!(
+        GeneratePreview,
+        ValidationSummary,
+        ObsidianNotePreview,
+        ObsidianScanPreview,
+        TagAuditEntry,
+        TagAuditSummary,
+        SyncExecutionSummary,
+        IndexExecutionSummary,
+        SyncStatsSummary,
+        GeneratePreviewService,
+        ValidationService,
+        ObsidianScanService,
+        TagAuditService,
+    );
 }

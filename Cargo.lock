@@ -5278,6 +5278,7 @@ dependencies = [
 name = "taxonomy"
 version = "0.1.0"
 dependencies = [
+ "common",
  "phf 0.13.1",
  "serde",
 ]

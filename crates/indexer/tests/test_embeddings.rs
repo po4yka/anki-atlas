@@ -188,17 +188,7 @@ fn factory_openai_provider_requires_api_key() {
 
 // ── Send + Sync bounds ────────────────────────────────────────────
 
-#[test]
-fn mock_provider_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<MockEmbeddingProvider>();
-}
-
-#[test]
-fn embedding_error_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<EmbeddingError>();
-}
+common::assert_send_sync!(MockEmbeddingProvider, EmbeddingError);
 
 #[test]
 fn embedding_error_http_preserves_status_and_body() {

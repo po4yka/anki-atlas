@@ -3,16 +3,7 @@ use std::str::FromStr;
 
 // ── Send + Sync ──────────────────────────────────────────────────────────
 
-fn assert_send_sync<T: Send + Sync>() {}
-
-#[test]
-fn all_types_are_send_and_sync() {
-    assert_send_sync::<Language>();
-    assert_send_sync::<SlugStr>();
-    assert_send_sync::<CardId>();
-    assert_send_sync::<NoteId>();
-    assert_send_sync::<DeckName>();
-}
+common::assert_send_sync!(Language, SlugStr, CardId, NoteId, DeckName);
 
 // ── Language enum ────────────────────────────────────────────────────────
 

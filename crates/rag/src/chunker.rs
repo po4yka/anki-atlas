@@ -550,12 +550,5 @@ mod tests {
 
     // --- Send + Sync compile-time assertions ---
 
-    #[test]
-    fn types_are_send_and_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<DocumentChunk>();
-        assert_send_sync::<DocumentChunker>();
-        assert_send_sync::<ChunkerConfig>();
-        assert_send_sync::<ChunkType>();
-    }
+    common::assert_send_sync!(DocumentChunk, DocumentChunker, ChunkerConfig, ChunkType);
 }

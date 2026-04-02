@@ -292,16 +292,14 @@ async fn mock_validator_agent_returns_error() {
 // Send + Sync assertions for trait objects
 // ---------------------------------------------------------------------------
 
-#[test]
-fn trait_objects_are_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<Box<dyn GeneratorAgent>>();
-    assert_send_sync::<Box<dyn EnhancerAgent>>();
-    assert_send_sync::<Box<dyn ValidatorAgent>>();
-    assert_send_sync::<Arc<dyn GeneratorAgent>>();
-    assert_send_sync::<Arc<dyn EnhancerAgent>>();
-    assert_send_sync::<Arc<dyn ValidatorAgent>>();
-}
+common::assert_send_sync!(
+    Box<dyn GeneratorAgent>,
+    Box<dyn EnhancerAgent>,
+    Box<dyn ValidatorAgent>,
+    Arc<dyn GeneratorAgent>,
+    Arc<dyn EnhancerAgent>,
+    Arc<dyn ValidatorAgent>,
+);
 
 // ---------------------------------------------------------------------------
 // LLM-backed agent struct tests
@@ -339,14 +337,12 @@ fn llm_post_validator_agent_new() {
     let _ = &agent;
 }
 
-#[test]
-fn llm_agents_are_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<LlmGeneratorAgent>();
-    assert_send_sync::<LlmEnhancerAgent>();
-    assert_send_sync::<LlmPreValidatorAgent>();
-    assert_send_sync::<LlmPostValidatorAgent>();
-}
+common::assert_send_sync!(
+    LlmGeneratorAgent,
+    LlmEnhancerAgent,
+    LlmPreValidatorAgent,
+    LlmPostValidatorAgent,
+);
 
 #[tokio::test]
 async fn llm_generator_agent_generates_cards_via_mock_provider() {
