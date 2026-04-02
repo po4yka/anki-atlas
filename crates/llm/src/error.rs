@@ -6,6 +6,7 @@ pub enum LlmError {
     #[error("provider error: {message}")]
     Provider {
         message: String,
+        #[source]
         source: Option<Box<dyn std::error::Error + Send + Sync>>,
     },
 
