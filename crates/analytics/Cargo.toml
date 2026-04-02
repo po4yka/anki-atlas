@@ -12,7 +12,7 @@ database = { path = "../database" }
 indexer = { path = "../indexer" }
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yaml = { workspace = true }
+serde_yml = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
@@ -23,8 +23,8 @@ perf-support = { path = "../perf-support" }
 tokio = { workspace = true }
 mockall = { workspace = true }
 tempfile = { workspace = true }
-testcontainers = "0.27"
-testcontainers-modules = { version = "0.15", features = ["postgres"] }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
 
 [[bench]]
 name = "analytics_hot_paths"

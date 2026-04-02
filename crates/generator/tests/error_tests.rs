@@ -61,11 +61,7 @@ fn llm_error_converts_to_generator_error() {
     assert!(gen_err.to_string().contains("connection"));
 }
 
-#[test]
-fn generator_error_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<GeneratorError>();
-}
+common::assert_send_sync!(GeneratorError);
 
 #[test]
 fn generator_error_implements_error_trait() {

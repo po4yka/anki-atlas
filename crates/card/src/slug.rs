@@ -61,7 +61,11 @@ fn slugify_or(input: &str, fallback: &str) -> String {
         return fallback.to_string();
     }
     let slug = SlugService::slugify(input);
-    if slug.is_empty() { fallback.to_string() } else { slug }
+    if slug.is_empty() {
+        fallback.to_string()
+    } else {
+        slug
+    }
 }
 
 /// Slugify topic and keyword with defaults for empty inputs.
@@ -785,11 +789,5 @@ mod tests {
 
     // ========== Send + Sync ==========
 
-    #[test]
-    fn slug_types_are_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<SlugService>();
-        assert_send_sync::<SlugComponents>();
-        assert_send_sync::<SlugError>();
-    }
+    common::assert_send_sync!(SlugService, SlugComponents, SlugError);
 }

@@ -430,15 +430,5 @@ mod tests {
 
     // ── Send + Sync compile-time assertion ─────────────────────────
 
-    #[test]
-    fn vault_stats_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<VaultStats>();
-    }
-
-    #[test]
-    fn vault_analyzer_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<VaultAnalyzer>();
-    }
+    common::assert_send_sync!(VaultStats, VaultAnalyzer);
 }

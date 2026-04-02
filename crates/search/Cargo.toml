@@ -23,8 +23,8 @@ criterion = { workspace = true }
 mockall = { workspace = true }
 perf-support = { path = "../perf-support" }
 tokio = { workspace = true }
-testcontainers = "0.27"
-testcontainers-modules = { version = "0.15", features = ["postgres"] }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
 
 [[bench]]
 name = "search_hot_paths"

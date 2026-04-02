@@ -20,8 +20,8 @@ use surface_contracts::analytics::{
     TopicCoverage, TopicGap, WeakNote,
 };
 use surface_contracts::search::{
-    ChunkSearchHit, ChunkSearchRequest, ChunkSearchResponse,
-    FusionStats, LexicalMode, SearchFilterInput, SearchRequest, SearchResponse, SearchResultItem,
+    ChunkSearchHit, ChunkSearchRequest, ChunkSearchResponse, FusionStats, LexicalMode,
+    SearchFilterInput, SearchRequest, SearchResponse, SearchResultItem,
 };
 
 pub fn build_search_params(request: &SearchRequest) -> Result<SearchParams, SearchError> {

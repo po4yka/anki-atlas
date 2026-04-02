@@ -815,20 +815,4 @@ fn card_registry_is_send() {
     assert_send::<CardRegistry>();
 }
 
-#[test]
-fn card_entry_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<CardEntry>();
-}
-
-#[test]
-fn note_entry_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<NoteEntry>();
-}
-
-#[test]
-fn registry_error_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<RegistryError>();
-}
+common::assert_send_sync!(CardEntry, NoteEntry, RegistryError);

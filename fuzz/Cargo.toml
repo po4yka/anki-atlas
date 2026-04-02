@@ -16,7 +16,7 @@ generator = { path = "../crates/generator" }
 indexer = { path = "../crates/indexer" }
 jobs = { path = "../crates/jobs" }
 obsidian = { path = "../crates/obsidian", features = ["fuzzing"] }
-serde_yaml = "0.9"
+serde_yml = "0.0.12"
 url = "2"
 validation = { path = "../crates/validation" }
 

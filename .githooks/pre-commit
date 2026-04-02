@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -e
+
+# Allow bypass: SKIP_HOOKS=1 git commit -m "..."
+if [ "${SKIP_HOOKS:-0}" = "1" ]; then
+    echo "Pre-commit hooks skipped (SKIP_HOOKS=1)"
+    exit 0
+fi
+
+echo "Running pre-commit checks..."
+
+echo "  [1/2] cargo fmt --check"
+if ! cargo fmt --all -- --check; then
+    echo ""
+    echo "Format check failed. Run 'cargo fmt --all' to fix."
+    exit 1
+fi
+
+echo "  [2/2] cargo clippy"
+if ! cargo clippy --workspace -- -D warnings; then
+    echo ""
+    echo "Clippy check failed. Fix warnings above."
+    exit 1
+fi
+
+echo "All pre-commit checks passed."

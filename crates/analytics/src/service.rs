@@ -118,53 +118,17 @@ where
 mod tests {
     use super::*;
 
-    /// Verify all public types are Send + Sync.
-    fn assert_send_sync<T: Send + Sync>() {}
-
-    #[test]
-    fn analytics_error_is_send_sync() {
-        assert_send_sync::<AnalyticsError>();
-    }
-
-    #[test]
-    fn topic_is_send_sync() {
-        assert_send_sync::<crate::taxonomy::Topic>();
-    }
-
-    #[test]
-    fn taxonomy_is_send_sync() {
-        assert_send_sync::<crate::taxonomy::Taxonomy>();
-    }
-
-    #[test]
-    fn topic_coverage_is_send_sync() {
-        assert_send_sync::<TopicCoverage>();
-    }
-
-    #[test]
-    fn topic_gap_is_send_sync() {
-        assert_send_sync::<TopicGap>();
-    }
-
-    #[test]
-    fn weak_note_is_send_sync() {
-        assert_send_sync::<WeakNote>();
-    }
-
-    #[test]
-    fn labeling_stats_is_send_sync() {
-        assert_send_sync::<LabelingStats>();
-    }
-
-    #[test]
-    fn duplicate_cluster_is_send_sync() {
-        assert_send_sync::<DuplicateCluster>();
-    }
-
-    #[test]
-    fn duplicate_stats_is_send_sync() {
-        assert_send_sync::<DuplicateStats>();
-    }
+    common::assert_send_sync!(
+        AnalyticsError,
+        crate::taxonomy::Topic,
+        crate::taxonomy::Taxonomy,
+        TopicCoverage,
+        TopicGap,
+        WeakNote,
+        LabelingStats,
+        DuplicateCluster,
+        DuplicateStats,
+    );
 
     #[test]
     fn analytics_service_is_generic() {
@@ -174,7 +138,8 @@ mod tests {
             E: indexer::embeddings::EmbeddingProvider,
             V: indexer::qdrant::VectorRepository,
         >() {
-            assert_send_sync::<AnalyticsService<E, V>>();
+            fn _assert<T: Send + Sync>() {}
+            _assert::<AnalyticsService<E, V>>();
         }
     }
 }

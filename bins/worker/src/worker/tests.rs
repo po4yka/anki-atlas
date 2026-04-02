@@ -158,7 +158,6 @@ impl RealRedisBackend {
     }
 }
 
-#[async_trait::async_trait]
 impl QueueBackend for RealRedisBackend {
     async fn brpop(&self, key: &str, timeout: f64) -> anyhow::Result<Option<String>> {
         use rustis::commands::BlockingCommands;
@@ -236,7 +235,7 @@ async fn run_blocks_until_shutdown_signal() {
 
     mock.expect_brpop().returning(move |_, _| {
         brpop_count_clone.fetch_add(1, Ordering::SeqCst);
-        Box::pin(async { Ok(None) })
+        Ok(None)
     });
 
     let worker = Arc::new(Worker::new(config, mock));
@@ -286,19 +285,19 @@ async fn processes_valid_job_envelope_from_queue() {
     mock.expect_brpop().returning(move |_, _| {
         let n = call_count_clone.fetch_add(1, Ordering::SeqCst);
         let json = json_clone.clone();
-        Box::pin(async move { if n == 0 { Ok(Some(json)) } else { Ok(None) } })
+        if n == 0 { Ok(Some(json)) } else { Ok(None) }
     });
 
     mock.expect_load_job_record().returning(|id| {
         let record = test_job_record(id, JobStatus::Queued);
-        Box::pin(async { Ok(Some(record)) })
+        Ok(Some(record))
     });
 
     let save_count = Arc::new(AtomicU32::new(0));
     let save_count_clone = Arc::clone(&save_count);
     mock.expect_save_job_record().returning(move |_, _| {
         save_count_clone.fetch_add(1, Ordering::SeqCst);
-        Box::pin(async { Ok(()) })
+        Ok(())
     });
 
     let worker = Arc::new(Worker::new(config, mock));
@@ -327,29 +326,26 @@ async fn sets_job_status_to_running_before_dispatch() {
     mock.expect_brpop().returning(move |_, _| {
         let n = brpop_count_clone.fetch_add(1, Ordering::SeqCst);
         let json = json_clone.clone();
-        Box::pin(async move { if n == 0 { Ok(Some(json)) } else { Ok(None) } })
+        if n == 0 { Ok(Some(json)) } else { Ok(None) }
     });
 
     mock.expect_load_job_record().returning(|id| {
         let record = test_job_record(id, JobStatus::Queued);
-        Box::pin(async { Ok(Some(record)) })
+        Ok(Some(record))
     });
 
     let save_call = Arc::new(AtomicU32::new(0));
     let save_call_clone = Arc::clone(&save_call);
     mock.expect_save_job_record().returning(move |record, _| {
         let call_num = save_call_clone.fetch_add(1, Ordering::SeqCst);
-        let status = record.status;
-        Box::pin(async move {
-            if call_num == 0 {
-                assert_eq!(
-                    status,
-                    JobStatus::Running,
-                    "first save_job_record call should set status to Running"
-                );
-            }
-            Ok(())
-        })
+        if call_num == 0 {
+            assert_eq!(
+                record.status,
+                JobStatus::Running,
+                "first save_job_record call should set status to Running"
+            );
+        }
+        Ok(())
     });
 
     let worker = Arc::new(Worker::new(config, mock));
@@ -383,23 +379,19 @@ async fn sets_job_status_to_failed_on_terminal_task_error() {
     mock.expect_brpop().returning(move |_, _| {
         let n = brpop_count_clone.fetch_add(1, Ordering::SeqCst);
         let json = json_clone.clone();
-        Box::pin(async move { if n == 0 { Ok(Some(json)) } else { Ok(None) } })
+        if n == 0 { Ok(Some(json)) } else { Ok(None) }
     });
 
     mock.expect_load_job_record().returning(|id| {
         let record = test_job_record(id, JobStatus::Queued);
-        Box::pin(async { Ok(Some(record)) })
+        Ok(Some(record))
     });
 
     let final_status = Arc::new(Mutex::new(None));
     let final_status_clone = Arc::clone(&final_status);
     mock.expect_save_job_record().returning(move |record, _| {
-        let status = record.status;
-        let fs = Arc::clone(&final_status_clone);
-        Box::pin(async move {
-            *fs.lock().unwrap() = Some(status);
-            Ok(())
-        })
+        *final_status_clone.lock().unwrap() = Some(record.status);
+        Ok(())
     });
 
     mock.expect_lpush().times(0);
@@ -437,20 +429,20 @@ async fn does_not_reenqueue_terminal_task_failures() {
     mock.expect_brpop().returning(move |_, _| {
         let n = brpop_count_clone.fetch_add(1, Ordering::SeqCst);
         let json = json_clone.clone();
-        Box::pin(async move { if n == 0 { Ok(Some(json)) } else { Ok(None) } })
+        if n == 0 { Ok(Some(json)) } else { Ok(None) }
     });
 
     mock.expect_load_job_record().returning(|id| {
         let mut record = test_job_record(id, JobStatus::Queued);
         record.attempts = 0;
-        Box::pin(async { Ok(Some(record)) })
+        Ok(Some(record))
     });
 
     let save_count = Arc::new(AtomicU32::new(0));
     let save_count_clone = Arc::clone(&save_count);
     mock.expect_save_job_record().returning(move |_, _| {
         save_count_clone.fetch_add(1, Ordering::SeqCst);
-        Box::pin(async { Ok(()) })
+        Ok(())
     });
 
     mock.expect_lpush().times(0);
@@ -481,25 +473,21 @@ async fn marks_job_failed_after_terminal_task_execution() {
     mock.expect_brpop().returning(move |_, _| {
         let n = brpop_count_clone.fetch_add(1, Ordering::SeqCst);
         let json = json_clone.clone();
-        Box::pin(async move { if n == 0 { Ok(Some(json)) } else { Ok(None) } })
+        if n == 0 { Ok(Some(json)) } else { Ok(None) }
     });
 
     mock.expect_load_job_record().returning(|id| {
         let mut record = test_job_record(id, JobStatus::Queued);
         record.attempts = 0;
         record.max_retries = 3;
-        Box::pin(async { Ok(Some(record)) })
+        Ok(Some(record))
     });
 
     let final_status = Arc::new(Mutex::new(None));
     let final_status_clone = Arc::clone(&final_status);
     mock.expect_save_job_record().returning(move |record, _| {
-        let status = record.status;
-        let fs = Arc::clone(&final_status_clone);
-        Box::pin(async move {
-            *fs.lock().unwrap() = Some(status);
-            Ok(())
-        })
+        *final_status_clone.lock().unwrap() = Some(record.status);
+        Ok(())
     });
 
     mock.expect_lpush().times(0);
@@ -550,7 +538,7 @@ async fn handles_empty_queue_by_polling_again() {
     let poll_count_clone = Arc::clone(&poll_count);
     mock.expect_brpop().returning(move |_, _| {
         poll_count_clone.fetch_add(1, Ordering::SeqCst);
-        Box::pin(async { Ok(None) })
+        Ok(None)
     });
 
     let worker = Arc::new(Worker::new(config, mock));
@@ -582,13 +570,11 @@ async fn skips_malformed_envelope_without_crashing() {
     let brpop_count_clone = Arc::clone(&brpop_count);
     mock.expect_brpop().returning(move |_, _| {
         let n = brpop_count_clone.fetch_add(1, Ordering::SeqCst);
-        Box::pin(async move {
-            if n == 0 {
-                Ok(Some("this is not valid json!!!".to_string()))
-            } else {
-                Ok(None)
-            }
-        })
+        if n == 0 {
+            Ok(Some("this is not valid json!!!".to_string()))
+        } else {
+            Ok(None)
+        }
     });
 
     let worker = Arc::new(Worker::new(config, mock));
@@ -621,23 +607,22 @@ async fn graceful_shutdown_waits_for_inflight_jobs() {
     mock.expect_brpop().returning(move |_, _| {
         let n = brpop_count_clone.fetch_add(1, Ordering::SeqCst);
         let json = json_clone.clone();
-        Box::pin(async move { if n == 0 { Ok(Some(json)) } else { Ok(None) } })
+        if n == 0 { Ok(Some(json)) } else { Ok(None) }
     });
 
     mock.expect_load_job_record().returning(|id| {
         let record = test_job_record(id, JobStatus::Queued);
-        Box::pin(async { Ok(Some(record)) })
+        Ok(Some(record))
     });
 
     let save_count = Arc::new(AtomicU32::new(0));
     let save_count_clone = Arc::clone(&save_count);
     mock.expect_save_job_record().returning(move |_, _| {
         save_count_clone.fetch_add(1, Ordering::SeqCst);
-        Box::pin(async { Ok(()) })
+        Ok(())
     });
 
-    mock.expect_lpush()
-        .returning(|_, _| Box::pin(async { Ok(()) }));
+    mock.expect_lpush().returning(|_, _| Ok(()));
 
     let worker = Arc::new(Worker::new(config, mock));
     let worker_clone = Arc::clone(&worker);
@@ -673,7 +658,7 @@ async fn brpop_uses_configured_queue_name_and_timeout() {
     mock.expect_brpop().returning(move |key, timeout| {
         *queue_clone.lock().unwrap() = Some(key.to_string());
         *timeout_clone.lock().unwrap() = Some(timeout);
-        Box::pin(async { Ok(None) })
+        Ok(None)
     });
 
     let worker = Arc::new(Worker::new(config, mock));

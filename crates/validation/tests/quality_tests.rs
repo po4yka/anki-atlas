@@ -432,11 +432,7 @@ fn quality_score_is_serializable() {
     assert!(json.contains("relevance"));
 }
 
-#[test]
-fn quality_score_is_send_and_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<QualityScore>();
-}
+common::assert_send_sync!(QualityScore);
 
 // ── Numbered enumerations with closing paren ───────────────────────
 

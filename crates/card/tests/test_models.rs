@@ -655,13 +655,11 @@ fn valid_note_types_contains_expected() {
 // Send + Sync
 // ===========================================================================
 
-#[test]
-fn types_are_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<CardManifest>();
-    assert_send_sync::<Card>();
-    assert_send_sync::<SyncAction>();
-    assert_send_sync::<SyncActionType>();
-    assert_send_sync::<CognitiveLoad>();
-    assert_send_sync::<CardValidationError>();
-}
+common::assert_send_sync!(
+    CardManifest,
+    Card,
+    SyncAction,
+    SyncActionType,
+    CognitiveLoad,
+    CardValidationError,
+);

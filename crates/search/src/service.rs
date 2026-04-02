@@ -88,6 +88,25 @@ pub struct HybridSearchResult {
     pub rerank_top_n: Option<usize>,
 }
 
+impl HybridSearchResult {
+    /// Create an empty result for short-circuit returns (e.g. blank queries).
+    pub fn empty(query: String) -> Self {
+        Self {
+            results: vec![],
+            stats: FusionStats::default(),
+            query,
+            filters_applied: HashMap::new(),
+            lexical_mode: LexicalMode::None,
+            lexical_fallback_used: false,
+            query_suggestions: vec![],
+            autocomplete_suggestions: vec![],
+            rerank_applied: false,
+            rerank_model: None,
+            rerank_top_n: None,
+        }
+    }
+}
+
 /// Single semantic chunk hit.
 #[derive(Debug, Clone, Serialize)]
 pub struct ChunkSearchHit {
@@ -252,19 +271,7 @@ where
 
         // Empty/whitespace query short-circuit
         if query.trim().is_empty() {
-            return Ok(HybridSearchResult {
-                results: vec![],
-                stats: FusionStats::default(),
-                query: query.to_string(),
-                filters_applied: HashMap::new(),
-                lexical_mode: LexicalMode::None,
-                lexical_fallback_used: false,
-                query_suggestions: vec![],
-                autocomplete_suggestions: vec![],
-                rerank_applied: false,
-                rerank_model: None,
-                rerank_top_n: None,
-            });
+            return Ok(HybridSearchResult::empty(query.to_string()));
         }
 
         // Semantic search
@@ -358,8 +365,8 @@ where
 
         if should_rerank {
             if let Some(ref reranker) = self.reranker {
-                if let Ok(documents) = self.build_rerank_documents(&results, rerank_top_n).await {
-                    if !documents.is_empty() {
+                match self.build_rerank_documents(&results, rerank_top_n).await {
+                    Ok(documents) if !documents.is_empty() => {
                         match reranker.rerank(query, &documents).await {
                             Ok(scores) => {
                                 let score_map: HashMap<i64, f64> = scores.into_iter().collect();
@@ -376,11 +383,15 @@ where
                                 rerank_applied = true;
                                 rerank_model = Some(reranker.model_name().to_string());
                             }
-                            Err(_) => {
-                                // Degrade gracefully: skip reranking
+                            Err(e) => {
+                                tracing::warn!(error = %e, "reranking failed, falling back to RRF ordering");
                             }
                         }
                     }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "failed to build rerank documents, skipping reranking");
+                    }
+                    _ => {}
                 }
             }
             // No reranker provided: degrade gracefully
@@ -1330,23 +1341,11 @@ mod tests {
 
     // ── Send + Sync ──────────────────────────────────────────────
 
-    #[test]
-    fn search_service_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<SearchService<FakeEmbedding, FakeVectorRepo, FakeReranker>>();
-    }
-
-    #[test]
-    fn hybrid_search_result_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<HybridSearchResult>();
-    }
-
-    #[test]
-    fn note_detail_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<NoteDetail>();
-    }
+    common::assert_send_sync!(
+        SearchService<FakeEmbedding, FakeVectorRepo, FakeReranker>,
+        HybridSearchResult,
+        NoteDetail,
+    );
 
     // ── get_notes_details tests ─────────────────────────────────
 

@@ -529,11 +529,7 @@ fn render_code_with_ampersand_and_quotes() {
 // Send + Sync assertions
 // ---------------------------------------------------------------------------
 
-#[test]
-fn card_spec_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<CardSpec>();
-}
+common::assert_send_sync!(CardSpec);
 
 // ===========================================================================
 // APF Linter tests
@@ -604,11 +600,7 @@ fn lint_result_serialization_roundtrip() {
     assert_eq!(deserialized.warnings, result.warnings);
 }
 
-#[test]
-fn lint_result_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<LintResult>();
-}
+common::assert_send_sync!(LintResult);
 
 // ---------------------------------------------------------------------------
 // validate_apf() - valid input
@@ -2015,11 +2007,7 @@ fn validate_apf_markdown_full_card() {
 // MarkdownValidationResult: struct behavior
 // ---------------------------------------------------------------------------
 
-#[test]
-fn markdown_validation_result_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<MarkdownValidationResult>();
-}
+common::assert_send_sync!(MarkdownValidationResult);
 
 #[test]
 fn markdown_validation_result_debug_clone() {

@@ -375,15 +375,13 @@ fn validation_result_serialization_roundtrip() {
 
 // --- Send + Sync assertions ---
 
-#[test]
-fn all_model_types_are_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<GeneratedCard>();
-    assert_send_sync::<GenerationResult>();
-    assert_send_sync::<GenerationDeps>();
-    assert_send_sync::<SplitPlan>();
-    assert_send_sync::<SplitDecision>();
-    assert_send_sync::<Severity>();
-    assert_send_sync::<ValidationIssue>();
-    assert_send_sync::<ValidationResult>();
-}
+common::assert_send_sync!(
+    GeneratedCard,
+    GenerationResult,
+    GenerationDeps,
+    SplitPlan,
+    SplitDecision,
+    Severity,
+    ValidationIssue,
+    ValidationResult,
+);

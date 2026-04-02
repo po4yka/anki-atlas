@@ -4,12 +4,7 @@ use std::error::Error;
 
 // ── Send + Sync ──────────────────────────────────────────────────────────
 
-fn assert_send_sync<T: Send + Sync>() {}
-
-#[test]
-fn error_is_send_and_sync() {
-    assert_send_sync::<AnkiAtlasError>();
-}
+common::assert_send_sync!(AnkiAtlasError);
 
 // ── Display / Error trait ────────────────────────────────────────────────
 

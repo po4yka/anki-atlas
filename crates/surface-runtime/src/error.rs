@@ -34,6 +34,10 @@ pub enum SurfaceError {
     Analytics(#[from] analytics::AnalyticsError),
     #[error("obsidian error: {0}")]
     Obsidian(#[from] obsidian::ObsidianError),
+    #[error("configuration error: {0}")]
+    Configuration(String),
+    #[error("reindex required: {0}")]
+    ReindexRequired(String),
 }
 
 #[cfg(test)]
@@ -60,9 +64,5 @@ mod tests {
         assert!(err.to_string().contains("gone"));
     }
 
-    #[test]
-    fn surface_error_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<SurfaceError>();
-    }
+    common::assert_send_sync!(SurfaceError);
 }

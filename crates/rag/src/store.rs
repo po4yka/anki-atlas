@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -38,7 +37,7 @@ pub struct StoreStats {
 
 /// Abstract vector store trait for DI.
 #[cfg_attr(test, mockall::automock)]
-#[async_trait]
+#[allow(async_fn_in_trait)]
 pub trait VectorStore: Send + Sync {
     /// Add documents with embeddings. Returns count of newly added.
     async fn add(
@@ -127,11 +126,5 @@ mod tests {
 
     // --- Send + Sync assertions ---
 
-    #[test]
-    fn store_types_are_send_and_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<SearchResult>();
-        assert_send_sync::<MetadataFilter>();
-        assert_send_sync::<StoreStats>();
-    }
+    common::assert_send_sync!(SearchResult, MetadataFilter, StoreStats);
 }

@@ -18,7 +18,7 @@ fn parse_extracts_nested_yaml() {
     let fm = parse_frontmatter(content).unwrap();
     let meta = fm.get("meta").unwrap().as_mapping().unwrap();
     let author = meta
-        .get(serde_yaml::Value::String("author".into()))
+        .get(serde_yml::Value::String("author".into()))
         .and_then(|v| v.as_str());
     assert_eq!(author, Some("Alice"));
 }
@@ -90,7 +90,7 @@ fn parse_returns_error_on_malformed_yaml() {
 fn write_replaces_existing_frontmatter() {
     let content = "---\ntitle: Old\n---\nBody text here";
     let mut data = HashMap::new();
-    data.insert("title".to_string(), serde_yaml::Value::String("New".into()));
+    data.insert("title".to_string(), serde_yml::Value::String("New".into()));
     let result = write_frontmatter(&data, content).unwrap();
     assert!(result.contains("title"));
     assert!(result.contains("New"));
@@ -107,7 +107,7 @@ fn write_adds_frontmatter_to_content_without_one() {
     let mut data = HashMap::new();
     data.insert(
         "title".to_string(),
-        serde_yaml::Value::String("Added".into()),
+        serde_yml::Value::String("Added".into()),
     );
     let result = write_frontmatter(&data, content).unwrap();
     assert!(result.starts_with("---\n"));
@@ -122,7 +122,7 @@ fn write_preserves_body_content() {
     let mut data = HashMap::new();
     data.insert(
         "new_key".to_string(),
-        serde_yaml::Value::String("new_val".into()),
+        serde_yml::Value::String("new_val".into()),
     );
     let result = write_frontmatter(&data, content).unwrap();
     assert!(result.contains("Line 1"));

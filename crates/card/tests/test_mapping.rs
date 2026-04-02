@@ -392,17 +392,7 @@ fn card_mapping_entry_fields() {
 // Send + Sync bounds
 // ===========================================================================
 
-#[test]
-fn card_mapping_entry_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<CardMappingEntry>();
-}
-
-#[test]
-fn note_mapping_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<NoteMapping>();
-}
+common::assert_send_sync!(CardMappingEntry, NoteMapping);
 
 // ===========================================================================
 // Clone and PartialEq for CardMappingEntry

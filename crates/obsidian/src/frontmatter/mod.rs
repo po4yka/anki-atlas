@@ -6,7 +6,7 @@ use crate::error::ObsidianError;
 /// Returns empty map if no frontmatter block is found.
 pub fn parse_frontmatter(
     content: &str,
-) -> Result<HashMap<String, serde_yaml::Value>, ObsidianError> {
+) -> Result<HashMap<String, serde_yml::Value>, ObsidianError> {
     let (Some(yaml_str), _body) = split_frontmatter(content) else {
         return Ok(HashMap::new());
     };
@@ -14,23 +14,23 @@ pub fn parse_frontmatter(
     // Preprocess: strip backticks from values
     let preprocessed = preprocess_yaml(yaml_str);
 
-    let map: HashMap<String, serde_yaml::Value> =
-        serde_yaml::from_str(&preprocessed).map_err(|e| ObsidianError::Yaml(e.to_string()))?;
+    let map: HashMap<String, serde_yml::Value> =
+        serde_yml::from_str(&preprocessed).map_err(|e| ObsidianError::Yaml(e.to_string()))?;
 
     Ok(map)
 }
 
 /// Write or replace YAML frontmatter in note content.
 pub fn write_frontmatter(
-    data: &HashMap<String, serde_yaml::Value>,
+    data: &HashMap<String, serde_yml::Value>,
     content: &str,
 ) -> Result<String, ObsidianError> {
-    let yaml_str = serde_yaml::to_string(data).map_err(|e| ObsidianError::Yaml(e.to_string()))?;
+    let yaml_str = serde_yml::to_string(data).map_err(|e| ObsidianError::Yaml(e.to_string()))?;
 
     let (_yaml, body) = split_frontmatter(content);
 
     let mut result = String::from("---\n");
-    // serde_yaml adds a trailing newline; only append non-empty yaml
+    // serde_yml adds a trailing newline; only append non-empty yaml
     if !data.is_empty() {
         result.push_str(&yaml_str);
     }

@@ -1,11 +1,11 @@
 use super::*;
 use std::collections::HashMap;
 
+use common::types::NoteId;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use surface_contracts::analytics::TopicCoverage;
-use common::types::NoteId;
 use surface_contracts::search::{FusionStats, LexicalMode, SearchResponse, SearchResultItem};
 use surface_runtime::{GeneratePreview, SurfaceOperation, SurfaceProgressEvent};
 use tokio::sync::mpsc;
