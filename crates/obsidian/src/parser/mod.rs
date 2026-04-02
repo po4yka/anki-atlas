@@ -26,7 +26,7 @@ static HEADING_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^(#{1,6}\
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedNote {
     pub path: PathBuf,
-    pub frontmatter: HashMap<String, serde_yaml::Value>,
+    pub frontmatter: HashMap<String, serde_yml::Value>,
     pub content: String,
     pub body: String,
     pub sections: Vec<(String, String)>,
@@ -143,7 +143,7 @@ pub fn discover_notes(
 }
 
 /// Extract title: frontmatter "title" first, then first H1 heading.
-fn extract_title(frontmatter: &HashMap<String, serde_yaml::Value>, body: &str) -> Option<String> {
+fn extract_title(frontmatter: &HashMap<String, serde_yml::Value>, body: &str) -> Option<String> {
     if let Some(s) = frontmatter.get("title").and_then(|v| v.as_str()) {
         return Some(s.to_string());
     }

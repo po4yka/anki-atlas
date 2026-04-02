@@ -125,7 +125,7 @@ pub fn load_taxonomy_from_yaml(path: &std::path::Path) -> Result<Taxonomy, Analy
         return Ok(Taxonomy::default());
     }
 
-    let parsed: YamlTaxonomy = serde_yaml::from_str(&content)?;
+    let parsed: YamlTaxonomy = serde_yml::from_str(&content)?;
 
     if parsed.topics.is_empty() {
         return Ok(Taxonomy::default());
