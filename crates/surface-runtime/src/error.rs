@@ -34,6 +34,10 @@ pub enum SurfaceError {
     Analytics(#[from] analytics::AnalyticsError),
     #[error("obsidian error: {0}")]
     Obsidian(#[from] obsidian::ObsidianError),
+    #[error("configuration error: {0}")]
+    Configuration(String),
+    #[error("reindex required: {0}")]
+    ReindexRequired(String),
 }
 
 #[cfg(test)]

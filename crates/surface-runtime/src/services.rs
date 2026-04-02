@@ -5,7 +5,7 @@ use std::sync::Arc;
 use analytics::AnalyticsError;
 use analytics::repository::SqlxAnalyticsRepository;
 use analytics::service::AnalyticsService;
-use anyhow::{Context, Result as AnyhowResult, anyhow};
+use anyhow::{Context, Result as AnyhowResult};
 use common::config::{EmbeddingProviderKind, Settings};
 use database::create_pool;
 use indexer::embeddings::{EmbeddingProvider, EmbeddingProviderConfig, create_embedding_provider};
@@ -370,18 +370,20 @@ fn validate_read_only_collection_state(
     desired_dimension: usize,
     desired_model: &str,
     stored_fingerprint: Option<&EmbeddingFingerprint>,
-) -> AnyhowResult<()> {
+) -> Result<(), SurfaceError> {
     let Some(current_dimension) = current_dimension else {
         if stored_fingerprint.is_some() {
-            return Err(anyhow!("reindex required: vector collection is missing"));
+            return Err(SurfaceError::ReindexRequired(
+                "vector collection is missing".into(),
+            ));
         }
         return Ok(());
     };
 
     if current_dimension != desired_dimension {
-        return Err(anyhow!(
-            "reindex required: vector collection dimension is {current_dimension}, expected {desired_dimension}"
-        ));
+        return Err(SurfaceError::ReindexRequired(format!(
+            "vector collection dimension is {current_dimension}, expected {desired_dimension}"
+        )));
     }
 
     let Some(stored_fingerprint) = stored_fingerprint else {
@@ -389,22 +391,22 @@ fn validate_read_only_collection_state(
     };
 
     if stored_fingerprint.model != desired_model {
-        return Err(anyhow!(
-            "reindex required: stored embedding model is {}, current model is {desired_model}",
+        return Err(SurfaceError::ReindexRequired(format!(
+            "stored embedding model is {}, current model is {desired_model}",
             stored_fingerprint.model
-        ));
+        )));
     }
     if stored_fingerprint.dimension != desired_dimension {
-        return Err(anyhow!(
-            "reindex required: stored embedding dimension is {}, current dimension is {desired_dimension}",
+        return Err(SurfaceError::ReindexRequired(format!(
+            "stored embedding dimension is {}, current dimension is {desired_dimension}",
             stored_fingerprint.dimension
-        ));
+        )));
     }
     if stored_fingerprint.vector_schema != EMBEDDING_VECTOR_SCHEMA {
-        return Err(anyhow!(
-            "reindex required: stored vector schema is {}, expected {EMBEDDING_VECTOR_SCHEMA}",
+        return Err(SurfaceError::ReindexRequired(format!(
+            "stored vector schema is {}, expected {EMBEDDING_VECTOR_SCHEMA}",
             stored_fingerprint.vector_schema
-        ));
+        )));
     }
 
     Ok(())
@@ -414,14 +416,15 @@ async fn validate_read_only_vector_store(
     db: &PgPool,
     vector_store: &QdrantRepository,
     embedding: &dyn EmbeddingProvider,
-) -> AnyhowResult<()> {
+) -> Result<(), SurfaceError> {
     let desired_dimension = embedding.dimension();
     let desired_model = embedding.model_name();
-    let current_dimension = vector_store
-        .collection_dimension()
+    let current_dimension = vector_store.collection_dimension().await.map_err(|e| {
+        SurfaceError::Configuration(format!("inspect Qdrant collection dimension: {e}"))
+    })?;
+    let stored_fingerprint = load_embedding_fingerprint(db)
         .await
-        .context("inspect Qdrant collection dimension")?;
-    let stored_fingerprint = load_embedding_fingerprint(db).await?;
+        .map_err(|e| SurfaceError::Configuration(format!("load embedding fingerprint: {e}")))?;
 
     validate_read_only_collection_state(
         current_dimension,
