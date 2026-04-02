@@ -22,7 +22,12 @@ export ANKIATLAS_EMBEDDING_DIMENSION=384
 
 cargo build
 cargo run --bin anki-atlas -- migrate
+
+# Enable pre-commit hooks (fmt + clippy)
+git config core.hooksPath .githooks
 ```
+
+To bypass hooks in an emergency: `SKIP_HOOKS=1 git commit -m "..."`.
 
 If you need real embeddings, switch to `ANKIATLAS_EMBEDDING_PROVIDER=openai` or `google` and supply the matching API key.
 
