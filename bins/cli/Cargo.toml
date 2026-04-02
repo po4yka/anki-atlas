@@ -14,8 +14,12 @@ common = { path = "../../crates/common" }
 database = { path = "../../crates/database" }
 surface-contracts = { path = "../../crates/surface-contracts" }
 surface-runtime = { path = "../../crates/surface-runtime" }
+card = { path = "../../crates/card" }
+cardloop = { path = "../../crates/cardloop" }
+validation = { path = "../../crates/validation" }
 
 anyhow.workspace = true
+chrono.workspace = true
 dotenvy.workspace = true
 clap.workspace = true
 crossterm = "0.29"

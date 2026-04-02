@@ -29,6 +29,8 @@ pub enum Commands {
     Validate(ValidateArgs),
     ObsidianSync(ObsidianSyncArgs),
     TagAudit(TagAuditArgs),
+    /// Card quality loop: scan, queue, fix, resolve
+    Cardloop(CardloopArgs),
 }
 
 #[derive(Args, Debug)]
@@ -163,4 +165,70 @@ pub struct TagAuditArgs {
     pub file: PathBuf,
     #[arg(short, long, default_value_t = false)]
     pub fix: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct CardloopArgs {
+    #[command(subcommand)]
+    pub command: CardloopCommand,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum CardloopCommand {
+    /// Scan cards and populate the work queue
+    Scan(CardloopScanArgs),
+    /// Show score dashboard and progress
+    Status(CardloopStatusArgs),
+    /// Get next work item(s) from the queue
+    Next(CardloopNextArgs),
+    /// Mark item(s) as fixed/skipped/wontfix
+    Resolve(CardloopResolveArgs),
+    /// Show recent progression history
+    Log(CardloopLogArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct CardloopScanArgs {
+    /// Which loop to scan: audit, generation, or all
+    #[arg(long, default_value = "all")]
+    pub loop_kind: String,
+    /// Path to card registry SQLite database
+    #[arg(long)]
+    pub registry: PathBuf,
+}
+
+#[derive(Args, Debug)]
+pub struct CardloopStatusArgs {
+    /// Output as JSON
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct CardloopNextArgs {
+    /// Number of items to show
+    #[arg(short = 'n', long, default_value_t = 1)]
+    pub count: usize,
+    /// Filter by loop kind: audit or generation
+    #[arg(long)]
+    pub loop_kind: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct CardloopResolveArgs {
+    /// Work item ID (prefix match supported)
+    pub id: String,
+    /// Resolution status: fixed, skipped, or wontfix
+    #[arg(long, default_value = "fixed")]
+    pub status: String,
+    /// Attestation: explain what was done
+    #[arg(long)]
+    pub attest: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct CardloopLogArgs {
+    /// Number of recent events to show
+    #[arg(short = 'n', long, default_value_t = 10)]
+    pub count: usize,
 }

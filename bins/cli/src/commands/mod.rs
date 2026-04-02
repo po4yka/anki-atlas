@@ -1,3 +1,4 @@
+pub mod cardloop;
 pub mod coverage;
 pub mod duplicates;
 pub mod gaps;

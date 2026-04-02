@@ -117,7 +117,8 @@ fn execution_mode_for(command: &Commands) -> Option<ExecutionMode> {
         | Commands::Generate(_)
         | Commands::Validate(_)
         | Commands::ObsidianSync(_)
-        | Commands::TagAudit(_) => None,
+        | Commands::TagAudit(_)
+        | Commands::Cardloop(_) => None,
     }
 }
 

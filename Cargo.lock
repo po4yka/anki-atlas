@@ -134,6 +134,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "card",
+ "cardloop",
+ "chrono",
  "clap",
  "common",
  "crossterm",
@@ -146,6 +149,7 @@ dependencies = [
  "surface-runtime",
  "tempfile",
  "tokio",
+ "validation",
 ]
 
 [[package]]
@@ -739,6 +743,26 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "unicode-normalization",
+]
+
+[[package]]
+name = "cardloop"
+version = "0.1.0"
+dependencies = [
+ "card",
+ "chrono",
+ "common",
+ "obsidian",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "taxonomy",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+ "uuid",
+ "validation",
 ]
 
 [[package]]
