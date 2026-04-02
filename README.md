@@ -18,7 +18,7 @@ Important current constraints:
 - MCP does not run sync or index directly; it only enqueues jobs.
 - `generate` is a preview workflow, not a persistence workflow.
 - `obsidian-sync` is currently dry-run only; non-preview persistence fails explicitly.
-- The root [Dockerfile](/Users/po4yka/GitRep/anki-atlas/Dockerfile) builds `anki-atlas-api` only.
+- The root [Dockerfile](Dockerfile) builds `anki-atlas-api` only.
 
 ## Quick Start
 
@@ -188,7 +188,7 @@ Every tool accepts `output_mode = "markdown" | "json"`, defaulting to `markdown`
 
 ## Configuration
 
-Core environment variables come from [config.rs](/Users/po4yka/GitRep/anki-atlas/crates/common/src/config.rs):
+Core environment variables come from [config.rs](crates/common/src/config.rs):
 
 | Variable | Default | Notes |
 |---|---|---|
@@ -238,20 +238,20 @@ cargo test -p anki-atlas-api -p anki-atlas-cli -p anki-atlas-mcp
 cargo test --workspace --exclude anki-sync --exclude database
 ```
 
-Fuzzing instructions live in [docs/FUZZING.md](/Users/po4yka/GitRep/anki-atlas/docs/FUZZING.md).
+Fuzzing instructions live in [docs/FUZZING.md](docs/FUZZING.md).
 
 ## Documentation Map
 
-- [Architecture](/Users/po4yka/GitRep/anki-atlas/docs/ARCHITECTURE.md)
-- [First Time Setup](/Users/po4yka/GitRep/anki-atlas/docs/FIRST_TIME_SETUP.md)
-- [Deployment](/Users/po4yka/GitRep/anki-atlas/docs/DEPLOYMENT.md)
-- [Fuzzing](/Users/po4yka/GitRep/anki-atlas/docs/FUZZING.md)
-- [MCP Tools](/Users/po4yka/GitRep/anki-atlas/docs/MCP_TOOLS.md)
-- [Performance](/Users/po4yka/GitRep/anki-atlas/docs/PERFORMANCE.md)
-- [Troubleshooting](/Users/po4yka/GitRep/anki-atlas/docs/TROUBLESHOOTING.md)
-- [CLI Spec](/Users/po4yka/GitRep/anki-atlas/specs/16-cli.md)
-- [API Spec](/Users/po4yka/GitRep/anki-atlas/specs/17-api.md)
-- [MCP Spec](/Users/po4yka/GitRep/anki-atlas/specs/18-mcp.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [First Time Setup](docs/FIRST_TIME_SETUP.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [Fuzzing](docs/FUZZING.md)
+- [MCP Tools](docs/MCP_TOOLS.md)
+- [Performance](docs/PERFORMANCE.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [CLI Spec](specs/16-cli.md)
+- [API Spec](specs/17-api.md)
+- [MCP Spec](specs/18-mcp.md)
 
 ## Workspace Layout
 

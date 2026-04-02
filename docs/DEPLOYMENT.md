@@ -6,7 +6,7 @@ This guide documents the current deployable runtime on `main`.
 
 Today:
 
-- the root [Dockerfile](/Users/po4yka/GitRep/anki-atlas/Dockerfile) builds `anki-atlas-api`
+- the root [Dockerfile](Dockerfile) builds `anki-atlas-api`
 - the API can serve read traffic and enqueue jobs
 - full async execution also requires a worker process with `ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1`
 - CLI and MCP are usually run as host processes or from custom images
@@ -29,7 +29,7 @@ docker build -t anki-atlas-api:latest .
 
 ## Runtime Configuration
 
-Settings are loaded from [config.rs](/Users/po4yka/GitRep/anki-atlas/crates/common/src/config.rs).
+Settings are loaded from [config.rs](crates/common/src/config.rs).
 
 ### Core variables
 

@@ -1,6 +1,6 @@
 # Anki Atlas MCP Tools
 
-The MCP server shares the same surface boundary as the API and CLI through [surface-runtime](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) and [surface-contracts](/Users/po4yka/GitRep/anki-atlas/crates/surface-contracts/src/lib.rs). That means its tools should describe real service behavior, not synthetic agent-only wrappers.
+The MCP server shares the same surface boundary as the API and CLI through [surface-runtime](crates/surface-runtime/src/services.rs) and [surface-contracts](crates/surface-contracts/src/lib.rs). That means its tools should describe real service behavior, not synthetic agent-only wrappers.
 
 ## Running the Server
 
@@ -147,7 +147,7 @@ Write-side behavior is async-only here. MCP does not run sync or index directly.
 
 ## Source Files
 
-- [server.rs](/Users/po4yka/GitRep/anki-atlas/bins/mcp/src/server.rs)
-- [tools.rs](/Users/po4yka/GitRep/anki-atlas/bins/mcp/src/tools.rs)
-- [formatters.rs](/Users/po4yka/GitRep/anki-atlas/bins/mcp/src/formatters.rs)
-- [handlers.rs](/Users/po4yka/GitRep/anki-atlas/bins/mcp/src/handlers.rs)
+- [server.rs](bins/mcp/src/server.rs)
+- [tools.rs](bins/mcp/src/tools.rs)
+- [formatters.rs](bins/mcp/src/formatters.rs)
+- [handlers.rs](bins/mcp/src/handlers.rs)

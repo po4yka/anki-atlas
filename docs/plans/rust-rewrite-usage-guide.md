@@ -1,6 +1,6 @@
 # Rust Rewrite: How To Use
 
-> Historical rewrite artifact. This guide describes the original rewrite workflow, not the current `main` implementation contract. For current behavior, use [README](/Users/po4yka/GitRep/anki-atlas/README.md), [Architecture](/Users/po4yka/GitRep/anki-atlas/docs/ARCHITECTURE.md), and the current surface specs under [specs/](/Users/po4yka/GitRep/anki-atlas/specs/README.md).
+> Historical rewrite artifact. This guide describes the original rewrite workflow, not the current `main` implementation contract. For current behavior, use [README](README.md), [Architecture](docs/ARCHITECTURE.md), and the current surface specs under [specs/](specs/README.md).
 
 ## Prerequisites
 

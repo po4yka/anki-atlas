@@ -251,5 +251,5 @@ Every tool supports `output_mode = "markdown" | "json"`.
 
 - Use API or MCP job tools for async sync/index orchestration.
 - Use the CLI for direct sync/index execution and local preview workflows.
-- Use [docs/ARCHITECTURE.md](/Users/po4yka/GitRep/anki-atlas/docs/ARCHITECTURE.md) as the source of truth for exposed surfaces.
-- Use [docs/TROUBLESHOOTING.md](/Users/po4yka/GitRep/anki-atlas/docs/TROUBLESHOOTING.md) when setup fails.
+- Use [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) as the source of truth for exposed surfaces.
+- Use [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) when setup fails.

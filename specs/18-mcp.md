@@ -4,11 +4,11 @@
 
 Current Rust source:
 
-- [main.rs](/Users/po4yka/GitRep/anki-atlas/bins/mcp/src/main.rs)
-- [server.rs](/Users/po4yka/GitRep/anki-atlas/bins/mcp/src/server.rs)
-- [tools.rs](/Users/po4yka/GitRep/anki-atlas/bins/mcp/src/tools.rs)
-- [formatters.rs](/Users/po4yka/GitRep/anki-atlas/bins/mcp/src/formatters.rs)
-- [handlers.rs](/Users/po4yka/GitRep/anki-atlas/bins/mcp/src/handlers.rs)
+- [main.rs](bins/mcp/src/main.rs)
+- [server.rs](bins/mcp/src/server.rs)
+- [tools.rs](bins/mcp/src/tools.rs)
+- [formatters.rs](bins/mcp/src/formatters.rs)
+- [handlers.rs](bins/mcp/src/handlers.rs)
 
 ## Purpose
 
@@ -108,8 +108,8 @@ Representative result families:
 
 ## Runtime Rules
 
-- MCP uses [surface-runtime](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) with direct execution disabled
-- MCP tool inputs and outputs are shaped through [surface-contracts](/Users/po4yka/GitRep/anki-atlas/crates/surface-contracts/src/lib.rs)
+- MCP uses [surface-runtime](crates/surface-runtime/src/services.rs) with direct execution disabled
+- MCP tool inputs and outputs are shaped through [surface-contracts](crates/surface-contracts/src/lib.rs)
 - read tools call the shared search and analytics facades
 - `ankiatlas_search` stays note-oriented and includes best semantic chunk metadata when semantic retrieval contributes
 - `ankiatlas_search_chunks` is semantic-only and returns raw multimodal chunk hits

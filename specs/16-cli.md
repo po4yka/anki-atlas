@@ -4,10 +4,10 @@
 
 Current Rust source:
 
-- [main.rs](/Users/po4yka/GitRep/anki-atlas/bins/cli/src/main.rs)
-- [args.rs](/Users/po4yka/GitRep/anki-atlas/bins/cli/src/args.rs)
-- [commands/mod.rs](/Users/po4yka/GitRep/anki-atlas/bins/cli/src/commands/mod.rs)
-- [output.rs](/Users/po4yka/GitRep/anki-atlas/bins/cli/src/output.rs)
+- [main.rs](bins/cli/src/main.rs)
+- [args.rs](bins/cli/src/args.rs)
+- [commands/mod.rs](bins/cli/src/commands/mod.rs)
+- [output.rs](bins/cli/src/output.rs)
 
 ## Purpose
 
@@ -94,7 +94,7 @@ anki-atlas tag-audit <file> [--fix]
 
 ## Runtime Wiring
 
-The CLI uses [surface-runtime](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) with direct execution enabled, and consumes shared DTOs from [surface-contracts](/Users/po4yka/GitRep/anki-atlas/crates/surface-contracts/src/lib.rs).
+The CLI uses [surface-runtime](crates/surface-runtime/src/services.rs) with direct execution enabled, and consumes shared DTOs from [surface-contracts](crates/surface-contracts/src/lib.rs).
 
 That shared runtime provides:
 

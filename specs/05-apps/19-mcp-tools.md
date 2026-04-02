@@ -6,9 +6,9 @@ It is no longer the current implementation reference.
 
 Use these documents instead:
 
-- [MCP Spec](/Users/po4yka/GitRep/anki-atlas/specs/18-mcp.md)
-- [MCP Tools Guide](/Users/po4yka/GitRep/anki-atlas/docs/MCP_TOOLS.md)
-- [Architecture](/Users/po4yka/GitRep/anki-atlas/docs/ARCHITECTURE.md)
+- [MCP Spec](specs/18-mcp.md)
+- [MCP Tools Guide](docs/MCP_TOOLS.md)
+- [Architecture](docs/ARCHITECTURE.md)
 
 Current reality:
 

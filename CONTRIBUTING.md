@@ -4,7 +4,7 @@ This workspace is still evolving quickly, but the contribution rule on `main` is
 
 ## Before You Start
 
-- Read [docs/ARCHITECTURE.md](/Users/po4yka/GitRep/anki-atlas/docs/ARCHITECTURE.md).
+- Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - Prefer updating the shared domain crates over adding surface-specific behavior in `bins/*`.
 - Keep API, CLI, and MCP documentation in sync with the code whenever you change a public contract.
 
@@ -95,11 +95,11 @@ Update docs when you change:
 
 The current source-of-truth docs are:
 
-- [README.md](/Users/po4yka/GitRep/anki-atlas/README.md)
-- [docs/ARCHITECTURE.md](/Users/po4yka/GitRep/anki-atlas/docs/ARCHITECTURE.md)
-- [specs/16-cli.md](/Users/po4yka/GitRep/anki-atlas/specs/16-cli.md)
-- [specs/17-api.md](/Users/po4yka/GitRep/anki-atlas/specs/17-api.md)
-- [specs/18-mcp.md](/Users/po4yka/GitRep/anki-atlas/specs/18-mcp.md)
+- [README.md](README.md)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [specs/16-cli.md](specs/16-cli.md)
+- [specs/17-api.md](specs/17-api.md)
+- [specs/18-mcp.md](specs/18-mcp.md)
 
 ## Reporting Problems
 

@@ -1,6 +1,6 @@
 # Fuzzing
 
-This repository keeps fuzzing isolated in the root [`fuzz/`](/Users/po4yka/GitRep/anki-atlas/fuzz) package so normal workspace commands stay unchanged.
+This repository keeps fuzzing isolated in the root [`fuzz/`](fuzz) package so normal workspace commands stay unchanged.
 
 ## Install
 
@@ -27,7 +27,7 @@ For a quick smoke test:
 cargo +nightly fuzz run anki_reader_normalizer -- -max_total_time=60
 ```
 
-Tracked seed corpora live under [`fuzz/corpus/`](/Users/po4yka/GitRep/anki-atlas/fuzz/corpus). Generated artifacts and build output stay untracked.
+Tracked seed corpora live under [`fuzz/corpus/`](fuzz/corpus). Generated artifacts and build output stay untracked.
 
 ## Reproduce A Crash
 

@@ -6,9 +6,9 @@ It is no longer the current implementation reference.
 
 Use these documents instead:
 
-- [CLI Spec](/Users/po4yka/GitRep/anki-atlas/specs/16-cli.md)
-- [Architecture](/Users/po4yka/GitRep/anki-atlas/docs/ARCHITECTURE.md)
-- [README](/Users/po4yka/GitRep/anki-atlas/README.md)
+- [CLI Spec](specs/16-cli.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [README](README.md)
 
 Current reality:
 

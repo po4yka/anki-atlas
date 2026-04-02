@@ -104,7 +104,7 @@ Support and tooling
 
 ## Shared Runtime
 
-[services.rs](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) builds the runtime graph once from [config.rs](/Users/po4yka/GitRep/anki-atlas/crates/common/src/config.rs), and [surface-contracts](/Users/po4yka/GitRep/anki-atlas/crates/surface-contracts/src/lib.rs) provides the shared leaf-free DTOs consumed by API, CLI, and MCP:
+[services.rs](crates/surface-runtime/src/services.rs) builds the runtime graph once from [config.rs](crates/common/src/config.rs), and [surface-contracts](crates/surface-contracts/src/lib.rs) provides the shared leaf-free DTOs consumed by API, CLI, and MCP:
 
 - PostgreSQL pool
 - embedding provider

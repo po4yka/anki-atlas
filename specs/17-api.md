@@ -4,12 +4,12 @@
 
 Current Rust source:
 
-- [main.rs](/Users/po4yka/GitRep/anki-atlas/bins/api/src/main.rs)
-- [router.rs](/Users/po4yka/GitRep/anki-atlas/bins/api/src/router.rs)
-- [schemas.rs](/Users/po4yka/GitRep/anki-atlas/bins/api/src/schemas.rs)
-- [error.rs](/Users/po4yka/GitRep/anki-atlas/bins/api/src/error.rs)
-- [handlers/](/Users/po4yka/GitRep/anki-atlas/bins/api/src/handlers)
-- [state.rs](/Users/po4yka/GitRep/anki-atlas/bins/api/src/state.rs)
+- [main.rs](bins/api/src/main.rs)
+- [router.rs](bins/api/src/router.rs)
+- [schemas.rs](bins/api/src/schemas.rs)
+- [error.rs](bins/api/src/error.rs)
+- [handlers/](bins/api/src/handlers)
+- [state.rs](bins/api/src/state.rs)
 
 ## Purpose
 
@@ -77,8 +77,8 @@ uuid.workspace = true
 - extracted API settings
 - shared `SurfaceServices`
 
-The API builds those services through [surface-runtime](/Users/po4yka/GitRep/anki-atlas/crates/surface-runtime/src/services.rs) with direct execution disabled.
-The shared request and response DTOs for search and analytics come from [surface-contracts](/Users/po4yka/GitRep/anki-atlas/crates/surface-contracts/src/lib.rs).
+The API builds those services through [surface-runtime](crates/surface-runtime/src/services.rs) with direct execution disabled.
+The shared request and response DTOs for search and analytics come from [surface-contracts](crates/surface-contracts/src/lib.rs).
 
 ### Request DTOs
 

@@ -16,10 +16,10 @@ Skip them locally with `--exclude anki-sync --exclude database`.
 
 ```
 crates/     -- Library crates (shared, reusable)
-bins/       -- Binary entry points (cli, api, mcp, worker)
+bins/       -- Binary entry points (cli, api, mcp, perf-harness, worker)
 specs/      -- Ralph loop spec files (one per crate)
 presets/    -- Ralph orchestrator configs (YAML + prompt files)
-config/     -- Configuration files
+config/     -- Configuration files (env template, campaigns)
 ```
 
 **Dependency rule:** `bins/` depends on `crates/`, `crates/` never depends on `bins/`.
@@ -32,6 +32,7 @@ Crates may depend on other crates but **no circular dependencies**.
 | common | Types, config (figment), errors (thiserror), tracing setup |
 | taxonomy | Tag normalization and validation (500+ tag mappings) |
 | database | PostgreSQL pool (sqlx), migrations |
+| perf-support | Performance dataset seeding and support helpers |
 | anki-reader | Anki SQLite reader (rusqlite), models, normalizer, AnkiConnect client |
 | anki-sync | Sync engine, state tracking, progress, recovery |
 | indexer | Embedding providers, Qdrant vector store, index service |
@@ -44,14 +45,17 @@ Crates may depend on other crates but **no circular dependencies**.
 | rag | Document chunker, vector store, RAG service |
 | generator | LLM-powered card generation agents, APF rendering |
 | jobs | Background job queue (Redis via rustis) |
+| surface-contracts | Leaf-free DTOs shared by API, CLI, and MCP |
+| surface-runtime | Shared runtime graph, facade composition, and local workflow wrappers |
 
 ### Binaries
 
 | Binary | Framework | Purpose |
 |--------|-----------|---------|
-| cli | clap | Command-line interface (12 subcommands) |
+| cli | clap + ratatui | CLI surface plus TUI operator console |
 | api | axum | REST API with auth middleware |
 | mcp | rmcp | MCP server for AI agents |
+| perf-harness | goose | Load and performance harness |
 | worker | tokio | Background job worker |
 
 ### Ralph Presets
@@ -70,7 +74,7 @@ Crates may depend on other crates but **no circular dependencies**.
 
 ## Conventions
 
-- Rust 1.85+ (edition 2024)
+- Rust 1.88+ (edition 2024)
 - All types must be `Send + Sync`
 - `thiserror` for library error types, `anyhow` only in binary crates
 - Trait-based DI at every external boundary (DB, HTTP, Qdrant, Redis)
