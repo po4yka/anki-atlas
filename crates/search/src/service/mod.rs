@@ -1,151 +1,13 @@
-use std::collections::HashMap;
+mod chunks;
+mod hybrid;
+mod types;
+
+pub use types::*;
+
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
-use tracing::instrument;
-
-use crate::error::SearchError;
-use crate::fts::{LexicalMode, SearchFilters};
-use crate::fusion::{FusionStats, SearchResult};
 use crate::repository::SearchReadRepository;
-use crate::reranker::{Reranker, ScoredNote};
-
-/// Controls which retrieval sources are used during search.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SearchMode {
-    #[default]
-    Hybrid,
-    SemanticOnly,
-    FtsOnly,
-}
-
-/// Parameters for a hybrid search query.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SearchParams {
-    pub query: String,
-    pub filters: Option<SearchFilters>,
-    #[serde(default = "default_limit")]
-    pub limit: usize,
-    #[serde(default = "default_weight")]
-    pub semantic_weight: f64,
-    #[serde(default = "default_weight")]
-    pub fts_weight: f64,
-    #[serde(default)]
-    pub search_mode: SearchMode,
-    pub rerank_override: Option<bool>,
-    pub rerank_top_n_override: Option<usize>,
-}
-
-/// Parameters for semantic chunk search.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChunkSearchParams {
-    pub query: String,
-    pub filters: Option<SearchFilters>,
-    #[serde(default = "default_limit")]
-    pub limit: usize,
-}
-
-impl Default for ChunkSearchParams {
-    fn default() -> Self {
-        Self {
-            query: String::new(),
-            filters: None,
-            limit: default_limit(),
-        }
-    }
-}
-
-fn default_limit() -> usize {
-    50
-}
-fn default_weight() -> f64 {
-    1.0
-}
-
-impl Default for SearchParams {
-    fn default() -> Self {
-        Self {
-            query: String::new(),
-            filters: None,
-            limit: default_limit(),
-            semantic_weight: default_weight(),
-            fts_weight: default_weight(),
-            search_mode: SearchMode::Hybrid,
-            rerank_override: None,
-            rerank_top_n_override: None,
-        }
-    }
-}
-
-/// Complete hybrid search result.
-#[derive(Debug, Clone, Serialize)]
-pub struct HybridSearchResult {
-    pub results: Vec<SearchResult>,
-    pub stats: FusionStats,
-    pub query: String,
-    pub filters_applied: HashMap<String, serde_json::Value>,
-    pub lexical_mode: LexicalMode,
-    pub lexical_fallback_used: bool,
-    pub query_suggestions: Vec<String>,
-    pub autocomplete_suggestions: Vec<String>,
-    pub rerank_applied: bool,
-    pub rerank_model: Option<String>,
-    pub rerank_top_n: Option<usize>,
-}
-
-impl HybridSearchResult {
-    /// Create an empty result for short-circuit returns (e.g. blank queries).
-    pub fn empty(query: String) -> Self {
-        Self {
-            results: vec![],
-            stats: FusionStats::default(),
-            query,
-            filters_applied: HashMap::new(),
-            lexical_mode: LexicalMode::None,
-            lexical_fallback_used: false,
-            query_suggestions: vec![],
-            autocomplete_suggestions: vec![],
-            rerank_applied: false,
-            rerank_model: None,
-            rerank_top_n: None,
-        }
-    }
-}
-
-/// Single semantic chunk hit.
-#[derive(Debug, Clone, Serialize)]
-pub struct ChunkSearchHit {
-    pub note_id: i64,
-    pub chunk_id: String,
-    pub chunk_kind: String,
-    pub modality: String,
-    pub source_field: Option<String>,
-    pub asset_rel_path: Option<String>,
-    pub mime_type: Option<String>,
-    pub preview_label: Option<String>,
-    pub score: f64,
-}
-
-/// Semantic-only chunk search result.
-#[derive(Debug, Clone, Serialize)]
-pub struct ChunkSearchResult {
-    pub query: String,
-    pub results: Vec<ChunkSearchHit>,
-}
-
-/// Detailed note information for result enrichment.
-#[derive(Debug, Clone, Serialize)]
-pub struct NoteDetail {
-    pub note_id: i64,
-    pub model_id: i64,
-    pub normalized_text: String,
-    pub tags: Vec<String>,
-    pub deck_names: Vec<String>,
-    pub mature: bool,
-    pub lapses: i32,
-    pub reps: i32,
-}
+use crate::reranker::Reranker;
 
 /// Search service with trait-based DI.
 pub struct SearchService<E, V, R>
@@ -154,12 +16,12 @@ where
     V: indexer::qdrant::VectorRepository,
     R: Reranker,
 {
-    embedding: E,
-    vector_repo: V,
-    reranker: Option<R>,
-    repository: Arc<dyn SearchReadRepository>,
-    rerank_enabled: bool,
-    rerank_top_n: usize,
+    pub(crate) embedding: E,
+    pub(crate) vector_repo: V,
+    pub(crate) reranker: Option<R>,
+    pub(crate) repository: Arc<dyn SearchReadRepository>,
+    pub(crate) rerank_enabled: bool,
+    pub(crate) rerank_top_n: usize,
 }
 
 impl<E, V, R> SearchService<E, V, R>
@@ -186,237 +48,20 @@ where
             rerank_top_n,
         }
     }
-
-    /// Execute hybrid search: semantic + FTS -> RRF fusion -> optional rerank.
-    #[instrument(skip(self))]
-    pub async fn search(&self, params: &SearchParams) -> Result<HybridSearchResult, SearchError> {
-        let SearchParams {
-            ref query,
-            filters: ref _filters,
-            limit,
-            semantic_weight,
-            fts_weight,
-            search_mode,
-            rerank_override,
-            rerank_top_n_override,
-        } = *params;
-
-        // Empty/whitespace query short-circuit
-        if query.trim().is_empty() {
-            return Ok(HybridSearchResult::empty(query.to_string()));
-        }
-
-        // Semantic search
-        let mut semantic_matches = HashMap::<i64, indexer::qdrant::SemanticSearchHit>::new();
-        let semantic_results = if search_mode == SearchMode::FtsOnly {
-            vec![]
-        } else {
-            let raw = crate::semantic::run_semantic_chunk_search(
-                &self.embedding,
-                &self.vector_repo,
-                query,
-                params.filters.as_ref(),
-                limit,
-            )
-            .await?;
-            let mut best_by_note = HashMap::<i64, f64>::new();
-            for hit in raw {
-                let score = f64::from(hit.score);
-                best_by_note
-                    .entry(hit.note_id)
-                    .and_modify(|best_score| {
-                        if score > *best_score {
-                            *best_score = score;
-                        }
-                    })
-                    .or_insert(score);
-                semantic_matches
-                    .entry(hit.note_id)
-                    .and_modify(|existing| {
-                        if hit.score > existing.score {
-                            *existing = hit.clone();
-                        }
-                    })
-                    .or_insert(hit);
-            }
-            let mut semantic_results: Vec<ScoredNote> = best_by_note
-                .into_iter()
-                .map(|(note_id, score)| ScoredNote { note_id, score })
-                .collect();
-            semantic_results.sort_by(|a, b| {
-                b.score
-                    .partial_cmp(&a.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
-            semantic_results.truncate(limit);
-            semantic_results
-        };
-
-        // FTS search
-        let (
-            fts_results,
-            lexical_mode,
-            lexical_fallback_used,
-            query_suggestions,
-            autocomplete_suggestions,
-        ) = if search_mode == SearchMode::SemanticOnly {
-            (vec![], LexicalMode::None, false, vec![], vec![])
-        } else {
-            let lexical = self
-                .repository
-                .search_lexical(query, params.filters.as_ref(), limit as i64)
-                .await?;
-            let fts_results = lexical
-                .results
-                .into_iter()
-                .map(|r| (r.note_id, r.rank, r.headline))
-                .collect();
-            (
-                fts_results,
-                lexical.mode,
-                lexical.used_fallback,
-                lexical.query_suggestions,
-                lexical.autocomplete_suggestions,
-            )
-        };
-
-        // RRF fusion
-        let (mut results, stats) = crate::fusion::reciprocal_rank_fusion(
-            &semantic_results,
-            &fts_results,
-            60,
-            limit,
-            if search_mode == SearchMode::FtsOnly {
-                0.0
-            } else {
-                semantic_weight
-            },
-            if search_mode == SearchMode::SemanticOnly {
-                0.0
-            } else {
-                fts_weight
-            },
-        );
-
-        for result in &mut results {
-            if let Some(hit) = semantic_matches.get(&result.note_id) {
-                result.match_modality = Some(hit.modality.clone());
-                result.match_chunk_kind = Some(hit.chunk_kind.clone());
-                result.match_source_field = hit.source_field.clone();
-                result.match_asset_rel_path = hit.asset_rel_path.clone();
-                result.match_preview_label = hit.preview_label.clone();
-            }
-        }
-
-        // Determine whether to rerank
-        let should_rerank = rerank_override.unwrap_or(self.rerank_enabled);
-        let rerank_top_n = rerank_top_n_override.unwrap_or(self.rerank_top_n);
-        let mut rerank_applied = false;
-        let mut rerank_model: Option<String> = None;
-
-        if should_rerank {
-            if let Some(ref reranker) = self.reranker {
-                (rerank_applied, rerank_model) = crate::reranking::apply_reranking(
-                    &mut results,
-                    query,
-                    reranker,
-                    rerank_top_n,
-                    &self.repository,
-                )
-                .await;
-            }
-            // No reranker provided: degrade gracefully
-        }
-
-        // Apply limit
-        results.truncate(limit);
-
-        Ok(HybridSearchResult {
-            results,
-            stats,
-            query: query.to_string(),
-            filters_applied: HashMap::new(),
-            lexical_mode,
-            lexical_fallback_used,
-            query_suggestions,
-            autocomplete_suggestions,
-            rerank_applied,
-            rerank_model: if rerank_applied { rerank_model } else { None },
-            rerank_top_n: if rerank_applied {
-                Some(rerank_top_n)
-            } else {
-                None
-            },
-        })
-    }
-
-    /// Execute semantic-only chunk search.
-    #[instrument(skip(self))]
-    pub async fn search_chunks(
-        &self,
-        params: &ChunkSearchParams,
-    ) -> Result<ChunkSearchResult, SearchError> {
-        if params.query.trim().is_empty() {
-            return Ok(ChunkSearchResult {
-                query: params.query.clone(),
-                results: Vec::new(),
-            });
-        }
-
-        let raw = crate::semantic::run_semantic_chunk_search(
-            &self.embedding,
-            &self.vector_repo,
-            &params.query,
-            params.filters.as_ref(),
-            params.limit,
-        )
-        .await?;
-        let mut results: Vec<_> = raw
-            .into_iter()
-            .map(|hit| ChunkSearchHit {
-                note_id: hit.note_id,
-                chunk_id: hit.chunk_id,
-                chunk_kind: hit.chunk_kind,
-                modality: hit.modality,
-                source_field: hit.source_field,
-                asset_rel_path: hit.asset_rel_path,
-                mime_type: hit.mime_type,
-                preview_label: hit.preview_label,
-                score: f64::from(hit.score),
-            })
-            .collect();
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        results.truncate(params.limit);
-
-        Ok(ChunkSearchResult {
-            query: params.query.clone(),
-            results,
-        })
-    }
-
-    /// Fetch note details for a list of IDs (for reranking / enrichment).
-    #[instrument(skip(self))]
-    pub async fn get_notes_details(
-        &self,
-        note_ids: &[i64],
-    ) -> Result<HashMap<i64, NoteDetail>, SearchError> {
-        self.repository.get_note_details(note_ids).await
-    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
     use indexer::embeddings::EmbeddingInput;
 
     use super::*;
-    use crate::fts::{FtsResult, FtsSource, LexicalSearchResult};
+    use crate::fts::{FtsResult, FtsSource, LexicalMode, LexicalSearchResult, SearchFilters};
+    use crate::fusion::FusionStats;
     use crate::repository::{SearchReadRepository, SqlxSearchReadRepository};
+    use crate::reranker::{Reranker, ScoredNote};
     use database::run_migrations;
     use sqlx::postgres::PgPoolOptions;
     use testcontainers::runners::AsyncRunner;
@@ -590,9 +235,9 @@ mod tests {
             _query: &str,
             _filters: Option<&SearchFilters>,
             _limit: i64,
-        ) -> Result<LexicalSearchResult, SearchError> {
+        ) -> Result<LexicalSearchResult, crate::error::SearchError> {
             if self.lexical_error {
-                return Err(SearchError::InvalidRequest(
+                return Err(crate::error::SearchError::InvalidRequest(
                     "lexical lookup failed".to_string(),
                 ));
             }
@@ -602,9 +247,9 @@ mod tests {
         async fn get_note_details(
             &self,
             note_ids: &[i64],
-        ) -> Result<HashMap<i64, NoteDetail>, SearchError> {
+        ) -> Result<HashMap<i64, NoteDetail>, crate::error::SearchError> {
             if self.note_details_error {
-                return Err(SearchError::InvalidRequest(
+                return Err(crate::error::SearchError::InvalidRequest(
                     "note detail lookup failed".to_string(),
                 ));
             }
@@ -717,11 +362,13 @@ mod tests {
             &self,
             _query: &str,
             documents: &[(i64, String)],
-        ) -> Result<Vec<ScoredNote>, SearchError> {
+        ) -> Result<Vec<ScoredNote>, crate::error::SearchError> {
             if self.should_fail {
-                return Err(SearchError::from(crate::error::RerankError::Protocol {
-                    message: "model unavailable".to_string(),
-                }));
+                return Err(crate::error::SearchError::from(
+                    crate::error::RerankError::Protocol {
+                        message: "model unavailable".to_string(),
+                    },
+                ));
             }
             // Return descending scores based on position
             Ok(documents
@@ -759,7 +406,7 @@ mod tests {
             &self,
             _query: &str,
             documents: &[(i64, String)],
-        ) -> Result<Vec<ScoredNote>, SearchError> {
+        ) -> Result<Vec<ScoredNote>, crate::error::SearchError> {
             *self.seen_documents.lock().unwrap() = documents.to_vec();
             Ok(documents
                 .iter()
