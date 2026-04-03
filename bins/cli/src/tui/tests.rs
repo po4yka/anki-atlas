@@ -61,7 +61,7 @@ fn sample_search_result() -> SearchResponse {
 
 fn sample_coverage() -> TopicCoverage {
     TopicCoverage {
-        topic_id: 7,
+        topic_id: common::TopicId(7),
         path: "rust/ownership".to_string(),
         label: "Ownership".to_string(),
         note_count: 12,
