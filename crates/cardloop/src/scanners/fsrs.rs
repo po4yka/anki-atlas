@@ -188,7 +188,6 @@ impl Scanner for FsrsScanner<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
     use common::DeckId;
 
     fn make_card(card_id: i64, note_id: i64, ease: i32, lapses: i32, reps: i32) -> AnkiCard {
