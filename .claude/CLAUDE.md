@@ -29,22 +29,22 @@ Crates may depend on other crates but **no circular dependencies**.
 
 | Crate | Purpose |
 |-------|---------|
-| common | Types, config (figment), errors (thiserror), tracing setup |
+| common | Types (NoteId, CardId, ModelId, DeckId, TopicId), config, errors (thiserror), tracing setup |
 | taxonomy | Tag normalization and validation (500+ tag mappings) |
 | database | PostgreSQL pool (sqlx), migrations |
 | perf-support | Performance dataset seeding and support helpers |
 | anki-reader | Anki SQLite reader (rusqlite), models, normalizer, AnkiConnect client |
 | anki-sync | Sync engine, state tracking, progress, recovery |
-| indexer | Embedding providers, Qdrant vector store, index service |
-| search | Hybrid search: FTS + semantic + RRF fusion + reranking |
+| indexer | Embedding providers, Qdrant vector store, index service, progress tracking |
+| search | Hybrid search: FTS + semantic + RRF fusion + reranking (service/ submodule) |
 | analytics | Topic taxonomy, coverage, gap detection, duplicate detection |
 | card | Card domain models, slug service, registry, APF format |
 | validation | Validation pipeline with HTML/content/format/tag validators |
 | llm | LLM provider abstraction (OpenRouter, Ollama) |
-| obsidian | Vault parser, analyzer, frontmatter, sync workflow |
-| rag | Document chunker, vector store, RAG service |
+| obsidian | Vault parser (Section), analyzer (BrokenLink), frontmatter, sync workflow |
 | generator | LLM-powered card generation agents, APF rendering |
 | jobs | Background job queue (Redis via rustis) |
+| cardloop | Persistent card quality loop: scanners, queue, progression, scoring |
 | surface-contracts | Leaf-free DTOs shared by API, CLI, and MCP |
 | surface-runtime | Shared runtime graph, facade composition, and local workflow wrappers |
 
@@ -80,7 +80,10 @@ Crates may depend on other crates but **no circular dependencies**.
 - Trait-based DI at every external boundary (DB, HTTP, Qdrant, Redis)
 - `#[cfg_attr(test, mockall::automock)]` on traits for test mocks
 - `#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]` as baseline
-- Newtype pattern for domain IDs: `pub struct NoteId(pub i64);`
+- Newtype pattern for domain IDs: `NoteId`, `CardId`, `ModelId`, `DeckId`, `TopicId` (all in `common::types`)
+- Enum pattern for boolean params: `ReindexMode`, `ExecutionMode`, `HtmlSanitization`, `CodeHandling`, `QualityCheck`, `DuplicateHandling`, `FieldRole`
+- Named structs over tuples: `ScoredNote`, `Section`, `BrokenLink` (not `Vec<(i64, f64)>`)
+- Explicit re-exports in `lib.rs` (no `pub use foo::*` wildcards)
 - `#[instrument]` on public async functions for tracing
 - `Arc<T>` for shared state, never `Rc<T>`
 - No `unwrap()` or `expect()` in library crates
