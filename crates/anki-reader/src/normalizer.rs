@@ -114,14 +114,23 @@ pub fn normalize_whitespace(text: &str) -> String {
         .join("\n")
 }
 
-/// Classify a field name as "front", "back", "extra", or "other".
-pub fn classify_field(name: &str) -> &'static str {
+/// Classification of an Anki note field by its semantic role.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldRole {
+    Front,
+    Back,
+    Extra,
+    Other,
+}
+
+/// Classify a field name by its semantic role.
+pub fn classify_field(name: &str) -> FieldRole {
     let lower = name.to_lowercase();
     match lower.as_str() {
-        "front" | "question" | "expression" | "word" | "term" | "prompt" => "front",
-        "back" | "answer" | "meaning" | "definition" | "response" | "reading" => "back",
-        "extra" | "notes" | "hint" | "example" | "examples" | "context" => "extra",
-        _ => "other",
+        "front" | "question" | "expression" | "word" | "term" | "prompt" => FieldRole::Front,
+        "back" | "answer" | "meaning" | "definition" | "response" | "reading" => FieldRole::Back,
+        "extra" | "notes" | "hint" | "example" | "examples" | "context" => FieldRole::Extra,
+        _ => FieldRole::Other,
     }
 }
 
@@ -139,19 +148,19 @@ pub fn normalize_note(note: &AnkiNote, deck_names: Option<&[String]>) -> String 
             continue;
         }
         match classify_field(name) {
-            "front" => {
+            FieldRole::Front => {
                 front_parts.push(cleaned);
                 has_classified = true;
             }
-            "back" => {
+            FieldRole::Back => {
                 back_parts.push(cleaned);
                 has_classified = true;
             }
-            "extra" => {
+            FieldRole::Extra => {
                 extra_parts.push(cleaned);
                 has_classified = true;
             }
-            _ => other_parts.push(cleaned),
+            FieldRole::Other => other_parts.push(cleaned),
         }
     }
 

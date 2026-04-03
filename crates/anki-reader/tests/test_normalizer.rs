@@ -1,6 +1,6 @@
 use anki_reader::models::{AnkiCard, AnkiDeck, AnkiNote};
 use anki_reader::normalizer::{
-    CodeHandling, build_card_deck_map, build_deck_map, classify_field, normalize_note,
+    CodeHandling, FieldRole, build_card_deck_map, build_deck_map, classify_field, normalize_note,
     normalize_notes, normalize_whitespace, strip_html,
 };
 use common::{CardId, DeckId, ModelId, NoteId};
@@ -178,49 +178,49 @@ fn normalize_whitespace_empty() {
 
 #[test]
 fn classify_field_front_variants() {
-    assert_eq!(classify_field("Front"), "front");
-    assert_eq!(classify_field("front"), "front");
-    assert_eq!(classify_field("Question"), "front");
-    assert_eq!(classify_field("Expression"), "front");
-    assert_eq!(classify_field("Word"), "front");
-    assert_eq!(classify_field("Term"), "front");
-    assert_eq!(classify_field("Prompt"), "front");
+    assert_eq!(classify_field("Front"), FieldRole::Front);
+    assert_eq!(classify_field("front"), FieldRole::Front);
+    assert_eq!(classify_field("Question"), FieldRole::Front);
+    assert_eq!(classify_field("Expression"), FieldRole::Front);
+    assert_eq!(classify_field("Word"), FieldRole::Front);
+    assert_eq!(classify_field("Term"), FieldRole::Front);
+    assert_eq!(classify_field("Prompt"), FieldRole::Front);
 }
 
 #[test]
 fn classify_field_back_variants() {
-    assert_eq!(classify_field("Back"), "back");
-    assert_eq!(classify_field("back"), "back");
-    assert_eq!(classify_field("Answer"), "back");
-    assert_eq!(classify_field("Meaning"), "back");
-    assert_eq!(classify_field("Definition"), "back");
-    assert_eq!(classify_field("Response"), "back");
-    assert_eq!(classify_field("Reading"), "back");
+    assert_eq!(classify_field("Back"), FieldRole::Back);
+    assert_eq!(classify_field("back"), FieldRole::Back);
+    assert_eq!(classify_field("Answer"), FieldRole::Back);
+    assert_eq!(classify_field("Meaning"), FieldRole::Back);
+    assert_eq!(classify_field("Definition"), FieldRole::Back);
+    assert_eq!(classify_field("Response"), FieldRole::Back);
+    assert_eq!(classify_field("Reading"), FieldRole::Back);
 }
 
 #[test]
 fn classify_field_extra_variants() {
-    assert_eq!(classify_field("Extra"), "extra");
-    assert_eq!(classify_field("extra"), "extra");
-    assert_eq!(classify_field("Notes"), "extra");
-    assert_eq!(classify_field("Hint"), "extra");
-    assert_eq!(classify_field("Example"), "extra");
-    assert_eq!(classify_field("Examples"), "extra");
-    assert_eq!(classify_field("Context"), "extra");
+    assert_eq!(classify_field("Extra"), FieldRole::Extra);
+    assert_eq!(classify_field("extra"), FieldRole::Extra);
+    assert_eq!(classify_field("Notes"), FieldRole::Extra);
+    assert_eq!(classify_field("Hint"), FieldRole::Extra);
+    assert_eq!(classify_field("Example"), FieldRole::Extra);
+    assert_eq!(classify_field("Examples"), FieldRole::Extra);
+    assert_eq!(classify_field("Context"), FieldRole::Extra);
 }
 
 #[test]
 fn classify_field_unknown() {
-    assert_eq!(classify_field("xyz"), "other");
-    assert_eq!(classify_field("Custom"), "other");
-    assert_eq!(classify_field(""), "other");
+    assert_eq!(classify_field("xyz"), FieldRole::Other);
+    assert_eq!(classify_field("Custom"), FieldRole::Other);
+    assert_eq!(classify_field(""), FieldRole::Other);
 }
 
 #[test]
 fn classify_field_case_insensitive() {
-    assert_eq!(classify_field("FRONT"), "front");
-    assert_eq!(classify_field("BACK"), "back");
-    assert_eq!(classify_field("EXTRA"), "extra");
+    assert_eq!(classify_field("FRONT"), FieldRole::Front);
+    assert_eq!(classify_field("BACK"), FieldRole::Back);
+    assert_eq!(classify_field("EXTRA"), FieldRole::Extra);
 }
 
 // --- normalize_note ---

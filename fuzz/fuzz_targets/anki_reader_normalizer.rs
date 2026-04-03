@@ -1,6 +1,8 @@
 #![no_main]
 
-use anki_reader::normalizer::{classify_field, normalize_whitespace, strip_html, CodeHandling};
+use anki_reader::normalizer::{
+    CodeHandling, FieldRole, classify_field, normalize_whitespace, strip_html,
+};
 use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
@@ -92,7 +94,7 @@ fuzz_target!(|data: &[u8]| {
     assert_eq!(normalized, normalize_whitespace(&normalized));
 
     let class = classify_field(&input.field_name);
-    assert!(matches!(class, "front" | "back" | "extra" | "other"));
+    assert!(matches!(class, FieldRole::Front | FieldRole::Back | FieldRole::Extra | FieldRole::Other));
 
     if input.preserve_code == CodeHandling::Strip && is_simple_tag_only_input(&input.text) {
         assert!(!contains_html_like_tag(&normalized));
