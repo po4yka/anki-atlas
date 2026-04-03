@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anki_sync::SyncProgressEvent;
-use indexer::service::{IndexProgressEvent, IndexProgressStage};
+use indexer::progress::{IndexProgressEvent, IndexProgressStage};
 use serde::Serialize;
 
 pub type SurfaceProgressSink = Arc<dyn Fn(SurfaceProgressEvent) + Send + Sync>;

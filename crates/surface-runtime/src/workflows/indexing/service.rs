@@ -3,10 +3,9 @@ use std::sync::Arc;
 
 use common::ReindexMode;
 use indexer::embeddings::EmbeddingProvider;
+use indexer::progress::{IndexProgressCallback, IndexProgressEvent};
 use indexer::qdrant::{NotePayload, SemanticSearchHit, SparseVector, VectorRepository};
-use indexer::service::{
-    IndexProgressCallback, IndexProgressEvent, IndexService, MultimodalNoteForIndexing,
-};
+use indexer::service::{IndexService, MultimodalNoteForIndexing};
 use sqlx::{FromRow, PgPool};
 
 use super::chunk::build_note_chunks;

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 
 use rusqlite::{Connection, Row};
@@ -43,16 +43,13 @@ impl CardState {
 /// SQLite WAL database for tracking per-card sync state.
 pub struct StateDB {
     conn: Mutex<Connection>,
-    #[allow(dead_code)]
-    path: PathBuf,
 }
 
 impl StateDB {
     /// Open or create the state database at `db_path`.
     /// Enables WAL mode and foreign keys. Creates the `card_state` table if needed.
     pub fn open(db_path: impl AsRef<Path>) -> Result<Self, StateDbError> {
-        let path = db_path.as_ref().to_path_buf();
-        let conn = Connection::open(&path)?;
+        let conn = Connection::open(db_path.as_ref())?;
 
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
@@ -70,7 +67,6 @@ impl StateDB {
 
         Ok(Self {
             conn: Mutex::new(conn),
-            path,
         })
     }
 

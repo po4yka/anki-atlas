@@ -4,10 +4,8 @@ use crate::embeddings::{self, EmbeddingError, EmbeddingInput, EmbeddingProvider}
 use crate::qdrant::{NotePayload, QdrantRepository, SparseVector};
 use common::ReindexMode;
 
-use crate::service::emit_progress;
-use crate::service::{
-    ChunkForIndexing, IndexProgressCallback, IndexProgressStage, MultimodalNoteForIndexing,
-};
+use crate::progress::{IndexProgressCallback, IndexProgressStage, emit_progress};
+use crate::service::{ChunkForIndexing, MultimodalNoteForIndexing};
 
 /// Result of the diff stage: notes that need (re-)embedding.
 pub(crate) struct NoteToEmbed<'a> {
