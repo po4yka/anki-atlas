@@ -185,7 +185,7 @@ fn topics_tree_response_serializes() {
 #[test]
 fn topic_coverage_response_maps_from_domain() {
     let response = TopicCoverageResponse::from(TopicCoverage {
-        topic_id: 42,
+        topic_id: common::TopicId(42),
         path: "cs/algorithms".into(),
         label: "Algorithms".into(),
         note_count: 4,
@@ -208,7 +208,7 @@ fn topic_gaps_response_serializes_typed_gap_type() {
         root_path: "cs".into(),
         min_coverage: 2,
         gaps: vec![TopicGapItem::from(TopicGap {
-            topic_id: 10,
+            topic_id: common::TopicId(10),
             path: "cs/networking".into(),
             label: "Networking".into(),
             description: None,

@@ -132,7 +132,7 @@ fn sync_sets_total_from_existing_states() {
     let progress_clone = progress.clone();
     let mut engine = SyncEngine::new(db, Some(progress));
 
-    engine.sync(true).unwrap();
+    engine.sync(common::ExecutionMode::DryRun).unwrap();
 
     // During scanning, set_total should have been called with 7
     let snap = progress_clone.snapshot();

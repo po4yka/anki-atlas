@@ -44,7 +44,7 @@ crates/
   llm/              # LLM provider abstraction
   obsidian/         # note parsing and vault analysis
   perf-support/     # deterministic perf datasets and helpers
-  rag/              # chunking and retrieval support
+  cardloop/         # persistent card quality loop
   search/           # hybrid search and reranking
   surface-contracts/ # shared DTOs for API, CLI, MCP
   surface-runtime/  # shared runtime graph and local workflow wrappers
@@ -178,6 +178,7 @@ The CLI exposes:
 - `validate`
 - `obsidian-sync`
 - `tag-audit`
+- `cardloop`
 
 Important behavior:
 

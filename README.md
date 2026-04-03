@@ -217,6 +217,7 @@ The CLI currently supports:
 - `validate`
 - `obsidian-sync`
 - `tag-audit`
+- `cardloop`
 
 Example commands:
 
