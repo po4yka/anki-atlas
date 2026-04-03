@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
+use tracing::instrument;
 
 use sqlx::PgPool;
 
@@ -103,6 +104,7 @@ impl SyncService {
     }
 
     /// Read collection from SQLite, normalize notes, upsert all data to PostgreSQL.
+    #[instrument(skip_all)]
     pub async fn sync_collection(&self, collection_path: impl AsRef<Path>) -> Result<SyncStats> {
         run_sync_collection(
             self.pool.clone(),
@@ -113,6 +115,7 @@ impl SyncService {
     }
 
     /// Read collection from SQLite and emit progress while syncing.
+    #[instrument(skip_all)]
     pub async fn sync_collection_with_progress(
         &self,
         collection_path: impl AsRef<Path>,
@@ -488,6 +491,7 @@ async fn run_sync_collection(
 }
 
 /// Convenience function.
+#[instrument(skip_all)]
 pub async fn sync_anki_collection(
     pool: &PgPool,
     collection_path: impl AsRef<Path>,
@@ -495,6 +499,7 @@ pub async fn sync_anki_collection(
     sync_anki_collection_owned(pool.clone(), collection_path.as_ref().to_path_buf()).await
 }
 
+#[instrument(skip_all)]
 pub async fn sync_anki_collection_owned(
     pool: PgPool,
     collection_path: PathBuf,
@@ -502,6 +507,7 @@ pub async fn sync_anki_collection_owned(
     run_sync_collection(pool, collection_path, None).await
 }
 
+#[instrument(skip_all)]
 pub async fn sync_anki_collection_owned_with_progress(
     pool: PgPool,
     collection_path: PathBuf,

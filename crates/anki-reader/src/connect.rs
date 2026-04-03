@@ -3,6 +3,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use tracing::instrument;
 
 /// Default AnkiConnect URL.
 pub const ANKI_CONNECT_URL: &str = "http://localhost:8765";
@@ -133,23 +134,28 @@ impl AnkiConnectClient {
         }
     }
 
+    #[instrument(skip(self))]
     pub async fn ping(&self) -> Result<()> {
         self.version().await.map(|_| ())
     }
 
+    #[instrument(skip(self))]
     pub async fn version(&self) -> Result<u32> {
         self.invoke_typed("version", None).await
     }
 
+    #[instrument(skip(self))]
     pub async fn deck_names(&self) -> Result<Vec<String>> {
         self.invoke_typed("deckNames", None).await
     }
 
+    #[instrument(skip(self))]
     pub async fn create_deck(&self, name: &str) -> Result<i64> {
         self.invoke_typed("createDeck", Some(json!({"deck": name})))
             .await
     }
 
+    #[instrument(skip(self))]
     pub async fn delete_decks(&self, names: &[String], cards_too: bool) -> Result<()> {
         if names.is_empty() {
             return Ok(());
@@ -162,11 +168,13 @@ impl AnkiConnectClient {
         Ok(())
     }
 
+    #[instrument(skip(self))]
     pub async fn find_notes(&self, query: &str) -> Result<Vec<i64>> {
         self.invoke_typed("findNotes", Some(json!({"query": query})))
             .await
     }
 
+    #[instrument(skip(self))]
     pub async fn notes_info(&self, note_ids: &[i64]) -> Result<Vec<AnkiConnectNoteInfo>> {
         if note_ids.is_empty() {
             return Ok(Vec::new());
@@ -175,6 +183,7 @@ impl AnkiConnectClient {
             .await
     }
 
+    #[instrument(skip(self, fields, tags))]
     pub async fn add_note(
         &self,
         deck_name: &str,
@@ -208,6 +217,7 @@ impl AnkiConnectClient {
         }
     }
 
+    #[instrument(skip(self, fields))]
     pub async fn update_note_fields(
         &self,
         note_id: i64,
@@ -221,6 +231,7 @@ impl AnkiConnectClient {
         Ok(())
     }
 
+    #[instrument(skip(self))]
     pub async fn delete_notes(&self, note_ids: &[i64]) -> Result<()> {
         if note_ids.is_empty() {
             return Ok(());
@@ -230,10 +241,12 @@ impl AnkiConnectClient {
         Ok(())
     }
 
+    #[instrument(skip(self))]
     pub async fn get_tags(&self) -> Result<Vec<String>> {
         self.invoke_typed("getTags", None).await
     }
 
+    #[instrument(skip(self, note_ids))]
     pub async fn add_tags(&self, note_ids: &[i64], tags: &str) -> Result<()> {
         if note_ids.is_empty() || tags.is_empty() {
             return Ok(());
@@ -243,6 +256,7 @@ impl AnkiConnectClient {
         Ok(())
     }
 
+    #[instrument(skip(self, note_ids))]
     pub async fn remove_tags(&self, note_ids: &[i64], tags: &str) -> Result<()> {
         if note_ids.is_empty() || tags.is_empty() {
             return Ok(());
@@ -252,15 +266,18 @@ impl AnkiConnectClient {
         Ok(())
     }
 
+    #[instrument(skip(self))]
     pub async fn model_names(&self) -> Result<Vec<String>> {
         self.invoke_typed("modelNames", None).await
     }
 
+    #[instrument(skip(self))]
     pub async fn model_field_names(&self, model_name: &str) -> Result<Vec<String>> {
         self.invoke_typed("modelFieldNames", Some(json!({"modelName": model_name})))
             .await
     }
 
+    #[instrument(skip(self))]
     pub async fn sync(&self) -> Result<()> {
         self.invoke_unit("sync", None).await?;
         Ok(())

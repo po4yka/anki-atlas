@@ -3,6 +3,7 @@ use crate::types::{
     IndexJobPayload, JobEnvelope, JobPayload, JobRecord, JobStatus, JobType, SyncJobPayload,
 };
 use chrono::{DateTime, Utc};
+use tracing::instrument;
 
 /// Job manager trait for DI / testing.
 #[async_trait::async_trait]
@@ -97,6 +98,7 @@ impl RedisJobManager {
 
 #[async_trait::async_trait]
 impl JobManager for RedisJobManager {
+    #[instrument(skip(self))]
     async fn enqueue_sync_job(
         &self,
         payload: SyncJobPayload,
@@ -113,6 +115,7 @@ impl JobManager for RedisJobManager {
         Ok(record)
     }
 
+    #[instrument(skip(self))]
     async fn enqueue_index_job(
         &self,
         payload: IndexJobPayload,
@@ -129,12 +132,14 @@ impl JobManager for RedisJobManager {
         Ok(record)
     }
 
+    #[instrument(skip(self))]
     async fn get_job(&self, job_id: &str) -> Result<JobRecord, JobError> {
         crate::persistence::load_job_record(&self.client, job_id)
             .await?
             .ok_or_else(|| JobError::NotFound(job_id.to_string()))
     }
 
+    #[instrument(skip(self))]
     async fn cancel_job(&self, job_id: &str) -> Result<JobRecord, JobError> {
         let mut record = self.get_job(job_id).await?;
         if record.status.is_terminal() {
@@ -149,6 +154,7 @@ impl JobManager for RedisJobManager {
         Ok(record)
     }
 
+    #[instrument(skip(self))]
     async fn close(&self) -> Result<(), JobError> {
         Ok(())
     }

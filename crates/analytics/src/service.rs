@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use tracing::instrument;
 
 use crate::AnalyticsError;
 use crate::coverage::{TopicCoverage, TopicGap, WeakNote};
@@ -32,6 +33,7 @@ where
     }
 
     /// Load taxonomy from YAML (syncing to DB) or from DB.
+    #[instrument(skip(self))]
     pub async fn load_taxonomy(
         &self,
         yaml_path: Option<&std::path::Path>,
@@ -40,6 +42,7 @@ where
     }
 
     /// Label all notes with topics.
+    #[instrument(skip(self))]
     pub async fn label_notes(
         &self,
         taxonomy: Option<&Taxonomy>,
@@ -60,6 +63,7 @@ where
     }
 
     /// Get coverage metrics for a topic.
+    #[instrument(skip(self))]
     pub async fn get_coverage(
         &self,
         topic_path: &str,
@@ -71,6 +75,7 @@ where
     }
 
     /// Find gaps in topic coverage under a root path.
+    #[instrument(skip(self))]
     pub async fn get_gaps(
         &self,
         topic_path: &str,
@@ -82,6 +87,7 @@ where
     }
 
     /// Get weak notes (high lapse rate) in a topic subtree.
+    #[instrument(skip(self))]
     pub async fn get_weak_notes(
         &self,
         topic_path: &str,
@@ -93,6 +99,7 @@ where
     }
 
     /// Find clusters of near-duplicate notes.
+    #[instrument(skip(self))]
     pub async fn find_duplicates(
         &self,
         threshold: f64,
@@ -106,6 +113,7 @@ where
     }
 
     /// Get coverage tree for all topics (optionally filtered by root path).
+    #[instrument(skip(self))]
     pub async fn get_taxonomy_tree(
         &self,
         root_path: Option<&str>,
