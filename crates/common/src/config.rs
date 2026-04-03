@@ -1,11 +1,13 @@
 use std::env;
 
 use serde::Deserialize;
+use strum::{Display, EnumString};
 use url::Url;
 
 /// Qdrant quantization mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, EnumString, Display)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum Quantization {
     None,
     Scalar,
@@ -13,8 +15,9 @@ pub enum Quantization {
 }
 
 /// Supported embedding providers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, EnumString, Display)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum EmbeddingProviderKind {
     OpenAi,
     Google,
@@ -111,7 +114,7 @@ impl Settings {
             ),
             qdrant_url: env_or("ANKIATLAS_QDRANT_URL", "http://localhost:6333"),
             qdrant_quantization: env_or("ANKIATLAS_QDRANT_QUANTIZATION", "scalar")
-                .parse_quantization()?,
+                .parse_enum("qdrant_quantization")?,
             qdrant_on_disk: env_or("ANKIATLAS_QDRANT_ON_DISK", "false")
                 .parse_bool("qdrant_on_disk")?,
             redis_url: env_or("ANKIATLAS_REDIS_URL", "redis://localhost:6379/0"),
@@ -121,7 +124,7 @@ impl Settings {
             job_max_retries: env_or("ANKIATLAS_JOB_MAX_RETRIES", "3")
                 .parse_u32("job_max_retries")?,
             embedding_provider: env_or("ANKIATLAS_EMBEDDING_PROVIDER", "openai")
-                .parse_embedding_provider()?,
+                .parse_enum("embedding_provider")?,
             embedding_model: env_or("ANKIATLAS_EMBEDDING_MODEL", "text-embedding-3-small"),
             embedding_dimension: env_or("ANKIATLAS_EMBEDDING_DIMENSION", "1536")
                 .parse_u32("embedding_dimension")?,
@@ -307,8 +310,9 @@ fn env_or(key: &str, default: &str) -> String {
 trait ParseHelper {
     fn parse_u32(self, field: &str) -> Result<u32, ConfigError>;
     fn parse_bool(self, field: &str) -> Result<bool, ConfigError>;
-    fn parse_quantization(self) -> Result<Quantization, ConfigError>;
-    fn parse_embedding_provider(self) -> Result<EmbeddingProviderKind, ConfigError>;
+    fn parse_enum<T: std::str::FromStr>(self, field: &str) -> Result<T, ConfigError>
+    where
+        T::Err: std::fmt::Display;
 }
 
 impl ParseHelper for String {
@@ -322,25 +326,11 @@ impl ParseHelper for String {
             .map_err(|e| ConfigError(format!("invalid {field}: {e}")))
     }
 
-    fn parse_quantization(self) -> Result<Quantization, ConfigError> {
-        match self.as_str() {
-            "none" => Ok(Quantization::None),
-            "scalar" => Ok(Quantization::Scalar),
-            "binary" => Ok(Quantization::Binary),
-            other => Err(ConfigError(format!(
-                "invalid quantization: {other}, expected none|scalar|binary"
-            ))),
-        }
-    }
-
-    fn parse_embedding_provider(self) -> Result<EmbeddingProviderKind, ConfigError> {
-        match self.as_str() {
-            "openai" => Ok(EmbeddingProviderKind::OpenAi),
-            "google" => Ok(EmbeddingProviderKind::Google),
-            "mock" => Ok(EmbeddingProviderKind::Mock),
-            other => Err(ConfigError(format!(
-                "invalid embedding_provider: {other}, expected openai|google|mock"
-            ))),
-        }
+    fn parse_enum<T: std::str::FromStr>(self, field: &str) -> Result<T, ConfigError>
+    where
+        T::Err: std::fmt::Display,
+    {
+        self.parse::<T>()
+            .map_err(|e| ConfigError(format!("invalid {field}: {e}")))
     }
 }
