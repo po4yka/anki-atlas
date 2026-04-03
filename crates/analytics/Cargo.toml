@@ -15,6 +15,7 @@ serde_json = { workspace = true }
 serde_yml = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

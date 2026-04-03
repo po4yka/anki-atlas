@@ -195,8 +195,10 @@ impl<V: indexer::qdrant::VectorRepository> DuplicateDetector<V> {
                 (note_id, representative_id)
             };
             let similarity = pair_scores.get(&note_pair).copied().unwrap_or(0.0);
-            let duplicate_result = self.fetch_note_excerpt_and_tags(note_id).await?;
-            let duplicate_deck_names = self.fetch_note_deck_names(note_id).await?;
+            let (duplicate_result, duplicate_deck_names) = tokio::try_join!(
+                self.fetch_note_excerpt_and_tags(note_id),
+                self.fetch_note_deck_names(note_id),
+            )?;
 
             cluster_deck_names.extend(duplicate_deck_names.clone());
             cluster_tags.extend(duplicate_result.tags.clone());

@@ -55,7 +55,9 @@ fn install_panic_hook() {
 fn spawn_ctrl_c_listener(tx: mpsc::UnboundedSender<AppEvent>) {
     tokio::spawn(async move {
         if tokio::signal::ctrl_c().await.is_ok() {
-            let _ = tx.send(AppEvent::Quit);
+            if let Err(e) = tx.send(AppEvent::Quit) {
+                tracing::warn!("failed to send quit event: {e}");
+            }
         }
     });
 }
@@ -77,7 +79,9 @@ pub(crate) fn start_bootstrap(tx: mpsc::UnboundedSender<AppEvent>, enable_direct
                 result: Box::new(Err(error.to_string())),
             },
         };
-        let _ = tx.send(event);
+        if let Err(e) = tx.send(event) {
+            tracing::warn!("failed to send bootstrap event: {e}");
+        }
     });
 }
 
