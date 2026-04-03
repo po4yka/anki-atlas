@@ -26,6 +26,12 @@ Thumbs.db
 db.sqlite3
 db.sqlite3-journal
 
+# Audit reports (generated)
+.audit/*.md
+!.audit/README.md
+.audit/CURRENT_CRATE.txt
+.audit/CURRENT_OUTPUT.txt
+
 # Desloppify
 .desloppify/
 .claude/skills/desloppify/

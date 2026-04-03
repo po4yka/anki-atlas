@@ -1,0 +1,144 @@
+event_loop:
+  starting_event: "audit.start"
+  max_iterations: 200
+  max_runtime_seconds: 7200
+  checkpoint_interval: 1
+  completion_promise: "AUDIT_COMPLETE"
+
+cli:
+  backend: "claude"
+
+skills:
+  enabled: true
+  dirs:
+    - ".claude/skills"
+
+hats:
+  scanner:
+    name: "Scanner"
+    description: "Pick the next crate to audit, skip already-audited crates"
+    triggers:
+      - "audit.start"
+      - "report.done"
+    publishes:
+      - "crate.selected"
+      - "AUDIT_COMPLETE"
+    instructions: |
+      ## Scanner
+
+      You pick the next crate to audit. Your job is idempotent progression
+      through the workspace.
+
+      ### Process
+
+      1. List all workspace members:
+         ```bash
+         cargo metadata --no-deps --format-version 1 | jq -r '.packages[].name'
+         ```
+
+      2. List already-audited crates:
+         ```bash
+         ls .audit/*.md 2>/dev/null | sed 's|\.audit/||;s|\.md||' | sort
+         ```
+
+      3. Diff the two lists. Pick the first un-audited crate alphabetically.
+
+      4. **If all crates are audited**:
+         - Print: "All crates audited."
+         - Publish event: `AUDIT_COMPLETE`
+
+      5. **If a crate remains**:
+         - Write the crate name to `.audit/CURRENT_CRATE.txt`
+         - Print: "Selected crate: <name>"
+         - Publish event: `crate.selected`
+
+  auditor:
+    name: "Auditor"
+    description: "Run audit checks against the selected crate"
+    triggers:
+      - "crate.selected"
+    publishes:
+      - "audit.done"
+    instructions: |
+      ## Auditor
+
+      You run the audit script against the selected crate and capture results.
+
+      ### Process
+
+      1. Read the current crate:
+         ```bash
+         cat .audit/CURRENT_CRATE.txt
+         ```
+
+      2. Run the audit script and persist output for the Reporter:
+         ```bash
+         ./scripts/audit_crate.sh <crate-name> > .audit/CURRENT_OUTPUT.txt 2>&1
+         ```
+
+      3. If the script fails, note the error in `.audit/CURRENT_OUTPUT.txt`.
+
+      4. Publish event: `audit.done`
+
+  reporter:
+    name: "Reporter"
+    description: "Write the audit report for the current crate"
+    triggers:
+      - "audit.done"
+    publishes:
+      - "report.done"
+    instructions: |
+      ## Reporter
+
+      You write a structured audit report for the current crate.
+
+      ### Process
+
+      1. Read the current crate name:
+         ```bash
+         cat .audit/CURRENT_CRATE.txt
+         ```
+
+      2. Read the audit output:
+         ```bash
+         cat .audit/CURRENT_OUTPUT.txt
+         ```
+
+      3. Write the report to `.audit/<crate-name>.md` with this structure:
+
+         ```markdown
+         # Audit: <crate-name>
+
+         **Date**: YYYY-MM-DD
+         **Status**: PASS | WARN | FAIL
+
+         ## Summary
+
+         | Check              | Result | Count |
+         |--------------------|--------|-------|
+         | Clippy             | PASS/FAIL | N warnings |
+         | Format             | PASS/FAIL | N violations |
+         | unwrap/expect      | PASS/WARN | N occurrences |
+         | Missing instrument | PASS/WARN | N functions |
+         | Wildcard re-exports| PASS/WARN | N occurrences |
+
+         ## Details
+
+         ### Clippy
+         <details or "Clean">
+
+         ### Convention Drift
+         <unwrap/expect locations, missing instrument, wildcard re-exports>
+
+         ## Recommendations
+         <prioritized list of fixes>
+         ```
+
+      4. Set overall status:
+         - **PASS**: zero issues across all checks
+         - **WARN**: only convention drift issues (unwrap, instrument, wildcards)
+         - **FAIL**: clippy or format failures
+
+      5. Remove `.audit/CURRENT_CRATE.txt`
+
+      6. Publish event: `report.done`

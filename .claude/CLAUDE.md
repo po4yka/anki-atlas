@@ -66,6 +66,7 @@ Crates may depend on other crates but **no circular dependencies**.
 | `card-improve.yml` | Iterative card quality improvement (select/analyze/improve/review) | `ralph run -c presets/card-improve.yml` |
 | `card-improve-openrouter.yml` | Card improvement via OpenRouter (opencode backend) | `ralph run -c presets/card-improve-openrouter.yml` |
 | `card-improve-android.yml` | Android deck card improvement (hunter-alpha via opencode) | `ralph run -c presets/card-improve-android.yml` |
+| `project-audit.yml` | Convention-compliance audit across all crates | `ralph run -c presets/project-audit.yml` |
 
 ## Git
 
@@ -96,6 +97,13 @@ Crates may depend on other crates but **no circular dependencies**.
 - `mockall` for auto-generated mock implementations
 - `tempfile::TempDir` for filesystem tests
 - Run single crate: `cargo test -p <crate-name>`
+
+## Audit
+
+- Single crate: `./scripts/audit_crate.sh <crate-name>`
+- Full workspace: `ralph run -c presets/project-audit.yml`
+- Reports written to `.audit/<crate>.md` (clippy, fmt, unwrap/expect, #[instrument], wildcards)
+- Skill: `/project-audit`
 
 ## Entry Points
 
