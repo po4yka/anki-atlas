@@ -1,6 +1,6 @@
 # Anki Atlas
 
-Anki Atlas is a Rust workspace for syncing Anki data, building a hybrid search index, analyzing topic coverage, previewing Obsidian-driven card generation, and exposing stable API, CLI, TUI, and MCP surfaces over the same `surface-runtime + surface-contracts` boundary.
+Anki Atlas is a Rust workspace that turns your Anki collection into a searchable, analyzable knowledge base. It syncs Anki data into PostgreSQL, builds a hybrid search index (full-text + semantic vectors in Qdrant), detects topic coverage gaps, finds duplicate cards, and generates new flashcards from Obsidian notes. Four surfaces (CLI/TUI, REST API, MCP for AI agents, background worker) share the same `surface-runtime + surface-contracts` boundary.
 
 ## What Ships on `main`
 
@@ -19,6 +19,95 @@ Important current constraints:
 - `generate` is a preview workflow, not a persistence workflow.
 - `obsidian-sync` is currently dry-run only; non-preview persistence fails explicitly.
 - The root [Dockerfile](Dockerfile) builds `anki-atlas-api` only.
+
+## Architecture
+
+### High-Level Data Flow
+
+```mermaid
+flowchart LR
+    A[Anki Collection<br/>SQLite] -->|sync| B[PostgreSQL]
+    O[Obsidian Vault<br/>Markdown] -->|parse & generate| G[Card Generator]
+    G --> B
+    B -->|embed| Q[Qdrant<br/>Vector Store]
+    B -->|index| FTS[Full-Text Search]
+
+    subgraph Search
+        FTS --> F[RRF Fusion]
+        Q --> F
+        F --> R[Reranker]
+    end
+
+    R --> S[Search Results]
+
+    B --> AN[Analytics<br/>Coverage / Gaps / Duplicates]
+```
+
+### Surface Architecture
+
+```mermaid
+flowchart TB
+    CLI[CLI + TUI<br/>clap + ratatui] --> SR[surface-runtime]
+    API[REST API<br/>axum] --> SR
+    MCP[MCP Server<br/>rmcp] --> SR
+    W[Worker<br/>tokio] --> SR
+
+    SR --> SC[surface-contracts<br/>Shared DTOs]
+
+    SR --> SYNC[anki-sync]
+    SR --> IDX[indexer]
+    SR --> SRCH[search]
+    SR --> ANA[analytics]
+    SR --> GEN[generator]
+    SR --> OBS[obsidian]
+    SR --> JOBS[jobs<br/>Redis]
+    SR --> DB[database<br/>PostgreSQL]
+
+    SYNC --> AR[anki-reader<br/>SQLite + AnkiConnect]
+    GEN --> LLM[llm<br/>OpenRouter / Ollama]
+```
+
+### Crate Dependency Tiers
+
+```mermaid
+flowchart BT
+    COM[common] --> TAX[taxonomy]
+    COM --> CARD[card]
+    COM --> OBS[obsidian]
+    COM --> LLM[llm]
+    COM --> SC[surface-contracts]
+    COM --> DB[database]
+    COM --> AR[anki-reader]
+    COM --> IDX[indexer]
+    COM --> JOBS[jobs]
+
+    DB --> SYNC[anki-sync]
+    AR --> SYNC
+    DB --> SRCH[search]
+    IDX --> SRCH
+    DB --> ANA[analytics]
+    IDX --> ANA
+    LLM --> GEN[generator]
+    TAX --> GEN
+    CARD --> VAL[validation]
+    TAX --> VAL
+
+    SYNC --> SR[surface-runtime]
+    SRCH --> SR
+    ANA --> SR
+    GEN --> SR
+    OBS --> SR
+    IDX --> SR
+    JOBS --> SR
+    VAL --> SR
+    SC --> SR
+    DB --> SR
+
+    SR --> CLI[bins/cli]
+    SR --> API[bins/api]
+    SR --> MCP[bins/mcp]
+    SR --> WORKER[bins/worker]
+```
 
 ## Quick Start
 
@@ -267,6 +356,7 @@ crates/
   anki-reader/
   anki-sync/
   card/
+  cardloop/
   common/
   database/
   generator/
@@ -275,7 +365,6 @@ crates/
   llm/
   obsidian/
   perf-support/
-  rag/
   search/
   surface-contracts/
   surface-runtime/
