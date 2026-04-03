@@ -32,7 +32,9 @@ fn scan_nonexistent_vault_returns_path_not_found() {
 fn scan_empty_vault_returns_zero_notes() {
     let dir = tempfile::tempdir().unwrap();
     let service = ObsidianScanService::new();
-    let preview = service.scan(dir.path(), &[], true).unwrap();
+    let preview = service
+        .scan(dir.path(), &[], common::ExecutionMode::DryRun)
+        .unwrap();
     assert_eq!(preview.note_count, 0);
     assert_eq!(preview.generated_cards, 0);
     assert!(preview.notes.is_empty());
