@@ -488,7 +488,7 @@ async fn topic_coverage_returns_metrics() {
     let mut analytics = MockAnalytics::new();
     analytics.expect_get_coverage().returning(|_, _| {
         Ok(Some(TopicCoverage {
-            topic_id: 42,
+            topic_id: common::TopicId(42),
             path: "cs/algorithms".into(),
             label: "Algorithms".into(),
             note_count: 4,
@@ -524,7 +524,7 @@ async fn topic_gaps_returns_typed_gap_type() {
         .in_sequence(&mut seq)
         .returning(|_, _| {
             Ok(Some(TopicCoverage {
-                topic_id: 1,
+                topic_id: common::TopicId(1),
                 path: "cs".into(),
                 label: "CS".into(),
                 note_count: 0,
@@ -544,7 +544,7 @@ async fn topic_gaps_returns_typed_gap_type() {
         .withf(|path, min_coverage| path == "cs" && *min_coverage == 2)
         .returning(|_, _| {
             Ok(vec![TopicGap {
-                topic_id: 10,
+                topic_id: common::TopicId(10),
                 path: "cs/networking".into(),
                 label: "Networking".into(),
                 description: None,
@@ -579,7 +579,7 @@ async fn topic_weak_notes_uses_default_max_results() {
         .in_sequence(&mut seq)
         .returning(|_, _| {
             Ok(Some(TopicCoverage {
-                topic_id: 1,
+                topic_id: common::TopicId(1),
                 path: "cs".into(),
                 label: "CS".into(),
                 note_count: 1,
