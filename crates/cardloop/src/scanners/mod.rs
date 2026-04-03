@@ -15,8 +15,9 @@ pub trait Scanner {
 }
 
 /// Trait for async scanners that detect work items.
+#[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
-pub trait AsyncScanner {
+pub trait AsyncScanner: Send + Sync {
     /// Scan the data source and return new or updated work items.
     async fn scan(&self, scan_number: u32) -> Result<Vec<WorkItem>, CardloopError>;
 }

@@ -45,6 +45,7 @@ pub struct GeneratedCardRef {
 }
 
 /// Trait for card generation from a parsed note (injected dependency).
+#[cfg_attr(test, mockall::automock)]
 pub trait CardGenerator: Send + Sync {
     fn generate(&self, note: &ParsedNote) -> Vec<GeneratedCardRef>;
 }

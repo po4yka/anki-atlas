@@ -96,6 +96,7 @@ impl ValidationResult {
 }
 
 /// Trait for validators. All implementations must be Send + Sync.
+#[cfg_attr(test, mockall::automock)]
 pub trait Validator: Send + Sync {
     fn validate(&self, front: &str, back: &str, tags: &[String]) -> ValidationResult;
 }

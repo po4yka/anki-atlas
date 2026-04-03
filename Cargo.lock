@@ -757,6 +757,7 @@ dependencies = [
  "chrono",
  "common",
  "llm",
+ "mockall",
  "obsidian",
  "rusqlite",
  "serde",
@@ -3217,6 +3218,7 @@ name = "obsidian"
 version = "0.1.0"
 dependencies = [
  "common",
+ "mockall",
  "regex",
  "serde",
  "serde_json",
@@ -6064,6 +6066,7 @@ version = "0.1.0"
 dependencies = [
  "card",
  "common",
+ "mockall",
  "regex",
  "serde",
  "serde_json",

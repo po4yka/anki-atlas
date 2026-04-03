@@ -29,6 +29,7 @@ pub trait QueueBackend: Send + Sync {
     ) -> anyhow::Result<()>;
 }
 
+#[cfg_attr(test, mockall::automock)]
 #[allow(async_fn_in_trait)]
 pub trait JobDispatcher: Send + Sync {
     async fn dispatch(
