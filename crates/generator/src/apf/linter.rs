@@ -191,8 +191,8 @@ pub fn validate_apf(apf_html: &str, slug: Option<&str>) -> LintResult {
             }
             Some(json_str) => {
                 match serde_json::from_str::<serde_json::Value>(json_str) {
-                    Err(_) => {
-                        errors.push(format!("Card {}: invalid manifest JSON", block.slug));
+                    Err(e) => {
+                        errors.push(format!("Card {}: invalid manifest JSON: {e}", block.slug));
                     }
                     Ok(manifest) => {
                         // Slug mismatch between header and manifest

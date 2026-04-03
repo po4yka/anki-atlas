@@ -26,6 +26,7 @@ pub enum EmbeddingError {
     },
     #[error("batch embedding failed: {source}")]
     BatchFailed {
+        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
     #[error("rate limited, retry after {retry_after_secs}s")]

@@ -1,6 +1,7 @@
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use tracing::warn;
 
 use crate::error::CardloopError;
 use crate::models::ProgressionEvent;
@@ -51,7 +52,10 @@ impl ProgressionLog {
             }
             match serde_json::from_str::<ProgressionEvent>(trimmed) {
                 Ok(event) => events.push(event),
-                Err(_) => continue, // Skip malformed lines
+                Err(e) => {
+                    warn!(error = %e, "skipping malformed progression line");
+                    continue;
+                }
             }
         }
 

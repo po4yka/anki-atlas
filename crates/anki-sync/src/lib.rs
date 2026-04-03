@@ -10,8 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub(crate) fn now_secs() -> f64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("time went backwards")
-        .as_secs_f64()
+        .map_or(0.0, |d| d.as_secs_f64())
 }
 
 pub use core::{

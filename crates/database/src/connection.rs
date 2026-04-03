@@ -1,6 +1,6 @@
 use common::error::Result;
 use sqlx::{PgPool, Postgres, Transaction};
-use tracing::instrument;
+use tracing::{instrument, warn};
 
 use crate::connection_error;
 
@@ -31,8 +31,9 @@ where
             Ok(value)
         }
         Err(e) => {
-            // Rollback is implicit on drop, but explicit is clearer
-            let _ = txn.rollback().await;
+            if let Err(rb_err) = txn.rollback().await {
+                warn!(%rb_err, "explicit rollback failed (will rollback on drop)");
+            }
             Err(e)
         }
     }
