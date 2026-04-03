@@ -25,7 +25,7 @@ dotenvy = { workspace = true }
 chrono = { workspace = true }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }
 mockall = { workspace = true }
 assert_matches = { workspace = true }
 testcontainers = { workspace = true }

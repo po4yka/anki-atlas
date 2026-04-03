@@ -14,7 +14,6 @@ members = [
   "crates/validation",
   "crates/llm",
   "crates/obsidian",
-  "crates/rag",
   "crates/generator",
   "crates/jobs",
   "crates/surface-contracts",
