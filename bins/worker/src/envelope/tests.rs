@@ -10,7 +10,7 @@ fn serialize_deserialize_roundtrip() {
             source: "/tmp/collection.anki2".to_string(),
             run_migrations: true,
             index: false,
-            force_reindex: true,
+            reindex_mode: common::ReindexMode::Force,
         }),
     };
 
@@ -28,7 +28,7 @@ fn serialize_index_payload() {
         job_id: "job-456".to_string(),
         job_type: JobType::Index,
         payload: JobPayload::Index(IndexJobPayload {
-            force_reindex: false,
+            reindex_mode: common::ReindexMode::Incremental,
         }),
     };
 
@@ -41,7 +41,7 @@ fn serialize_index_payload() {
 
 #[test]
 fn deserialize_from_json_string() {
-    let json = r#"{"job_id":"abc","job_type":"sync","payload":{"kind":"sync","value":{"source":"/tmp/source.anki2","run_migrations":true,"index":true,"force_reindex":false}}}"#;
+    let json = r#"{"job_id":"abc","job_type":"sync","payload":{"kind":"sync","value":{"source":"/tmp/source.anki2","run_migrations":true,"index":true,"reindex_mode":"incremental"}}}"#;
     let envelope: JobEnvelope = serde_json::from_str(json).expect("deserialize");
 
     assert_eq!(envelope.job_id, "abc");
@@ -52,7 +52,7 @@ fn deserialize_from_json_string() {
             source: "/tmp/source.anki2".to_string(),
             run_migrations: true,
             index: true,
-            force_reindex: false,
+            reindex_mode: common::ReindexMode::Incremental,
         })
     );
 }
@@ -73,7 +73,7 @@ fn serialize_sync_payload_preserves_flags() {
             source: "/tmp/another.anki2".to_string(),
             run_migrations: false,
             index: true,
-            force_reindex: true,
+            reindex_mode: common::ReindexMode::Force,
         }),
     };
 
@@ -89,7 +89,7 @@ fn envelope_is_clone() {
         job_id: "job-clone".to_string(),
         job_type: JobType::Index,
         payload: JobPayload::Index(IndexJobPayload {
-            force_reindex: false,
+            reindex_mode: common::ReindexMode::Incremental,
         }),
     };
     let cloned = envelope.clone();
@@ -105,7 +105,7 @@ fn envelope_is_debug() {
             source: "/tmp/debug.anki2".to_string(),
             run_migrations: true,
             index: true,
-            force_reindex: false,
+            reindex_mode: common::ReindexMode::Incremental,
         }),
     };
     let debug = format!("{:?}", envelope);

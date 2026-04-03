@@ -239,7 +239,7 @@ pub fn print_sync_summary(summary: &SyncExecutionSummary) {
 }
 
 pub fn print_index_summary(summary: &IndexExecutionSummary) {
-    println!("index_force_reindex: {}", summary.force_reindex);
+    println!("index_reindex_mode: {}", summary.reindex_mode);
     println!("notes_processed: {}", summary.stats.notes_processed);
     println!("notes_embedded: {}", summary.stats.notes_embedded);
     println!("notes_skipped: {}", summary.stats.notes_skipped);

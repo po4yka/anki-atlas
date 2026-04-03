@@ -5,6 +5,7 @@ use anki_sync::{
     SyncProgressCallback, SyncProgressEvent, SyncProgressStage, SyncStats,
     sync_anki_collection_owned_with_progress,
 };
+use common::ReindexMode;
 use serde::Serialize;
 use sqlx::PgPool;
 
@@ -80,9 +81,9 @@ impl SyncExecutionService {
         source: PathBuf,
         run_migrations: bool,
         run_index: bool,
-        force_reindex: bool,
+        reindex_mode: ReindexMode,
     ) -> Result<SyncExecutionSummary, SurfaceError> {
-        self.sync_collection_with_progress(source, run_migrations, run_index, force_reindex, None)
+        self.sync_collection_with_progress(source, run_migrations, run_index, reindex_mode, None)
             .await
     }
 
@@ -91,7 +92,7 @@ impl SyncExecutionService {
         source: PathBuf,
         run_migrations: bool,
         run_index: bool,
-        force_reindex: bool,
+        reindex_mode: ReindexMode,
         progress: Option<SurfaceProgressSink>,
     ) -> Result<SyncExecutionSummary, SurfaceError> {
         run_sync_collection(
@@ -100,7 +101,7 @@ impl SyncExecutionService {
             source,
             run_migrations,
             run_index,
-            force_reindex,
+            reindex_mode,
             progress,
         )
         .await
@@ -113,9 +114,9 @@ impl SyncExecutionHandle {
         source: PathBuf,
         run_migrations: bool,
         run_index: bool,
-        force_reindex: bool,
+        reindex_mode: ReindexMode,
     ) -> Result<SyncExecutionSummary, SurfaceError> {
-        self.sync_collection_with_progress(source, run_migrations, run_index, force_reindex, None)
+        self.sync_collection_with_progress(source, run_migrations, run_index, reindex_mode, None)
             .await
     }
 
@@ -124,7 +125,7 @@ impl SyncExecutionHandle {
         source: PathBuf,
         run_migrations: bool,
         run_index: bool,
-        force_reindex: bool,
+        reindex_mode: ReindexMode,
         progress: Option<SurfaceProgressSink>,
     ) -> Result<SyncExecutionSummary, SurfaceError> {
         run_sync_collection(
@@ -133,7 +134,7 @@ impl SyncExecutionHandle {
             source,
             run_migrations,
             run_index,
-            force_reindex,
+            reindex_mode,
             progress,
         )
         .await
@@ -146,7 +147,7 @@ async fn run_sync_collection(
     source: PathBuf,
     run_migrations: bool,
     run_index: bool,
-    force_reindex: bool,
+    reindex_mode: ReindexMode,
     progress: Option<SurfaceProgressSink>,
 ) -> Result<SyncExecutionSummary, SurfaceError> {
     if !source.exists() {
@@ -182,7 +183,7 @@ async fn run_sync_collection(
     let index = if run_index {
         Some(
             indexer
-                .index_all_notes_with_progress(force_reindex, progress.clone())
+                .index_all_notes_with_progress(reindex_mode, progress.clone())
                 .await?,
         )
     } else {

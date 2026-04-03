@@ -37,6 +37,13 @@ pub struct AnkiConnectNoteInfo {
     pub cards: Vec<i64>,
 }
 
+/// Controls duplicate note handling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DuplicateHandling {
+    Allow,
+    Reject,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddNoteOutcome {
     Added(i64),
@@ -174,7 +181,7 @@ impl AnkiConnectClient {
         model_name: &str,
         fields: &HashMap<String, String>,
         tags: &[String],
-        allow_duplicate: bool,
+        allow_duplicate: DuplicateHandling,
     ) -> Result<AddNoteOutcome> {
         let mut note = json!({
             "deckName": deck_name,
@@ -183,7 +190,7 @@ impl AnkiConnectClient {
             "tags": tags,
         });
 
-        if allow_duplicate {
+        if allow_duplicate == DuplicateHandling::Allow {
             note["options"] = json!({"allowDuplicate": true});
         }
 

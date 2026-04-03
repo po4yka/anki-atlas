@@ -39,7 +39,10 @@ impl SyncEngine {
     }
 
     /// Run the sync lifecycle.
-    pub fn sync(&mut self, dry_run: bool) -> Result<SyncResult, StateDbError> {
+    pub fn sync(
+        &mut self,
+        execution_mode: common::ExecutionMode,
+    ) -> Result<SyncResult, StateDbError> {
         let start = Instant::now();
 
         // SCANNING phase
@@ -48,7 +51,7 @@ impl SyncEngine {
         self.progress.set_total(states.len() as i32);
 
         // APPLYING phase (skip for dry run)
-        if !dry_run {
+        if execution_mode == common::ExecutionMode::Execute {
             self.progress.set_phase(SyncPhase::Applying);
         }
 

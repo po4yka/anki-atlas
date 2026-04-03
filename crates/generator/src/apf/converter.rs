@@ -3,9 +3,16 @@ use std::collections::HashSet;
 use ammonia::Builder;
 use pulldown_cmark::{Options, Parser, html};
 
+/// Controls HTML sanitization behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HtmlSanitization {
+    Sanitize,
+    Raw,
+}
+
 /// Convert Markdown content to HTML.
 /// Uses pulldown-cmark for conversion and optionally sanitizes with ammonia.
-pub fn markdown_to_html(md_content: &str, sanitize: bool) -> String {
+pub fn markdown_to_html(md_content: &str, sanitize: HtmlSanitization) -> String {
     if md_content.is_empty() || md_content.trim().is_empty() {
         return String::new();
     }
@@ -17,7 +24,7 @@ pub fn markdown_to_html(md_content: &str, sanitize: bool) -> String {
 
     let result = html_output.trim().to_string();
 
-    if sanitize {
+    if sanitize == HtmlSanitization::Sanitize {
         sanitize_html(&result)
     } else {
         result
@@ -105,7 +112,7 @@ pub fn convert_apf_field(field_content: &str) -> String {
     if field_content.is_empty() {
         return String::new();
     }
-    markdown_to_html(field_content, true)
+    markdown_to_html(field_content, HtmlSanitization::Sanitize)
 }
 
 /// Highlight code with language class annotations.

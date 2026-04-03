@@ -44,19 +44,19 @@ impl ObsidianScanService {
         &self,
         vault: &Path,
         source_dirs: &[String],
-        dry_run: bool,
+        execution_mode: common::ExecutionMode,
     ) -> Result<ObsidianScanPreview, SurfaceError> {
-        self.scan_with_progress(vault, source_dirs, dry_run, None)
+        self.scan_with_progress(vault, source_dirs, execution_mode, None)
     }
 
     pub fn scan_with_progress(
         &self,
         vault: &Path,
         source_dirs: &[String],
-        dry_run: bool,
+        execution_mode: common::ExecutionMode,
         progress: Option<SurfaceProgressSink>,
     ) -> Result<ObsidianScanPreview, SurfaceError> {
-        if !dry_run {
+        if execution_mode == common::ExecutionMode::Execute {
             return Err(SurfaceError::Unsupported(
                 "obsidian persistence is not implemented; use --dry-run".to_string(),
             ));

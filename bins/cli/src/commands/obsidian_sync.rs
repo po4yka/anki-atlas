@@ -8,7 +8,11 @@ pub async fn run(args: &ObsidianSyncArgs) -> anyhow::Result<()> {
         &ObsidianScanRequest {
             vault: args.vault.clone(),
             source_dirs: args.source_dirs.clone(),
-            dry_run: args.dry_run,
+            execution_mode: if args.dry_run {
+                common::ExecutionMode::DryRun
+            } else {
+                common::ExecutionMode::Execute
+            },
         },
         None,
     )?;

@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use common::ReindexMode;
 use jobs::types::{IndexJobPayload, JobResultData, JobStatus, JobType, SyncJobPayload};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -32,14 +33,14 @@ pub struct AsyncSyncRequest {
     #[serde(default = "default_true")]
     pub index: bool,
     #[serde(default)]
-    pub force_reindex: bool,
+    pub reindex_mode: ReindexMode,
     pub run_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct AsyncIndexRequest {
     #[serde(default)]
-    pub force_reindex: bool,
+    pub reindex_mode: ReindexMode,
     pub run_at: Option<DateTime<Utc>>,
 }
 
@@ -58,7 +59,7 @@ impl From<AsyncSyncRequest> for SyncJobPayload {
             source: request.source,
             run_migrations: request.run_migrations,
             index: request.index,
-            force_reindex: request.force_reindex,
+            reindex_mode: request.reindex_mode,
         }
     }
 }
@@ -66,7 +67,7 @@ impl From<AsyncSyncRequest> for SyncJobPayload {
 impl From<AsyncIndexRequest> for IndexJobPayload {
     fn from(request: AsyncIndexRequest) -> Self {
         Self {
-            force_reindex: request.force_reindex,
+            reindex_mode: request.reindex_mode,
         }
     }
 }

@@ -98,7 +98,7 @@ pub(crate) struct WorkflowsState {
     pub(crate) validate_quality: bool,
     pub(crate) obsidian_vault: String,
     pub(crate) obsidian_source_dirs: String,
-    pub(crate) obsidian_dry_run: bool,
+    pub(crate) obsidian_dry_run: common::ExecutionMode,
     pub(crate) tag_audit_file: String,
     pub(crate) tag_audit_fix: bool,
     pub(crate) sync_result: Option<SyncExecutionSummary>,
@@ -126,7 +126,7 @@ impl Default for WorkflowsState {
             validate_quality: false,
             obsidian_vault: String::new(),
             obsidian_source_dirs: String::new(),
-            obsidian_dry_run: true,
+            obsidian_dry_run: common::ExecutionMode::DryRun,
             tag_audit_file: String::new(),
             tag_audit_fix: false,
             sync_result: None,
@@ -295,7 +295,10 @@ fn workflow_form_lines(state: &WorkflowsState) -> Vec<Line<'static>> {
             ),
             field_line(
                 state.selected_field == WorkflowField::ToggleA,
-                format!("dry run: {}", checkbox(state.obsidian_dry_run)),
+                format!(
+                    "dry run: {}",
+                    checkbox(state.obsidian_dry_run == common::ExecutionMode::DryRun)
+                ),
             ),
             field_line(
                 state.selected_field == WorkflowField::Run,
@@ -353,7 +356,7 @@ fn workflow_result_lines(state: &WorkflowsState) -> Vec<Line<'static>> {
             .as_ref()
             .map(|summary| {
                 vec![
-                    Line::from(format!("force_reindex: {}", summary.force_reindex)),
+                    Line::from(format!("reindex_mode: {}", summary.reindex_mode)),
                     Line::from(format!(
                         "notes_processed: {}",
                         summary.stats.notes_processed

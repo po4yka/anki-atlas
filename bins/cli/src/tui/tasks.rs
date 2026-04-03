@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use common::ReindexMode;
 use surface_runtime::{SurfaceProgressEvent, SurfaceProgressSink};
 use tokio::sync::mpsc;
 
@@ -102,7 +103,11 @@ pub(crate) fn run_workflow_task(app: &mut AppState, tx: &mpsc::UnboundedSender<A
                 source: app.workflows.sync_source.clone().into(),
                 run_migrations: app.workflows.sync_run_migrations,
                 run_index: app.workflows.sync_run_index,
-                force_reindex: app.workflows.sync_force_reindex,
+                reindex_mode: if app.workflows.sync_force_reindex {
+                    ReindexMode::Force
+                } else {
+                    ReindexMode::Incremental
+                },
             };
             let progress = progress_sink(tx.clone());
             app.busy_label = Some("sync".to_string());
@@ -115,7 +120,11 @@ pub(crate) fn run_workflow_task(app: &mut AppState, tx: &mpsc::UnboundedSender<A
         }
         WorkflowTab::Index => {
             let request = IndexRequest {
-                force_reindex: app.workflows.index_force_reindex,
+                reindex_mode: if app.workflows.index_force_reindex {
+                    ReindexMode::Force
+                } else {
+                    ReindexMode::Incremental
+                },
             };
             let progress = progress_sink(tx.clone());
             app.busy_label = Some("index".to_string());
@@ -141,7 +150,11 @@ pub(crate) fn run_workflow_task(app: &mut AppState, tx: &mpsc::UnboundedSender<A
         WorkflowTab::Validate => {
             let request = ValidateRequest {
                 file: app.workflows.validate_file.clone().into(),
-                include_quality: app.workflows.validate_quality,
+                include_quality: if app.workflows.validate_quality {
+                    surface_runtime::QualityCheck::Include
+                } else {
+                    surface_runtime::QualityCheck::Skip
+                },
             };
             let service = Arc::clone(&handles.validation);
             app.busy_label = Some("validate".to_string());
@@ -155,7 +168,7 @@ pub(crate) fn run_workflow_task(app: &mut AppState, tx: &mpsc::UnboundedSender<A
             let request = ObsidianScanRequest {
                 vault: app.workflows.obsidian_vault.clone().into(),
                 source_dirs: split_csv(&app.workflows.obsidian_source_dirs),
-                dry_run: app.workflows.obsidian_dry_run,
+                execution_mode: app.workflows.obsidian_dry_run,
             };
             let service = Arc::clone(&handles.obsidian_scan);
             let progress_tx = tx.clone();

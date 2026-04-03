@@ -12,7 +12,7 @@ pub use preview::{GeneratePreview, GeneratePreviewService};
 pub use progress::{SurfaceOperation, SurfaceProgressEvent, SurfaceProgressSink};
 pub use sync::{SyncExecutionHandle, SyncExecutionService, SyncExecutionSummary, SyncStatsSummary};
 pub use tag_audit::{TagAuditEntry, TagAuditService, TagAuditSummary};
-pub use validation::{ValidationService, ValidationSummary};
+pub use validation::{QualityCheck, ValidationService, ValidationSummary};
 
 #[cfg(test)]
 mod tests {

@@ -15,14 +15,14 @@ fn async_sync_request_defaults() {
     assert_eq!(req.source, "/path/col.anki2");
     assert!(req.run_migrations);
     assert!(req.index);
-    assert!(!req.force_reindex);
+    assert_eq!(req.reindex_mode, common::ReindexMode::Incremental);
     assert!(req.run_at.is_none());
 }
 
 #[test]
 fn async_index_request_defaults() {
     let req: AsyncIndexRequest = serde_json::from_value(json!({})).unwrap();
-    assert!(!req.force_reindex);
+    assert_eq!(req.reindex_mode, common::ReindexMode::Incremental);
     assert!(req.run_at.is_none());
 }
 

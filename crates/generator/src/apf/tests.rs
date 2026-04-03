@@ -1129,7 +1129,7 @@ fn validate_apf_batch_validates_all_cards() {
 
 #[test]
 fn markdown_to_html_bold() {
-    let result = markdown_to_html("**bold text**", true);
+    let result = markdown_to_html("**bold text**", HtmlSanitization::Sanitize);
     assert!(
         result.contains("<strong>bold text</strong>"),
         "Bold markdown should convert to <strong>, got: {result}"
@@ -1138,7 +1138,7 @@ fn markdown_to_html_bold() {
 
 #[test]
 fn markdown_to_html_italic() {
-    let result = markdown_to_html("*italic text*", true);
+    let result = markdown_to_html("*italic text*", HtmlSanitization::Sanitize);
     assert!(
         result.contains("<em>italic text</em>"),
         "Italic markdown should convert to <em>, got: {result}"
@@ -1147,7 +1147,7 @@ fn markdown_to_html_italic() {
 
 #[test]
 fn markdown_to_html_inline_code() {
-    let result = markdown_to_html("use `println!` macro", true);
+    let result = markdown_to_html("use `println!` macro", HtmlSanitization::Sanitize);
     assert!(
         result.contains("<code"),
         "Inline code should convert to <code>, got: {result}"
@@ -1161,7 +1161,7 @@ fn markdown_to_html_inline_code() {
 #[test]
 fn markdown_to_html_code_block() {
     let md = "```rust\nfn main() {}\n```";
-    let result = markdown_to_html(md, true);
+    let result = markdown_to_html(md, HtmlSanitization::Sanitize);
     assert!(
         result.contains("<pre>") && result.contains("<code"),
         "Code blocks should convert to <pre><code>, got: {result}"
@@ -1175,7 +1175,7 @@ fn markdown_to_html_code_block() {
 #[test]
 fn markdown_to_html_code_block_with_language_class() {
     let md = "```python\nprint('hello')\n```";
-    let result = markdown_to_html(md, true);
+    let result = markdown_to_html(md, HtmlSanitization::Sanitize);
     assert!(
         result.contains("language-python") || result.contains("lang-python"),
         "Code block should have language class, got: {result}"
@@ -1185,7 +1185,7 @@ fn markdown_to_html_code_block_with_language_class() {
 #[test]
 fn markdown_to_html_unordered_list() {
     let md = "- item one\n- item two\n- item three";
-    let result = markdown_to_html(md, true);
+    let result = markdown_to_html(md, HtmlSanitization::Sanitize);
     assert!(
         result.contains("<li>"),
         "List items should convert to <li>, got: {result}"
@@ -1199,7 +1199,7 @@ fn markdown_to_html_unordered_list() {
 #[test]
 fn markdown_to_html_paragraphs() {
     let md = "First paragraph.\n\nSecond paragraph.";
-    let result = markdown_to_html(md, true);
+    let result = markdown_to_html(md, HtmlSanitization::Sanitize);
     assert!(
         result.contains("<p>"),
         "Paragraphs should be wrapped in <p>, got: {result}"
@@ -1208,7 +1208,7 @@ fn markdown_to_html_paragraphs() {
 
 #[test]
 fn markdown_to_html_empty_input() {
-    let result = markdown_to_html("", true);
+    let result = markdown_to_html("", HtmlSanitization::Sanitize);
     assert!(
         result.is_empty() || result.trim().is_empty(),
         "Empty input should return empty or whitespace-only, got: '{result}'"
@@ -1217,7 +1217,7 @@ fn markdown_to_html_empty_input() {
 
 #[test]
 fn markdown_to_html_whitespace_only() {
-    let result = markdown_to_html("   \n  \n  ", true);
+    let result = markdown_to_html("   \n  \n  ", HtmlSanitization::Sanitize);
     assert!(
         result.trim().is_empty() || result == "   \n  \n  ",
         "Whitespace-only input should return empty/unchanged, got: '{result}'"
@@ -1227,7 +1227,7 @@ fn markdown_to_html_whitespace_only() {
 #[test]
 fn markdown_to_html_sanitize_true_strips_script() {
     let md = "hello <script>alert('xss')</script> world";
-    let result = markdown_to_html(md, true);
+    let result = markdown_to_html(md, HtmlSanitization::Sanitize);
     assert!(
         !result.contains("<script>"),
         "With sanitize=true, script tags should be stripped, got: {result}"
@@ -1237,7 +1237,7 @@ fn markdown_to_html_sanitize_true_strips_script() {
 #[test]
 fn markdown_to_html_sanitize_false_preserves_raw_html() {
     let md = "hello **bold** world";
-    let result = markdown_to_html(md, false);
+    let result = markdown_to_html(md, HtmlSanitization::Raw);
     assert!(
         result.contains("<strong>bold</strong>"),
         "sanitize=false should still convert markdown, got: {result}"
@@ -1247,7 +1247,7 @@ fn markdown_to_html_sanitize_false_preserves_raw_html() {
 #[test]
 fn markdown_to_html_escapes_code_block_html() {
     let md = "```html\n<div>test</div>\n```";
-    let result = markdown_to_html(md, true);
+    let result = markdown_to_html(md, HtmlSanitization::Sanitize);
     // The code inside the code block should be escaped
     assert!(
         result.contains("&lt;div&gt;") || result.contains("<code"),
@@ -1258,7 +1258,7 @@ fn markdown_to_html_escapes_code_block_html() {
 #[test]
 fn markdown_to_html_preserves_cloze_syntax() {
     let md = "The answer is {{c1::42}}.";
-    let result = markdown_to_html(md, true);
+    let result = markdown_to_html(md, HtmlSanitization::Sanitize);
     assert!(
         result.contains("{{c1::42}}"),
         "Cloze syntax should be preserved, got: {result}"

@@ -33,7 +33,7 @@ pub async fn job_sync(
             PathBuf::from(&payload.source),
             payload.run_migrations,
             payload.index,
-            payload.force_reindex,
+            payload.reindex_mode,
         )
         .await
         .map_err(map_task_error)?;
@@ -62,7 +62,7 @@ pub async fn job_index(
     let services = build_services().await?;
     let summary = services
         .index
-        .index_all_notes(payload.force_reindex)
+        .index_all_notes(payload.reindex_mode)
         .await
         .map_err(map_task_error)?;
 

@@ -409,7 +409,7 @@ impl AnkiAtlasServer {
                     source: input.source,
                     run_migrations: input.run_migrations,
                     index: input.index,
-                    force_reindex: input.force_reindex,
+                    reindex_mode: input.reindex_mode.into(),
                 },
                 None,
             )
@@ -446,7 +446,7 @@ impl AnkiAtlasServer {
             .job_manager
             .enqueue_index_job(
                 IndexJobPayload {
-                    force_reindex: input.force_reindex,
+                    reindex_mode: input.reindex_mode.into(),
                 },
                 None,
             )
@@ -575,11 +575,14 @@ impl AnkiAtlasServer {
         &self,
         Parameters(input): Parameters<ValidateToolInput>,
     ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
-        match self
-            .services
-            .validation
-            .validate_file(PathBuf::from(&input.file_path).as_path(), input.quality)
-        {
+        match self.services.validation.validate_file(
+            PathBuf::from(&input.file_path).as_path(),
+            if input.quality {
+                surface_runtime::QualityCheck::Include
+            } else {
+                surface_runtime::QualityCheck::Skip
+            },
+        ) {
             Ok(summary) => {
                 let response = WorkflowToolResult {
                     path: input.file_path,
@@ -607,7 +610,11 @@ impl AnkiAtlasServer {
         match self.services.obsidian_scan.scan(
             PathBuf::from(&input.vault_path).as_path(),
             &input.source_dirs,
-            input.dry_run,
+            if input.dry_run {
+                common::ExecutionMode::DryRun
+            } else {
+                common::ExecutionMode::Execute
+            },
         ) {
             Ok(summary) => {
                 let response = WorkflowToolResult {

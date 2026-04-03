@@ -1,3 +1,4 @@
+use common::ReindexMode;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::instrument;
@@ -143,14 +144,14 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
     }
 
     /// Index a batch of notes. Skips notes whose content_hash is unchanged
-    /// unless `force_reindex` is true.
+    /// unless `reindex_mode` is `ReindexMode::Force`.
     #[instrument(skip(self, notes), fields(note_count = notes.len()))]
     pub async fn index_notes(
         &self,
         notes: &[NoteForIndexing],
-        force_reindex: bool,
+        reindex_mode: ReindexMode,
     ) -> Result<IndexStats, IndexError> {
-        self.index_notes_with_progress(notes, force_reindex, None)
+        self.index_notes_with_progress(notes, reindex_mode, None)
             .await
     }
 
@@ -158,7 +159,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
     pub async fn index_notes_with_progress(
         &self,
         notes: &[NoteForIndexing],
-        force_reindex: bool,
+        reindex_mode: ReindexMode,
         progress: Option<IndexProgressCallback>,
     ) -> Result<IndexStats, IndexError> {
         let multimodal_notes: Vec<_> = notes
@@ -169,7 +170,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
                 note,
             })
             .collect();
-        self.index_multimodal_notes_with_progress(&multimodal_notes, force_reindex, progress)
+        self.index_multimodal_notes_with_progress(&multimodal_notes, reindex_mode, progress)
             .await
     }
 
@@ -177,7 +178,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
     pub async fn index_multimodal_notes_with_progress(
         &self,
         notes: &[MultimodalNoteForIndexing],
-        force_reindex: bool,
+        reindex_mode: ReindexMode,
         progress: Option<IndexProgressCallback>,
     ) -> Result<IndexStats, IndexError> {
         emit_progress(
@@ -222,7 +223,7 @@ impl<E: EmbeddingProvider, V: VectorRepository> IndexService<E, V> {
             notes,
             &existing_hashes,
             model_name,
-            force_reindex,
+            reindex_mode,
             progress.as_ref(),
         );
 
@@ -497,7 +498,10 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(HashMap::new()) }));
 
         let service = IndexService::new(embedding, repo);
-        let stats = service.index_notes(&[], false).await.unwrap();
+        let stats = service
+            .index_notes(&[], ReindexMode::Incremental)
+            .await
+            .unwrap();
 
         assert_eq!(stats.notes_processed, 0);
         assert_eq!(stats.notes_embedded, 0);
@@ -521,7 +525,10 @@ mod tests {
 
         let service = IndexService::new(embedding, repo);
         let notes = vec![make_note(1, "hello"), make_note(2, "world")];
-        let stats = service.index_notes(&notes, false).await.unwrap();
+        let stats = service
+            .index_notes(&notes, ReindexMode::Incremental)
+            .await
+            .unwrap();
 
         assert_eq!(stats.notes_processed, 2);
         assert_eq!(stats.notes_embedded, 2);
@@ -548,7 +555,7 @@ mod tests {
         let stats = service
             .index_notes_with_progress(
                 &[make_note(1, "one"), make_note(2, "two")],
-                false,
+                ReindexMode::Incremental,
                 Some(progress),
             )
             .await
@@ -602,7 +609,10 @@ mod tests {
 
         let service = IndexService::new(embedding, repo);
         let notes = vec![make_note(1, "hello"), make_note(2, "world")];
-        let stats = service.index_notes(&notes, false).await.unwrap();
+        let stats = service
+            .index_notes(&notes, ReindexMode::Incremental)
+            .await
+            .unwrap();
 
         assert_eq!(stats.notes_processed, 2);
         assert_eq!(stats.notes_embedded, 1);
@@ -632,7 +642,10 @@ mod tests {
 
         let service = IndexService::new(embedding, repo);
         let notes = vec![make_note(1, "hello"), make_note(2, "world")];
-        let stats = service.index_notes(&notes, true).await.unwrap();
+        let stats = service
+            .index_notes(&notes, ReindexMode::Force)
+            .await
+            .unwrap();
 
         assert_eq!(stats.notes_processed, 2);
         assert_eq!(stats.notes_embedded, 2);
@@ -670,7 +683,10 @@ mod tests {
 
         let service = IndexService::new(embedding, repo);
         let notes = vec![make_note(42, "test content")];
-        service.index_notes(&notes, false).await.unwrap();
+        service
+            .index_notes(&notes, ReindexMode::Incremental)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -692,7 +708,10 @@ mod tests {
 
         let service = IndexService::new(embedding, repo);
         let notes = vec![make_note(1, "my text")];
-        service.index_notes(&notes, false).await.unwrap();
+        service
+            .index_notes(&notes, ReindexMode::Incremental)
+            .await
+            .unwrap();
     }
 
     // ====================================================================
@@ -717,7 +736,10 @@ mod tests {
 
         let service = IndexService::new(embedding, repo);
         let notes = vec![make_note(1, "test")];
-        service.index_notes(&notes, false).await.unwrap();
+        service
+            .index_notes(&notes, ReindexMode::Incremental)
+            .await
+            .unwrap();
     }
 
     // ====================================================================
@@ -741,7 +763,10 @@ mod tests {
 
         let service = IndexService::new(embedding, repo);
         let notes = vec![make_note(1, "hello world")];
-        service.index_notes(&notes, false).await.unwrap();
+        service
+            .index_notes(&notes, ReindexMode::Incremental)
+            .await
+            .unwrap();
     }
 
     // ====================================================================
@@ -783,7 +808,7 @@ mod tests {
 
         let service = IndexService::new(FailingProvider, repo);
         let notes = vec![make_note(1, "test")];
-        let result = service.index_notes(&notes, false).await;
+        let result = service.index_notes(&notes, ReindexMode::Incremental).await;
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), IndexError::Embedding(_)));
@@ -803,7 +828,7 @@ mod tests {
 
         let service = IndexService::new(embedding, repo);
         let notes = vec![make_note(1, "test")];
-        let result = service.index_notes(&notes, false).await;
+        let result = service.index_notes(&notes, ReindexMode::Incremental).await;
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), IndexError::VectorStore(_)));
@@ -896,7 +921,10 @@ mod tests {
             make_note(3, "text3"),
             make_note(4, "text4"),
         ];
-        let stats = service.index_notes(&notes, false).await.unwrap();
+        let stats = service
+            .index_notes(&notes, ReindexMode::Incremental)
+            .await
+            .unwrap();
 
         assert_eq!(stats.notes_processed, 4);
         assert_eq!(stats.notes_embedded, 2);
@@ -942,7 +970,10 @@ mod tests {
             reps: 20,
             fail_rate: Some(0.25),
         };
-        service.index_notes(&[note], false).await.unwrap();
+        service
+            .index_notes(&[note], ReindexMode::Incremental)
+            .await
+            .unwrap();
     }
 
     // ====================================================================
@@ -971,7 +1002,10 @@ mod tests {
 
         let service = IndexService::new(embedding, repo);
         let notes = vec![make_note(1, "updated content")];
-        let stats = service.index_notes(&notes, false).await.unwrap();
+        let stats = service
+            .index_notes(&notes, ReindexMode::Incremental)
+            .await
+            .unwrap();
 
         assert_eq!(stats.notes_embedded, 1);
         assert_eq!(stats.notes_skipped, 0);
@@ -1003,7 +1037,10 @@ mod tests {
         let service = IndexService::new(embedding, repo);
 
         let notes = vec![make_note(1, "first"), make_note(2, "second")];
-        let stats = service.index_notes(&notes, false).await.unwrap();
+        let stats = service
+            .index_notes(&notes, ReindexMode::Incremental)
+            .await
+            .unwrap();
         assert_eq!(stats.notes_embedded, 2);
 
         let deleted = service.delete_notes(&[1, 2]).await.unwrap();

@@ -5,6 +5,7 @@ mod service;
 
 pub use service::IndexingService;
 
+use common::ReindexMode;
 use indexer::service::IndexStats;
 use serde::Serialize;
 
@@ -13,7 +14,7 @@ use crate::workflows::progress::SurfaceProgressSink;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct IndexExecutionSummary {
-    pub force_reindex: bool,
+    pub reindex_mode: ReindexMode,
     pub stats: IndexStats,
 }
 
@@ -22,12 +23,12 @@ pub struct IndexExecutionSummary {
 pub trait IndexExecutor: Send + Sync {
     async fn index_all_notes(
         &self,
-        force_reindex: bool,
+        reindex_mode: ReindexMode,
     ) -> Result<IndexExecutionSummary, SurfaceError>;
 
     async fn index_all_notes_with_progress(
         &self,
-        force_reindex: bool,
+        reindex_mode: ReindexMode,
         progress: Option<SurfaceProgressSink>,
     ) -> Result<IndexExecutionSummary, SurfaceError>;
 }

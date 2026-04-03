@@ -58,6 +58,26 @@ impl From<McpSearchMode> for surface_contracts::search::SearchMode {
     }
 }
 
+/// Reindex mode for MCP tool inputs (mirrors `common::ReindexMode` with JsonSchema).
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum McpReindexMode {
+    /// Only reindex notes that have changed since last index.
+    #[default]
+    Incremental,
+    /// Force reindex all notes regardless of change status.
+    Force,
+}
+
+impl From<McpReindexMode> for common::ReindexMode {
+    fn from(mode: McpReindexMode) -> Self {
+        match mode {
+            McpReindexMode::Incremental => common::ReindexMode::Incremental,
+            McpReindexMode::Force => common::ReindexMode::Force,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct SearchToolInput {
     #[serde(default)]
@@ -144,7 +164,7 @@ pub struct SyncJobToolInput {
     #[serde(default = "default_true")]
     pub index: bool,
     #[serde(default)]
-    pub force_reindex: bool,
+    pub reindex_mode: McpReindexMode,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -152,7 +172,7 @@ pub struct IndexJobToolInput {
     #[serde(default)]
     pub output_mode: OutputMode,
     #[serde(default)]
-    pub force_reindex: bool,
+    pub reindex_mode: McpReindexMode,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]

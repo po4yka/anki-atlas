@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use common::ReindexMode;
 use indexer::embeddings::EmbeddingProvider;
 use indexer::qdrant::{NotePayload, SemanticSearchHit, SparseVector, VectorRepository};
 use indexer::service::{
@@ -187,19 +188,22 @@ impl IndexingService {
 
     pub async fn index_all_notes(
         &self,
-        force_reindex: bool,
+        reindex_mode: ReindexMode,
     ) -> Result<IndexExecutionSummary, SurfaceError> {
-        self.index_all_notes_with_progress(force_reindex, None)
-            .await
+        self.index_all_notes_with_progress(reindex_mode, None).await
     }
 
     pub async fn index_all_notes_with_progress(
         &self,
-        force_reindex: bool,
+        reindex_mode: ReindexMode,
         progress: Option<SurfaceProgressSink>,
     ) -> Result<IndexExecutionSummary, SurfaceError> {
         let service = IndexService::new(self.embedding.clone(), self.vector_repo.clone());
-        let force_reindex = force_reindex || self.prepare_collection().await?;
+        let reindex_mode = if self.prepare_collection().await? {
+            ReindexMode::Force
+        } else {
+            reindex_mode
+        };
         let media_root = self.resolve_media_root().await?;
 
         emit_progress(
@@ -259,7 +263,7 @@ impl IndexingService {
             }) as IndexProgressCallback
         });
         let mut stats = service
-            .index_multimodal_notes_with_progress(&notes, force_reindex, mapped_progress)
+            .index_multimodal_notes_with_progress(&notes, reindex_mode, mapped_progress)
             .await?;
         emit_progress(
             progress.as_ref(),
@@ -297,7 +301,7 @@ impl IndexingService {
         self.store_embedding_fingerprint().await?;
 
         Ok(IndexExecutionSummary {
-            force_reindex,
+            reindex_mode,
             stats,
         })
     }
@@ -307,17 +311,17 @@ impl IndexingService {
 impl IndexExecutor for IndexingService {
     async fn index_all_notes(
         &self,
-        force_reindex: bool,
+        reindex_mode: ReindexMode,
     ) -> Result<IndexExecutionSummary, SurfaceError> {
-        Self::index_all_notes(self, force_reindex).await
+        Self::index_all_notes(self, reindex_mode).await
     }
 
     async fn index_all_notes_with_progress(
         &self,
-        force_reindex: bool,
+        reindex_mode: ReindexMode,
         progress: Option<SurfaceProgressSink>,
     ) -> Result<IndexExecutionSummary, SurfaceError> {
-        Self::index_all_notes_with_progress(self, force_reindex, progress).await
+        Self::index_all_notes_with_progress(self, reindex_mode, progress).await
     }
 }
 

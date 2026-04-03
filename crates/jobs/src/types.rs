@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use common::ReindexMode;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
@@ -40,12 +41,12 @@ pub struct SyncJobPayload {
     pub source: String,
     pub run_migrations: bool,
     pub index: bool,
-    pub force_reindex: bool,
+    pub reindex_mode: ReindexMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexJobPayload {
-    pub force_reindex: bool,
+    pub reindex_mode: ReindexMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

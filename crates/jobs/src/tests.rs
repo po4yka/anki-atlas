@@ -117,7 +117,7 @@ fn sample_record() -> JobRecord {
             source: "/tmp/collection.anki2".to_string(),
             run_migrations: true,
             index: true,
-            force_reindex: false,
+            reindex_mode: common::ReindexMode::Incremental,
         }),
         progress: 42.5,
         message: Some("testing".to_string()),
@@ -275,7 +275,7 @@ async fn mock_job_manager_enqueue_sync() {
                 source: "/tmp/collection.anki2".to_string(),
                 run_migrations: true,
                 index: true,
-                force_reindex: false,
+                reindex_mode: common::ReindexMode::Incremental,
             },
             None,
         )
@@ -293,7 +293,7 @@ async fn mock_job_manager_enqueue_index() {
                 let mut rec = sample_record();
                 rec.job_type = JobType::Index;
                 rec.payload = JobPayload::Index(IndexJobPayload {
-                    force_reindex: false,
+                    reindex_mode: common::ReindexMode::Incremental,
                 });
                 Ok(rec)
             })
@@ -302,7 +302,7 @@ async fn mock_job_manager_enqueue_index() {
     let result = mock
         .enqueue_index_job(
             IndexJobPayload {
-                force_reindex: false,
+                reindex_mode: common::ReindexMode::Incremental,
             },
             None,
         )

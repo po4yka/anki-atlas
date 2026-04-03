@@ -125,7 +125,7 @@ pub(crate) async fn prime_job(user: &mut GooseUser) -> TransactionResult {
             "source": context().manifest.sync_source,
             "run_migrations": true,
             "index": true,
-            "force_reindex": false,
+            "reindex_mode": "incremental",
         }),
     )
     .await?;
@@ -144,7 +144,7 @@ pub(crate) async fn enqueue_sync_job(user: &mut GooseUser) -> TransactionResult 
             "source": context().manifest.sync_source,
             "run_migrations": true,
             "index": true,
-            "force_reindex": false,
+            "reindex_mode": "incremental",
         }),
     )
     .await?;
@@ -160,7 +160,7 @@ pub(crate) async fn enqueue_index_job(user: &mut GooseUser) -> TransactionResult
         "/jobs/index",
         "job_index_enqueue",
         &serde_json::json!({
-            "force_reindex": false,
+            "reindex_mode": "incremental",
         }),
     )
     .await?;
@@ -187,7 +187,7 @@ pub(crate) async fn job_status_request(user: &mut GooseUser) -> TransactionResul
                 "source": context().manifest.sync_source,
                 "run_migrations": true,
                 "index": true,
-                "force_reindex": false,
+                "reindex_mode": "incremental",
             }),
         )
         .await?;
@@ -215,7 +215,7 @@ pub(crate) async fn job_cancel_request(user: &mut GooseUser) -> TransactionResul
             "source": context().manifest.sync_source,
             "run_migrations": true,
             "index": true,
-            "force_reindex": false,
+            "reindex_mode": "incremental",
         }),
     )
     .await?;

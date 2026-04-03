@@ -140,6 +140,37 @@ impl From<TopicId> for i64 {
     }
 }
 
+/// Controls whether indexing checks for changes or forces full reindex.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReindexMode {
+    /// Only reindex notes that have changed since last index.
+    #[default]
+    Incremental,
+    /// Force reindex all notes regardless of change status.
+    Force,
+}
+
+impl fmt::Display for ReindexMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Incremental => write!(f, "incremental"),
+            Self::Force => write!(f, "force"),
+        }
+    }
+}
+
+/// Controls whether an operation makes actual changes or just simulates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionMode {
+    /// Actually perform the operation.
+    #[default]
+    Execute,
+    /// Simulate the operation without making changes.
+    DryRun,
+}
+
 /// Anki deck name (may contain `::` hierarchy separators).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]

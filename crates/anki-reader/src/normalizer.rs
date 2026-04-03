@@ -17,8 +17,15 @@ static CODE_BLOCK_PATTERN: LazyLock<Regex> =
 static CODE_INLINE_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)<code[^>]*>(.*?)</code>").unwrap());
 
+/// Controls code block handling during HTML stripping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodeHandling {
+    Preserve,
+    Strip,
+}
+
 /// Strip HTML tags from text.
-pub fn strip_html(text: &str, preserve_code: bool) -> String {
+pub fn strip_html(text: &str, preserve_code: CodeHandling) -> String {
     if text.is_empty() {
         return String::new();
     }
@@ -27,7 +34,7 @@ pub fn strip_html(text: &str, preserve_code: bool) -> String {
     let mut code_blocks: Vec<String> = Vec::new();
 
     // 1. Save code blocks as placeholders
-    if preserve_code {
+    if preserve_code == CodeHandling::Preserve {
         let mut idx = 0usize;
         for pat in [&*CODE_BLOCK_PATTERN, &*CODE_INLINE_PATTERN] {
             while let Some(cap) = pat.captures(&result) {
@@ -69,7 +76,7 @@ pub fn strip_html(text: &str, preserve_code: bool) -> String {
     result = html_unescape(&result);
 
     // 6. Restore code blocks wrapped in backticks
-    if preserve_code {
+    if preserve_code == CodeHandling::Preserve {
         for (i, block) in code_blocks.iter().enumerate() {
             let placeholder = format!("__CODE_BLOCK_{i}__");
             let decoded = html_unescape(block);
@@ -127,7 +134,7 @@ pub fn normalize_note(note: &AnkiNote, deck_names: Option<&[String]>) -> String 
     let mut has_classified = false;
 
     for (name, value) in &note.fields_json {
-        let cleaned = strip_html(value, false);
+        let cleaned = strip_html(value, CodeHandling::Strip);
         if cleaned.is_empty() {
             continue;
         }
@@ -151,7 +158,7 @@ pub fn normalize_note(note: &AnkiNote, deck_names: Option<&[String]>) -> String 
     // Fallback: if no fields matched front/back/extra, use positional
     if !has_classified && !note.fields.is_empty() {
         for (i, value) in note.fields.iter().enumerate() {
-            let cleaned = strip_html(value, false);
+            let cleaned = strip_html(value, CodeHandling::Strip);
             if cleaned.is_empty() {
                 continue;
             }

@@ -9,6 +9,13 @@ use validation::validators::{
 
 use crate::error::SurfaceError;
 
+/// Controls whether quality checks are included in validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QualityCheck {
+    Include,
+    Skip,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ValidationSummary {
     pub source_file: PathBuf,
@@ -43,7 +50,7 @@ impl ValidationService {
     pub fn validate_file(
         &self,
         file: &Path,
-        include_quality: bool,
+        include_quality: QualityCheck,
     ) -> Result<ValidationSummary, SurfaceError> {
         if !file.exists() {
             return Err(SurfaceError::PathNotFound(file.to_path_buf()));
@@ -51,7 +58,7 @@ impl ValidationService {
         let content = std::fs::read_to_string(file)?;
         let (front, back, tags) = parse_validation_input(&content)?;
         let result = self.pipeline.run(&front, &back, &tags);
-        let quality = include_quality
+        let quality = (include_quality == QualityCheck::Include)
             .then(|| validation::quality::assess_quality_with_tags(&front, &back, &tags));
 
         Ok(ValidationSummary {

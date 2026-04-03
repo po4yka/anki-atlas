@@ -73,7 +73,7 @@ async fn api_enqueue_index_job_then_worker_completes() -> Result<()> {
     let (status_code, accepted_body) = stack
         .post_json(
             "/jobs/index",
-            &json!({ "force_reindex": false, "run_at": null }),
+            &json!({ "reindex_mode": "incremental", "run_at": null }),
             &[],
         )
         .await?;
@@ -115,7 +115,7 @@ async fn api_enqueue_sync_job_then_worker_updates_job_status() -> Result<()> {
                 "source": fixture,
                 "run_migrations": true,
                 "index": true,
-                "force_reindex": false,
+                "reindex_mode": "incremental",
                 "run_at": null
             }),
             &[],
@@ -152,7 +152,7 @@ async fn api_cancel_job_before_execution() -> Result<()> {
                 "source": fixture,
                 "run_migrations": true,
                 "index": true,
-                "force_reindex": false,
+                "reindex_mode": "incremental",
                 "run_at": null
             }),
             &[],

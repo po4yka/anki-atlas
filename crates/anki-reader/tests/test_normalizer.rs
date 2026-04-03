@@ -1,7 +1,7 @@
 use anki_reader::models::{AnkiCard, AnkiDeck, AnkiNote};
 use anki_reader::normalizer::{
-    build_card_deck_map, build_deck_map, classify_field, normalize_note, normalize_notes,
-    normalize_whitespace, strip_html,
+    CodeHandling, build_card_deck_map, build_deck_map, classify_field, normalize_note,
+    normalize_notes, normalize_whitespace, strip_html,
 };
 use common::{CardId, DeckId, ModelId, NoteId};
 use std::collections::HashMap;
@@ -10,17 +10,20 @@ use std::collections::HashMap;
 
 #[test]
 fn strip_html_removes_bold() {
-    assert_eq!(strip_html("<b>hello</b>", false), "hello");
+    assert_eq!(strip_html("<b>hello</b>", CodeHandling::Strip), "hello");
 }
 
 #[test]
 fn strip_html_removes_nested_tags() {
-    assert_eq!(strip_html("<b><i>text</i></b>", false), "text");
+    assert_eq!(
+        strip_html("<b><i>text</i></b>", CodeHandling::Strip),
+        "text"
+    );
 }
 
 #[test]
 fn strip_html_br_to_newline() {
-    let result = strip_html("line1<br>line2", false);
+    let result = strip_html("line1<br>line2", CodeHandling::Strip);
     assert!(result.contains("line1"));
     assert!(result.contains("line2"));
 }
@@ -28,7 +31,7 @@ fn strip_html_br_to_newline() {
 #[test]
 fn strip_html_br_variants() {
     // <br/> and <br /> should also be handled
-    let result = strip_html("a<br/>b<br />c", false);
+    let result = strip_html("a<br/>b<br />c", CodeHandling::Strip);
     assert!(result.contains('a'));
     assert!(result.contains('b'));
     assert!(result.contains('c'));
@@ -36,14 +39,14 @@ fn strip_html_br_variants() {
 
 #[test]
 fn strip_html_nbsp() {
-    let result = strip_html("hello&nbsp;world", false);
+    let result = strip_html("hello&nbsp;world", CodeHandling::Strip);
     assert!(result.contains("hello"));
     assert!(result.contains("world"));
 }
 
 #[test]
 fn strip_html_entities() {
-    let result = strip_html("&amp; &lt; &gt; &quot;", false);
+    let result = strip_html("&amp; &lt; &gt; &quot;", CodeHandling::Strip);
     assert!(result.contains('&'));
     assert!(result.contains('<'));
     assert!(result.contains('>'));
@@ -52,24 +55,27 @@ fn strip_html_entities() {
 
 #[test]
 fn strip_html_empty_input() {
-    assert_eq!(strip_html("", false), "");
+    assert_eq!(strip_html("", CodeHandling::Strip), "");
 }
 
 #[test]
 fn strip_html_plain_text_unchanged() {
-    assert_eq!(strip_html("just plain text", false), "just plain text");
+    assert_eq!(
+        strip_html("just plain text", CodeHandling::Strip),
+        "just plain text"
+    );
 }
 
 #[test]
 fn strip_html_p_and_div_to_newlines() {
-    let result = strip_html("<p>paragraph</p><div>block</div>", false);
+    let result = strip_html("<p>paragraph</p><div>block</div>", CodeHandling::Strip);
     assert!(result.contains("paragraph"));
     assert!(result.contains("block"));
 }
 
 #[test]
 fn strip_html_li_items() {
-    let result = strip_html("<ul><li>item1</li><li>item2</li></ul>", false);
+    let result = strip_html("<ul><li>item1</li><li>item2</li></ul>", CodeHandling::Strip);
     assert!(result.contains("item1"));
     assert!(result.contains("item2"));
 }
@@ -78,17 +84,20 @@ fn strip_html_li_items() {
 
 #[test]
 fn strip_html_cloze_simple() {
-    assert_eq!(strip_html("{{c1::answer}}", false), "answer");
+    assert_eq!(strip_html("{{c1::answer}}", CodeHandling::Strip), "answer");
 }
 
 #[test]
 fn strip_html_cloze_with_hint() {
-    assert_eq!(strip_html("{{c1::answer::hint}}", false), "answer");
+    assert_eq!(
+        strip_html("{{c1::answer::hint}}", CodeHandling::Strip),
+        "answer"
+    );
 }
 
 #[test]
 fn strip_html_cloze_multiple() {
-    let result = strip_html("{{c1::first}} and {{c2::second}}", false);
+    let result = strip_html("{{c1::first}} and {{c2::second}}", CodeHandling::Strip);
     assert!(result.contains("first"));
     assert!(result.contains("second"));
     assert!(!result.contains("c1"));
@@ -97,7 +106,7 @@ fn strip_html_cloze_multiple() {
 
 #[test]
 fn strip_html_cloze_with_html() {
-    let result = strip_html("<b>{{c1::bold answer}}</b>", false);
+    let result = strip_html("<b>{{c1::bold answer}}</b>", CodeHandling::Strip);
     assert_eq!(result, "bold answer");
 }
 
@@ -105,27 +114,27 @@ fn strip_html_cloze_with_html() {
 
 #[test]
 fn strip_html_preserve_code_inline() {
-    let result = strip_html("use <code>fn main()</code> here", true);
+    let result = strip_html("use <code>fn main()</code> here", CodeHandling::Preserve);
     assert!(result.contains("`fn main()`"));
 }
 
 #[test]
 fn strip_html_preserve_code_block() {
-    let result = strip_html("<pre>let x = 1;\nlet y = 2;</pre>", true);
+    let result = strip_html("<pre>let x = 1;\nlet y = 2;</pre>", CodeHandling::Preserve);
     assert!(result.contains('`'));
     assert!(result.contains("let x = 1;"));
 }
 
 #[test]
 fn strip_html_no_preserve_code_strips_tags() {
-    let result = strip_html("use <code>fn main()</code> here", false);
+    let result = strip_html("use <code>fn main()</code> here", CodeHandling::Strip);
     assert!(result.contains("fn main()"));
     assert!(!result.contains("<code>"));
 }
 
 #[test]
 fn strip_html_code_with_html_entities() {
-    let result = strip_html("<code>&lt;div&gt;</code>", true);
+    let result = strip_html("<code>&lt;div&gt;</code>", CodeHandling::Preserve);
     assert!(result.contains("`<div>`"));
 }
 

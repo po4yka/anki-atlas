@@ -1,5 +1,6 @@
 use anki_reader::connect::{
-    ANKI_CONNECT_URL, ANKI_CONNECT_VERSION, AddNoteOutcome, AnkiConnectClient, DEFAULT_TIMEOUT_SECS,
+    ANKI_CONNECT_URL, ANKI_CONNECT_VERSION, AddNoteOutcome, AnkiConnectClient,
+    DEFAULT_TIMEOUT_SECS, DuplicateHandling,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -227,7 +228,13 @@ async fn add_note_returns_id_on_success() {
     fields.insert("Front".into(), "Q".into());
     fields.insert("Back".into(), "A".into());
     let id = client
-        .add_note("Default", "Basic", &fields, &["tag1".into()], false)
+        .add_note(
+            "Default",
+            "Basic",
+            &fields,
+            &["tag1".into()],
+            DuplicateHandling::Reject,
+        )
         .await
         .unwrap();
     assert_eq!(id, AddNoteOutcome::Added(999));
@@ -249,7 +256,7 @@ async fn add_note_returns_duplicate_outcome() {
     let mut fields = HashMap::new();
     fields.insert("Front".into(), "Q".into());
     let id = client
-        .add_note("Default", "Basic", &fields, &[], false)
+        .add_note("Default", "Basic", &fields, &[], DuplicateHandling::Reject)
         .await
         .unwrap();
     assert_eq!(id, AddNoteOutcome::Duplicate);

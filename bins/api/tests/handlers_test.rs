@@ -170,10 +170,10 @@ fn make_job_record(job_id: &str, job_type: JobType, status: JobStatus) -> JobRec
             source: "/tmp/collection.anki2".to_string(),
             run_migrations: true,
             index: true,
-            force_reindex: false,
+            reindex_mode: common::ReindexMode::Incremental,
         }),
         JobType::Index => JobPayload::Index(IndexJobPayload {
-            force_reindex: false,
+            reindex_mode: common::ReindexMode::Incremental,
         }),
     };
 

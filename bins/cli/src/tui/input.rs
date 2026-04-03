@@ -309,7 +309,12 @@ fn toggle_workflow_checkbox(workflows: &mut super::WorkflowsState) {
             workflows.validate_quality = !workflows.validate_quality;
         }
         (WorkflowTab::Obsidian, WorkflowField::ToggleA) => {
-            workflows.obsidian_dry_run = !workflows.obsidian_dry_run;
+            workflows.obsidian_dry_run =
+                if workflows.obsidian_dry_run == common::ExecutionMode::DryRun {
+                    common::ExecutionMode::Execute
+                } else {
+                    common::ExecutionMode::DryRun
+                };
         }
         (WorkflowTab::TagAudit, WorkflowField::ToggleA) => {
             workflows.tag_audit_fix = !workflows.tag_audit_fix;

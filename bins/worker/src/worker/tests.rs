@@ -36,7 +36,7 @@ fn test_job_record(job_id: &str, status: JobStatus) -> JobRecord {
             source: "/tmp/collection.anki2".to_string(),
             run_migrations: true,
             index: true,
-            force_reindex: false,
+            reindex_mode: common::ReindexMode::Incremental,
         }),
         progress: 0.0,
         message: None,
@@ -58,10 +58,10 @@ fn test_envelope(job_id: &str, job_type: JobType) -> JobEnvelope {
             source: "/tmp/collection.anki2".to_string(),
             run_migrations: true,
             index: true,
-            force_reindex: false,
+            reindex_mode: common::ReindexMode::Incremental,
         }),
         JobType::Index => JobPayload::Index(IndexJobPayload {
-            force_reindex: false,
+            reindex_mode: common::ReindexMode::Incremental,
         }),
     };
 
@@ -710,7 +710,7 @@ async fn redis_manager_and_worker_drive_terminal_job_status() {
                 source: "/tmp/collection.anki2".to_string(),
                 run_migrations: true,
                 index: true,
-                force_reindex: false,
+                reindex_mode: common::ReindexMode::Incremental,
             },
             None,
         )

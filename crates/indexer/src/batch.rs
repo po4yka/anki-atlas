@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use crate::embeddings::{self, EmbeddingError, EmbeddingInput, EmbeddingProvider};
 use crate::qdrant::{NotePayload, QdrantRepository, SparseVector};
+use common::ReindexMode;
+
 use crate::service::emit_progress;
 use crate::service::{
     ChunkForIndexing, IndexProgressCallback, IndexProgressStage, MultimodalNoteForIndexing,
@@ -21,7 +23,7 @@ pub(crate) fn compute_changed_notes<'a>(
     notes: &'a [MultimodalNoteForIndexing],
     existing_hashes: &HashMap<i64, String>,
     model_name: &str,
-    force_reindex: bool,
+    reindex_mode: ReindexMode,
     progress: Option<&IndexProgressCallback>,
 ) -> (Vec<NoteToEmbed<'a>>, usize) {
     let mut to_embed = Vec::new();
@@ -33,7 +35,7 @@ pub(crate) fn compute_changed_notes<'a>(
             model_name,
             chunks.iter().map(|chunk| chunk.hash_component.as_str()),
         );
-        if !force_reindex {
+        if reindex_mode != ReindexMode::Force {
             if let Some(existing) = existing_hashes.get(&note.note.note_id) {
                 if *existing == new_hash {
                     skipped += 1;

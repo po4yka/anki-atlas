@@ -1,6 +1,6 @@
 #![no_main]
 
-use anki_reader::normalizer::{classify_field, normalize_whitespace, strip_html};
+use anki_reader::normalizer::{classify_field, normalize_whitespace, strip_html, CodeHandling};
 use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
@@ -11,7 +11,7 @@ struct NormalizerSeed<'a> {
 
 #[derive(Debug)]
 struct NormalizerInput {
-    preserve_code: bool,
+    preserve_code: CodeHandling,
     field_name: String,
     text: String,
 }
@@ -23,7 +23,11 @@ impl NormalizerInput {
         let header = lines.next().unwrap_or_default();
         let text = lines.collect::<Vec<_>>().join("\n");
 
-        let preserve_code = header.contains("pc=1");
+        let preserve_code = if header.contains("pc=1") {
+            CodeHandling::Preserve
+        } else {
+            CodeHandling::Strip
+        };
         let field_name = header
             .split_whitespace()
             .find_map(|part| part.strip_prefix("field="))
@@ -90,7 +94,7 @@ fuzz_target!(|data: &[u8]| {
     let class = classify_field(&input.field_name);
     assert!(matches!(class, "front" | "back" | "extra" | "other"));
 
-    if !input.preserve_code && is_simple_tag_only_input(&input.text) {
+    if input.preserve_code == CodeHandling::Strip && is_simple_tag_only_input(&input.text) {
         assert!(!contains_html_like_tag(&normalized));
     }
 });

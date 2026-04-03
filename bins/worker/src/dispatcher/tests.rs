@@ -9,10 +9,10 @@ fn make_envelope(job_type: JobType) -> JobEnvelope {
             source: "/tmp/collection.anki2".to_string(),
             run_migrations: true,
             index: true,
-            force_reindex: false,
+            reindex_mode: common::ReindexMode::Incremental,
         }),
         JobType::Index => JobPayload::Index(IndexJobPayload {
-            force_reindex: false,
+            reindex_mode: common::ReindexMode::Incremental,
         }),
     };
 

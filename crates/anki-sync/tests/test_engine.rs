@@ -92,7 +92,7 @@ fn sync_transitions_scanning_applying_completed() {
     let progress_clone = progress.clone();
     let mut engine = SyncEngine::new(db, Some(progress));
 
-    let result = engine.sync(false).unwrap();
+    let result = engine.sync(common::ExecutionMode::Execute).unwrap();
 
     // After successful sync, phase should be Completed
     let snap = progress_clone.snapshot();
@@ -111,7 +111,7 @@ fn sync_dry_run_skips_applying() {
     let progress_clone = progress.clone();
     let mut engine = SyncEngine::new(db, Some(progress));
 
-    let result = engine.sync(true).unwrap();
+    let result = engine.sync(common::ExecutionMode::DryRun).unwrap();
 
     // Should complete successfully
     let snap = progress_clone.snapshot();
@@ -147,7 +147,7 @@ fn sync_empty_state_db_succeeds() {
     let progress_clone = progress.clone();
     let mut engine = SyncEngine::new(db, Some(progress));
 
-    let result = engine.sync(false).unwrap();
+    let result = engine.sync(common::ExecutionMode::Execute).unwrap();
 
     let snap = progress_clone.snapshot();
     assert_eq!(snap.phase, SyncPhase::Completed);
@@ -162,7 +162,7 @@ fn sync_result_has_non_negative_duration() {
     let (db, _dir) = make_state_db();
     let mut engine = SyncEngine::new(db, None);
 
-    let result = engine.sync(false).unwrap();
+    let result = engine.sync(common::ExecutionMode::Execute).unwrap();
     assert!(result.duration_ms >= 0);
 }
 
@@ -171,7 +171,7 @@ fn sync_result_errors_zero_on_success() {
     let (db, _dir) = make_state_db();
     let mut engine = SyncEngine::new(db, None);
 
-    let result = engine.sync(false).unwrap();
+    let result = engine.sync(common::ExecutionMode::Execute).unwrap();
     assert_eq!(result.errors, 0);
 }
 
@@ -181,7 +181,7 @@ fn sync_result_cards_skipped_zero_for_base_engine() {
     seed_states(&db, 2);
     let mut engine = SyncEngine::new(db, None);
 
-    let result = engine.sync(false).unwrap();
+    let result = engine.sync(common::ExecutionMode::Execute).unwrap();
     assert_eq!(result.cards_skipped, 0);
 }
 
@@ -194,8 +194,8 @@ fn sync_can_be_called_twice() {
 
     let mut engine = SyncEngine::new(db, None);
 
-    let r1 = engine.sync(false).unwrap();
-    let r2 = engine.sync(false).unwrap();
+    let r1 = engine.sync(common::ExecutionMode::Execute).unwrap();
+    let r2 = engine.sync(common::ExecutionMode::Execute).unwrap();
 
     // Both should succeed
     assert!(r1.duration_ms >= 0);

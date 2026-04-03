@@ -82,12 +82,12 @@ pub struct SyncRequest {
     pub source: PathBuf,
     pub run_migrations: bool,
     pub run_index: bool,
-    pub force_reindex: bool,
+    pub reindex_mode: common::ReindexMode,
 }
 
 #[derive(Debug, Clone)]
 pub struct IndexRequest {
-    pub force_reindex: bool,
+    pub reindex_mode: common::ReindexMode,
 }
 
 #[derive(Debug, Clone)]
@@ -98,14 +98,14 @@ pub struct GenerateRequest {
 #[derive(Debug, Clone)]
 pub struct ValidateRequest {
     pub file: PathBuf,
-    pub include_quality: bool,
+    pub include_quality: surface_runtime::QualityCheck,
 }
 
 #[derive(Debug, Clone)]
 pub struct ObsidianScanRequest {
     pub vault: PathBuf,
     pub source_dirs: Vec<String>,
-    pub dry_run: bool,
+    pub execution_mode: common::ExecutionMode,
 }
 
 #[derive(Debug, Clone)]
@@ -252,7 +252,7 @@ pub async fn sync(
             request.source,
             request.run_migrations,
             request.run_index,
-            request.force_reindex,
+            request.reindex_mode,
             progress,
         )
         .await
@@ -266,7 +266,7 @@ pub async fn index(
 ) -> anyhow::Result<IndexExecutionSummary> {
     handles
         .index
-        .index_all_notes_with_progress(request.force_reindex, progress)
+        .index_all_notes_with_progress(request.reindex_mode, progress)
         .await
         .map_err(Into::into)
 }
@@ -296,7 +296,7 @@ pub fn obsidian_scan(
         .scan_with_progress(
             &request.vault,
             &request.source_dirs,
-            request.dry_run,
+            request.execution_mode,
             progress,
         )
         .map_err(Into::into)
