@@ -117,6 +117,29 @@ impl From<DeckId> for i64 {
     }
 }
 
+/// Topic identifier (from database SERIAL primary key).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TopicId(pub i64);
+
+impl fmt::Display for TopicId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<i64> for TopicId {
+    fn from(id: i64) -> Self {
+        Self(id)
+    }
+}
+
+impl From<TopicId> for i64 {
+    fn from(id: TopicId) -> Self {
+        id.0
+    }
+}
+
 /// Anki deck name (may contain `::` hierarchy separators).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]

@@ -1,4 +1,4 @@
-use common::types::NoteId;
+use common::types::{NoteId, TopicId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -17,7 +17,7 @@ pub struct LabelingStats {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct TopicCoverage {
-    pub topic_id: i64,
+    pub topic_id: TopicId,
     pub path: String,
     pub label: String,
     pub note_count: i64,
@@ -40,7 +40,7 @@ pub enum GapKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct TopicGap {
-    pub topic_id: i64,
+    pub topic_id: TopicId,
     pub path: String,
     pub label: String,
     pub description: Option<String>,
@@ -97,7 +97,7 @@ pub struct DuplicateStats {
 mod tests {
     use super::{
         DuplicateCluster, DuplicateDetail, DuplicateStats, GapKind, LabelingStats, NoteId,
-        TaxonomyLoadSummary, TopicCoverage, TopicGap, WeakNote,
+        TaxonomyLoadSummary, TopicCoverage, TopicGap, TopicId, WeakNote,
     };
 
     #[test]
@@ -123,7 +123,7 @@ mod tests {
                 topics_matched: 4,
             },
             TopicCoverage {
-                topic_id: 1,
+                topic_id: TopicId(1),
                 path: "rust/ownership".to_string(),
                 label: "Ownership".to_string(),
                 note_count: 3,
@@ -136,7 +136,7 @@ mod tests {
                 avg_lapses: 0.4,
             },
             TopicGap {
-                topic_id: 2,
+                topic_id: TopicId(2),
                 path: "rust/borrowing".to_string(),
                 label: "Borrowing".to_string(),
                 description: Some("desc".to_string()),

@@ -1,3 +1,4 @@
+use common::TopicId;
 use serde::{Deserialize, Serialize};
 
 use crate::AnalyticsError;
@@ -5,7 +6,7 @@ use crate::AnalyticsError;
 /// Coverage metrics for a topic.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct TopicCoverage {
-    pub topic_id: i64,
+    pub topic_id: TopicId,
     pub path: String,
     pub label: String,
     pub note_count: i64,
@@ -21,7 +22,7 @@ pub struct TopicCoverage {
 /// A gap in topic coverage.
 #[derive(Debug, Clone, Serialize)]
 pub struct TopicGap {
-    pub topic_id: i64,
+    pub topic_id: TopicId,
     pub path: String,
     pub label: String,
     pub description: Option<String>,
@@ -147,7 +148,7 @@ pub async fn get_topic_coverage(
     .await?;
 
     Ok(Some(TopicCoverage {
-        topic_id: i64::from(topic_id),
+        topic_id: TopicId(i64::from(topic_id)),
         path,
         label,
         note_count: stats.0,
@@ -186,7 +187,7 @@ pub async fn get_topic_gaps(
         .into_iter()
         .map(
             |(topic_id, path, label, description, note_count)| TopicGap {
-                topic_id: i64::from(topic_id),
+                topic_id: TopicId(i64::from(topic_id)),
                 path,
                 label,
                 description,

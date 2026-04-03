@@ -143,7 +143,7 @@ pub struct TopicCoverageQuery {
 
 #[derive(Debug, Serialize)]
 pub struct TopicCoverageResponse {
-    pub topic_id: i64,
+    pub topic_id: common::TopicId,
     pub path: String,
     pub label: String,
     pub note_count: i64,
@@ -192,7 +192,7 @@ impl TopicGapsQuery {
 
 #[derive(Debug, Serialize)]
 pub struct TopicGapItem {
-    pub topic_id: i64,
+    pub topic_id: common::TopicId,
     pub path: String,
     pub label: String,
     pub description: Option<String>,

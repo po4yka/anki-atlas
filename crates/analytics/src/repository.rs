@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use async_trait::async_trait;
+use common::TopicId;
 use sqlx::PgPool;
 
 use crate::AnalyticsError;
@@ -51,7 +52,7 @@ pub trait AnalyticsRepository: Send + Sync {
     async fn upsert_note_topic_assignment(
         &self,
         note_id: i64,
-        topic_id: i64,
+        topic_id: TopicId,
         confidence: f32,
         method: &str,
     ) -> Result<(), AnalyticsError>;
@@ -134,7 +135,7 @@ impl AnalyticsRepository for SqlxAnalyticsRepository {
     async fn upsert_note_topic_assignment(
         &self,
         note_id: i64,
-        topic_id: i64,
+        topic_id: TopicId,
         confidence: f32,
         method: &str,
     ) -> Result<(), AnalyticsError> {
@@ -145,7 +146,7 @@ impl AnalyticsRepository for SqlxAnalyticsRepository {
              SET confidence = $3, method = $4",
         )
         .bind(note_id)
-        .bind(topic_id as i32)
+        .bind(topic_id.0 as i32)
         .bind(confidence)
         .bind(method)
         .execute(&self.pool)

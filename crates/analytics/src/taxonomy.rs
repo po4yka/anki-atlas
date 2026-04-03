@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use common::TopicId;
 use serde::{Deserialize, Serialize};
 
 use crate::AnalyticsError;
@@ -14,7 +15,7 @@ pub struct Topic {
     /// Optional description.
     pub description: Option<String>,
     /// Database ID (populated after DB insert).
-    pub topic_id: Option<i64>,
+    pub topic_id: Option<TopicId>,
     /// Child topics (populated during tree construction).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<Topic>,
@@ -77,12 +78,12 @@ impl Taxonomy {
     }
 
     /// Populate in-memory topics with database IDs returned from a sync.
-    pub fn apply_topic_ids(&mut self, id_map: &HashMap<String, i64>) {
+    pub fn apply_topic_ids(&mut self, id_map: &HashMap<String, TopicId>) {
         for (path, topic) in &mut self.topics {
             topic.topic_id = id_map.get(path).copied();
         }
 
-        fn hydrate_tree(topics: &mut [Topic], id_map: &HashMap<String, i64>) {
+        fn hydrate_tree(topics: &mut [Topic], id_map: &HashMap<String, TopicId>) {
             for topic in topics {
                 topic.topic_id = id_map.get(&topic.path).copied();
                 hydrate_tree(&mut topic.children, id_map);
@@ -203,7 +204,7 @@ pub async fn load_taxonomy(
 pub async fn sync_taxonomy_to_db(
     pool: &sqlx::PgPool,
     taxonomy: &Taxonomy,
-) -> Result<HashMap<String, i64>, AnalyticsError> {
+) -> Result<HashMap<String, TopicId>, AnalyticsError> {
     let mut id_map = HashMap::new();
 
     for (path, topic) in &taxonomy.topics {
@@ -218,7 +219,7 @@ pub async fn sync_taxonomy_to_db(
         .fetch_one(pool)
         .await?;
 
-        id_map.insert(path.clone(), i64::from(row.0));
+        id_map.insert(path.clone(), TopicId(i64::from(row.0)));
     }
 
     Ok(id_map)
@@ -244,7 +245,7 @@ pub async fn load_taxonomy_from_db(pool: &sqlx::PgPool) -> Result<Taxonomy, Anal
                 path: path.clone(),
                 label: label.clone(),
                 description: description.clone(),
-                topic_id: Some(i64::from(*topic_id)),
+                topic_id: Some(TopicId(i64::from(*topic_id))),
                 children: vec![],
             },
         );
@@ -308,7 +309,7 @@ pub async fn get_topic_by_path(
         path,
         label,
         description,
-        topic_id: Some(i64::from(topic_id)),
+        topic_id: Some(TopicId(i64::from(topic_id))),
         children: vec![],
     }))
 }
@@ -466,23 +467,26 @@ mod tests {
     fn taxonomy_apply_topic_ids_updates_lookup_and_tree() {
         let mut taxonomy = make_taxonomy();
         let id_map = HashMap::from([
-            ("a".to_string(), 1),
-            ("a/b".to_string(), 2),
-            ("a/b/c".to_string(), 3),
-            ("x".to_string(), 4),
+            ("a".to_string(), TopicId(1)),
+            ("a/b".to_string(), TopicId(2)),
+            ("a/b/c".to_string(), TopicId(3)),
+            ("x".to_string(), TopicId(4)),
         ]);
 
         taxonomy.apply_topic_ids(&id_map);
 
-        assert_eq!(taxonomy.topics["a"].topic_id, Some(1));
-        assert_eq!(taxonomy.topics["a/b"].topic_id, Some(2));
-        assert_eq!(taxonomy.topics["a/b/c"].topic_id, Some(3));
+        assert_eq!(taxonomy.topics["a"].topic_id, Some(TopicId(1)));
+        assert_eq!(taxonomy.topics["a/b"].topic_id, Some(TopicId(2)));
+        assert_eq!(taxonomy.topics["a/b/c"].topic_id, Some(TopicId(3)));
         assert_eq!(taxonomy.topics["ab"].topic_id, None);
 
-        assert_eq!(taxonomy.roots[0].topic_id, Some(1));
-        assert_eq!(taxonomy.roots[0].children[0].topic_id, Some(2));
-        assert_eq!(taxonomy.roots[0].children[0].children[0].topic_id, Some(3));
-        assert_eq!(taxonomy.roots[1].topic_id, Some(4));
+        assert_eq!(taxonomy.roots[0].topic_id, Some(TopicId(1)));
+        assert_eq!(taxonomy.roots[0].children[0].topic_id, Some(TopicId(2)));
+        assert_eq!(
+            taxonomy.roots[0].children[0].children[0].topic_id,
+            Some(TopicId(3))
+        );
+        assert_eq!(taxonomy.roots[1].topic_id, Some(TopicId(4)));
         assert_eq!(taxonomy.roots[2].topic_id, None);
     }
 

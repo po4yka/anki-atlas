@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use common::TopicId;
 use serde::Serialize;
 
 use crate::AnalyticsError;
@@ -25,7 +26,7 @@ impl LabelingMethod {
 #[derive(Debug, Clone, Serialize)]
 pub struct TopicAssignment {
     pub note_id: i64,
-    pub topic_id: i64,
+    pub topic_id: TopicId,
     pub topic_path: String,
     pub confidence: f64,
     pub method: LabelingMethod,
@@ -60,7 +61,7 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 pub(crate) fn rank_topics_for_note(
     note_id: i64,
     note_embedding: &[f32],
-    topic_embeddings: &HashMap<String, (i64, Vec<f32>)>,
+    topic_embeddings: &HashMap<String, (TopicId, Vec<f32>)>,
     min_confidence: f32,
     max_topics: usize,
 ) -> Vec<TopicAssignment> {
@@ -131,7 +132,7 @@ impl<E: indexer::embeddings::EmbeddingProvider> TopicLabeler<E> {
     fn build_topic_embedding_index(
         taxonomy: &super::taxonomy::Taxonomy,
         topic_embeddings: &HashMap<String, Vec<f32>>,
-    ) -> HashMap<String, (i64, Vec<f32>)> {
+    ) -> HashMap<String, (TopicId, Vec<f32>)> {
         topic_embeddings
             .iter()
             .filter_map(|(topic_path, embedding)| {
@@ -299,10 +300,10 @@ mod tests {
 
     fn make_topic_embeddings(
         entries: &[(&str, i64, Vec<f32>)],
-    ) -> HashMap<String, (i64, Vec<f32>)> {
+    ) -> HashMap<String, (TopicId, Vec<f32>)> {
         entries
             .iter()
-            .map(|(path, id, emb)| (path.to_string(), (*id, emb.clone())))
+            .map(|(path, id, emb)| (path.to_string(), (TopicId(*id), emb.clone())))
             .collect()
     }
 
@@ -373,6 +374,6 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].method, LabelingMethod::Embedding);
         assert_eq!(result[0].note_id, 42);
-        assert_eq!(result[0].topic_id, 1);
+        assert_eq!(result[0].topic_id, TopicId(1));
     }
 }

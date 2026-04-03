@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
+use common::TopicId;
 use common::config::Settings;
 
 mod error;
@@ -101,7 +102,7 @@ struct TopicSeed {
 
 #[derive(Debug, Clone)]
 struct TopicHandle {
-    topic_id: i32,
+    topic_id: TopicId,
     path: String,
 }
 
@@ -303,7 +304,7 @@ async fn seed_postgres_internal(
         .await?;
 
         topic_handles.push(TopicHandle {
-            topic_id: row.0,
+            topic_id: TopicId(i64::from(row.0)),
             path: topic.path.clone(),
         });
     }
@@ -432,7 +433,7 @@ async fn seed_postgres_internal(
             "INSERT INTO note_topics (note_id, topic_id, confidence, method) VALUES ($1, $2, $3, $4)",
         )
         .bind(note_id)
-        .bind(leaf.topic_id)
+        .bind(leaf.topic_id.0 as i32)
         .bind(confidence)
         .bind("perf_seed")
         .execute(&mut *txn)
@@ -443,7 +444,7 @@ async fn seed_postgres_internal(
                 "INSERT INTO note_topics (note_id, topic_id, confidence, method) VALUES ($1, $2, $3, $4)",
             )
             .bind(note_id)
-            .bind(root.topic_id)
+            .bind(root.topic_id.0 as i32)
             .bind((confidence - 0.08_f32).max(0.5_f32))
             .bind("perf_seed")
             .execute(&mut *txn)
@@ -464,7 +465,7 @@ async fn seed_postgres_internal(
 
     if let Some(sparse_root) = roots.get(sparse_root_index) {
         for leaf in leaves.iter().rev().take(3) {
-            let synthetic_note_id = 100_000_i64 + i64::from(leaf.topic_id);
+            let synthetic_note_id = 100_000_i64 + leaf.topic_id.0;
             sqlx::query(
                 "INSERT INTO notes \
                  (note_id, model_id, tags, fields_json, raw_fields, normalized_text, mtime, usn) \
@@ -481,7 +482,7 @@ async fn seed_postgres_internal(
                 "INSERT INTO note_topics (note_id, topic_id, confidence, method) VALUES ($1, $2, 0.55, $3)",
             )
             .bind(synthetic_note_id)
-            .bind(sparse_root.topic_id)
+            .bind(sparse_root.topic_id.0 as i32)
             .bind("perf_seed")
             .execute(&mut *txn)
             .await?;
