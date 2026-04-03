@@ -188,31 +188,8 @@ impl Scanner for FsrsScanner<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use card::registry::{CardEntry, CardRegistry};
     use chrono::Utc;
     use common::DeckId;
-
-    fn make_registry_with_card(slug: &str, anki_note_id: Option<i64>) -> CardRegistry {
-        let registry = CardRegistry::open(":memory:").unwrap();
-        let now = Utc::now();
-        let entry = CardEntry {
-            slug: slug.into(),
-            note_id: "note-1".into(),
-            source_path: "notes/test.md".into(),
-            front: "What is X?".into(),
-            back: "X is Y.".into(),
-            content_hash: "abc".into(),
-            metadata_hash: "def".into(),
-            language: "en".into(),
-            tags: vec!["topic::rust".into()],
-            anki_note_id,
-            created_at: Some(now),
-            updated_at: Some(now),
-            synced_at: None,
-        };
-        registry.add_card(&entry).unwrap();
-        registry
-    }
 
     fn make_card(card_id: i64, note_id: i64, ease: i32, lapses: i32, reps: i32) -> AnkiCard {
         AnkiCard {
@@ -281,7 +258,7 @@ mod tests {
     fn detection_rule_thresholds() {
         // Rule 1: ease < 1800 AND lapses >= 5 → Rework
         let card = make_card(1, 1, 1700, 5, 8);
-        let stats = make_stats(1, 8, 0.3);
+        let _stats = make_stats(1, 8, 0.3);
         // ease=1700 < 1800, lapses=5 >= 5 → triggers rule 1
         assert!(card.ease < 1800 && card.lapses >= 5);
 
