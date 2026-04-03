@@ -9,5 +9,5 @@ pub mod service;
 
 pub use error::SearchError;
 pub use fts::SearchFilters;
-pub use reranker::Reranker;
+pub use reranker::{Reranker, ScoredNote};
 pub use service::{SearchParams, SearchService};

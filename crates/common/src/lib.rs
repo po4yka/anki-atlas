@@ -26,4 +26,4 @@ pub use config::{
     Quantization, RerankSettings, Settings,
 };
 pub use error::{AnkiAtlasError, Result};
-pub use types::{CardId, DeckName, Language, NoteId, SlugStr};
+pub use types::{CardId, DeckId, DeckName, Language, ModelId, NoteId, SlugStr};

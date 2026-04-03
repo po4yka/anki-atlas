@@ -1,4 +1,5 @@
 use anki_reader::reader::{AnkiReader, read_anki_collection};
+use common::{CardId, DeckId, NoteId};
 use rusqlite::Connection;
 use tempfile::NamedTempFile;
 
@@ -250,7 +251,7 @@ fn reader_reads_notes_with_field_splitting() {
     let notes = reader.read_notes(&models).unwrap();
     assert_eq!(notes.len(), 2);
 
-    let note = notes.iter().find(|n| n.note_id == 100).unwrap();
+    let note = notes.iter().find(|n| n.note_id == NoteId(100)).unwrap();
     // Fields split on \x1f
     assert_eq!(note.fields, vec!["Hello", "World"]);
     // Named field mapping
@@ -269,7 +270,7 @@ fn reader_reads_notes_empty_tags() {
 
     let models = reader.read_models().unwrap();
     let notes = reader.read_notes(&models).unwrap();
-    let note = notes.iter().find(|n| n.note_id == 101).unwrap();
+    let note = notes.iter().find(|n| n.note_id == NoteId(101)).unwrap();
     assert!(note.tags.is_empty());
 }
 
@@ -282,9 +283,9 @@ fn reader_reads_cards() {
     let cards = reader.read_cards().unwrap();
     assert_eq!(cards.len(), 2);
 
-    let card = cards.iter().find(|c| c.card_id == 500).unwrap();
-    assert_eq!(card.note_id, 100);
-    assert_eq!(card.deck_id, 1);
+    let card = cards.iter().find(|c| c.card_id == CardId(500)).unwrap();
+    assert_eq!(card.note_id, NoteId(100));
+    assert_eq!(card.deck_id, DeckId(1));
     assert_eq!(card.ease, 2500);
     assert_eq!(card.ivl, 30);
     assert_eq!(card.queue, 2);
@@ -301,7 +302,7 @@ fn reader_reads_revlog() {
     assert_eq!(revlog.len(), 3);
 
     let entry = revlog.iter().find(|r| r.id == 1700000000000).unwrap();
-    assert_eq!(entry.card_id, 500);
+    assert_eq!(entry.card_id, CardId(500));
     assert_eq!(entry.button_chosen, 3);
     assert_eq!(entry.time_ms, 8000);
     assert_eq!(entry.review_type, 1);
@@ -317,7 +318,7 @@ fn reader_computes_card_stats() {
     assert_eq!(stats.len(), 1); // Only card 500 has revlog entries
 
     let stat = &stats[0];
-    assert_eq!(stat.card_id, 500);
+    assert_eq!(stat.card_id, CardId(500));
     assert_eq!(stat.reviews, 3);
     // fail_rate: 1 fail out of 3 reviews
     assert!((stat.fail_rate.unwrap() - 1.0 / 3.0).abs() < 0.01);
@@ -362,7 +363,7 @@ fn reader_reads_modern_notes() {
     let models = reader.read_models().unwrap();
     let notes = reader.read_notes(&models).unwrap();
     assert_eq!(notes.len(), 1);
-    assert_eq!(notes[0].note_id, 200);
+    assert_eq!(notes[0].note_id, NoteId(200));
     assert!(notes[0].tags.contains(&"physics".to_string()));
     // Field split on \x1f
     assert_eq!(notes[0].fields.len(), 2);

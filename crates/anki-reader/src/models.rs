@@ -1,10 +1,11 @@
 use chrono::{DateTime, Utc};
+use common::{CardId, DeckId, ModelId, NoteId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnkiDeck {
-    pub deck_id: i64,
+    pub deck_id: DeckId,
     pub name: String,
     pub parent_name: Option<String>,
     pub config: serde_json::Value,
@@ -12,7 +13,7 @@ pub struct AnkiDeck {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnkiModel {
-    pub model_id: i64,
+    pub model_id: ModelId,
     pub name: String,
     pub fields: Vec<serde_json::Value>,
     pub templates: Vec<serde_json::Value>,
@@ -21,8 +22,8 @@ pub struct AnkiModel {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnkiNote {
-    pub note_id: i64,
-    pub model_id: i64,
+    pub note_id: NoteId,
+    pub model_id: ModelId,
     pub tags: Vec<String>,
     pub fields: Vec<String>,
     pub fields_json: HashMap<String, String>,
@@ -34,9 +35,9 @@ pub struct AnkiNote {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnkiCard {
-    pub card_id: i64,
-    pub note_id: i64,
-    pub deck_id: i64,
+    pub card_id: CardId,
+    pub note_id: NoteId,
+    pub deck_id: DeckId,
     pub ord: i32,
     pub due: Option<i32>,
     pub ivl: i32,
@@ -52,7 +53,7 @@ pub struct AnkiCard {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnkiRevlogEntry {
     pub id: i64,
-    pub card_id: i64,
+    pub card_id: CardId,
     pub usn: i32,
     pub button_chosen: i32,
     pub interval: i64,
@@ -64,7 +65,7 @@ pub struct AnkiRevlogEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CardStats {
-    pub card_id: i64,
+    pub card_id: CardId,
     pub reviews: i32,
     pub avg_ease: Option<f64>,
     pub fail_rate: Option<f64>,

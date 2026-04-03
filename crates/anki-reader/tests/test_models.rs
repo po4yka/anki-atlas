@@ -2,6 +2,7 @@ use anki_reader::models::{
     AnkiCard, AnkiCollection, AnkiDeck, AnkiModel, AnkiNote, AnkiRevlogEntry, CardStats,
 };
 use chrono::Utc;
+use common::{CardId, DeckId, ModelId, NoteId};
 use std::collections::HashMap;
 
 // --- AnkiDeck ---
@@ -9,12 +10,12 @@ use std::collections::HashMap;
 #[test]
 fn deck_create_with_all_fields() {
     let deck = AnkiDeck {
-        deck_id: 1234,
+        deck_id: DeckId(1234),
         name: "Japanese::Vocab".into(),
         parent_name: Some("Japanese".into()),
         config: serde_json::json!({"newToday": [0, 0]}),
     };
-    assert_eq!(deck.deck_id, 1234);
+    assert_eq!(deck.deck_id, DeckId(1234));
     assert_eq!(deck.name, "Japanese::Vocab");
     assert_eq!(deck.parent_name.as_deref(), Some("Japanese"));
 }
@@ -22,7 +23,7 @@ fn deck_create_with_all_fields() {
 #[test]
 fn deck_without_parent() {
     let deck = AnkiDeck {
-        deck_id: 1,
+        deck_id: DeckId(1),
         name: "Default".into(),
         parent_name: None,
         config: serde_json::Value::Null,
@@ -33,21 +34,21 @@ fn deck_without_parent() {
 #[test]
 fn deck_serialization_roundtrip() {
     let deck = AnkiDeck {
-        deck_id: 42,
+        deck_id: DeckId(42),
         name: "Test".into(),
         parent_name: None,
         config: serde_json::json!({}),
     };
     let json = serde_json::to_string(&deck).expect("serialize");
     let restored: AnkiDeck = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(restored.deck_id, 42);
+    assert_eq!(restored.deck_id, DeckId(42));
     assert_eq!(restored.name, "Test");
 }
 
 #[test]
 fn deck_clone() {
     let deck = AnkiDeck {
-        deck_id: 1,
+        deck_id: DeckId(1),
         name: "A".into(),
         parent_name: None,
         config: serde_json::Value::Null,
@@ -62,7 +63,7 @@ fn deck_clone() {
 #[test]
 fn model_create_with_fields_and_templates() {
     let model = AnkiModel {
-        model_id: 99,
+        model_id: ModelId(99),
         name: "Basic".into(),
         fields: vec![
             serde_json::json!({"name": "Front", "ord": 0}),
@@ -71,7 +72,7 @@ fn model_create_with_fields_and_templates() {
         templates: vec![serde_json::json!({"name": "Card 1"})],
         config: serde_json::json!({}),
     };
-    assert_eq!(model.model_id, 99);
+    assert_eq!(model.model_id, ModelId(99));
     assert_eq!(model.name, "Basic");
     assert_eq!(model.fields.len(), 2);
     assert_eq!(model.templates.len(), 1);
@@ -80,7 +81,7 @@ fn model_create_with_fields_and_templates() {
 #[test]
 fn model_serialization_roundtrip() {
     let model = AnkiModel {
-        model_id: 1,
+        model_id: ModelId(1),
         name: "Cloze".into(),
         fields: vec![],
         templates: vec![],
@@ -100,8 +101,8 @@ fn note_create_with_fields_and_tags() {
     fields_json.insert("Back".into(), "World".into());
 
     let note = AnkiNote {
-        note_id: 100,
-        model_id: 1,
+        note_id: NoteId(100),
+        model_id: ModelId(1),
         tags: vec!["vocab".into(), "japanese".into()],
         fields: vec!["Hello".into(), "World".into()],
         fields_json,
@@ -110,7 +111,7 @@ fn note_create_with_fields_and_tags() {
         mtime: 1700000000,
         usn: -1,
     };
-    assert_eq!(note.note_id, 100);
+    assert_eq!(note.note_id, NoteId(100));
     assert_eq!(note.fields.len(), 2);
     assert_eq!(note.fields_json["Front"], "Hello");
     assert_eq!(note.tags, vec!["vocab", "japanese"]);
@@ -120,8 +121,8 @@ fn note_create_with_fields_and_tags() {
 #[test]
 fn note_empty_tags_and_fields() {
     let note = AnkiNote {
-        note_id: 1,
-        model_id: 1,
+        note_id: NoteId(1),
+        model_id: ModelId(1),
         tags: vec![],
         fields: vec![],
         fields_json: HashMap::new(),
@@ -138,8 +139,8 @@ fn note_empty_tags_and_fields() {
 #[test]
 fn note_serialization_roundtrip() {
     let note = AnkiNote {
-        note_id: 42,
-        model_id: 1,
+        note_id: NoteId(42),
+        model_id: ModelId(1),
         tags: vec!["tag1".into()],
         fields: vec!["f1".into()],
         fields_json: HashMap::new(),
@@ -150,7 +151,7 @@ fn note_serialization_roundtrip() {
     };
     let json = serde_json::to_string(&note).expect("serialize");
     let restored: AnkiNote = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(restored.note_id, 42);
+    assert_eq!(restored.note_id, NoteId(42));
     assert_eq!(restored.normalized_text, "some text");
 }
 
@@ -159,9 +160,9 @@ fn note_serialization_roundtrip() {
 #[test]
 fn card_create_with_scheduling_data() {
     let card = AnkiCard {
-        card_id: 500,
-        note_id: 100,
-        deck_id: 1,
+        card_id: CardId(500),
+        note_id: NoteId(100),
+        deck_id: DeckId(1),
         ord: 0,
         due: Some(1000),
         ivl: 30,
@@ -173,7 +174,7 @@ fn card_create_with_scheduling_data() {
         mtime: 1700000000,
         usn: -1,
     };
-    assert_eq!(card.card_id, 500);
+    assert_eq!(card.card_id, CardId(500));
     assert_eq!(card.ease, 2500);
     assert_eq!(card.queue, 2);
     assert_eq!(card.card_type, 2);
@@ -183,9 +184,9 @@ fn card_create_with_scheduling_data() {
 #[test]
 fn card_new_card_defaults() {
     let card = AnkiCard {
-        card_id: 1,
-        note_id: 1,
-        deck_id: 1,
+        card_id: CardId(1),
+        note_id: NoteId(1),
+        deck_id: DeckId(1),
         ord: 0,
         due: None,
         ivl: 0,
@@ -205,9 +206,9 @@ fn card_new_card_defaults() {
 #[test]
 fn card_suspended() {
     let card = AnkiCard {
-        card_id: 1,
-        note_id: 1,
-        deck_id: 1,
+        card_id: CardId(1),
+        note_id: NoteId(1),
+        deck_id: DeckId(1),
         ord: 0,
         due: None,
         ivl: 10,
@@ -225,9 +226,9 @@ fn card_suspended() {
 #[test]
 fn card_serialization_roundtrip() {
     let card = AnkiCard {
-        card_id: 1,
-        note_id: 1,
-        deck_id: 1,
+        card_id: CardId(1),
+        note_id: NoteId(1),
+        deck_id: DeckId(1),
         ord: 0,
         due: Some(5),
         ivl: 10,
@@ -241,7 +242,7 @@ fn card_serialization_roundtrip() {
     };
     let json = serde_json::to_string(&card).expect("serialize");
     let restored: AnkiCard = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(restored.card_id, 1);
+    assert_eq!(restored.card_id, CardId(1));
     assert_eq!(restored.ease, 2500);
 }
 
@@ -251,7 +252,7 @@ fn card_serialization_roundtrip() {
 fn revlog_entry_create() {
     let entry = AnkiRevlogEntry {
         id: 1700000000000,
-        card_id: 500,
+        card_id: CardId(500),
         usn: -1,
         button_chosen: 3,
         interval: 30,
@@ -269,7 +270,7 @@ fn revlog_entry_create() {
 fn revlog_fail_button() {
     let entry = AnkiRevlogEntry {
         id: 1,
-        card_id: 1,
+        card_id: CardId(1),
         usn: 0,
         button_chosen: 1, // again/fail
         interval: 0,
@@ -286,7 +287,7 @@ fn revlog_fail_button() {
 fn revlog_serialization_roundtrip() {
     let entry = AnkiRevlogEntry {
         id: 999,
-        card_id: 1,
+        card_id: CardId(1),
         usn: 0,
         button_chosen: 4,
         interval: 60,
@@ -307,7 +308,7 @@ fn revlog_serialization_roundtrip() {
 fn card_stats_with_review_data() {
     let now = Utc::now();
     let stats = CardStats {
-        card_id: 500,
+        card_id: CardId(500),
         reviews: 15,
         avg_ease: Some(2450.0),
         fail_rate: Some(0.13),
@@ -322,7 +323,7 @@ fn card_stats_with_review_data() {
 #[test]
 fn card_stats_no_reviews() {
     let stats = CardStats {
-        card_id: 1,
+        card_id: CardId(1),
         reviews: 0,
         avg_ease: None,
         fail_rate: None,
@@ -338,7 +339,7 @@ fn card_stats_no_reviews() {
 #[test]
 fn card_stats_serialization_roundtrip() {
     let stats = CardStats {
-        card_id: 1,
+        card_id: CardId(1),
         reviews: 5,
         avg_ease: Some(2500.0),
         fail_rate: Some(0.2),
@@ -370,7 +371,7 @@ fn collection_with_data() {
     let now = Utc::now();
     let collection = AnkiCollection {
         decks: vec![AnkiDeck {
-            deck_id: 1,
+            deck_id: DeckId(1),
             name: "Default".into(),
             parent_name: None,
             config: serde_json::Value::Null,
@@ -426,7 +427,7 @@ fn all_types_are_send_and_sync() {
 #[test]
 fn all_types_implement_debug() {
     let deck = AnkiDeck {
-        deck_id: 1,
+        deck_id: DeckId(1),
         name: "Test".into(),
         parent_name: None,
         config: serde_json::Value::Null,
@@ -434,8 +435,8 @@ fn all_types_implement_debug() {
     let _ = format!("{deck:?}");
 
     let note = AnkiNote {
-        note_id: 1,
-        model_id: 1,
+        note_id: NoteId(1),
+        model_id: ModelId(1),
         tags: vec![],
         fields: vec![],
         fields_json: HashMap::new(),

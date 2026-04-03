@@ -5,6 +5,7 @@ use anki_reader::models::{AnkiCard, CardStats};
 use anki_reader::read_anki_collection;
 use card::registry::CardRegistry;
 use chrono::Utc;
+use common::{CardId, NoteId};
 
 use crate::error::CardloopError;
 use crate::models::{IssueKind, ItemStatus, LoopKind, Tier, WorkItem};
@@ -50,17 +51,17 @@ impl Scanner for FsrsScanner<'_> {
 
         // Load registry cards and build anki_note_id -> CardEntry lookup
         let entries = self.registry.find_cards(None, None, None)?;
-        let mut note_id_to_slug: HashMap<i64, String> = HashMap::new();
+        let mut note_id_to_slug: HashMap<NoteId, String> = HashMap::new();
         let mut slug_to_source: HashMap<String, String> = HashMap::new();
         for entry in &entries {
             if let Some(anki_id) = entry.anki_note_id {
-                note_id_to_slug.insert(anki_id, entry.slug.clone());
+                note_id_to_slug.insert(NoteId(anki_id), entry.slug.clone());
             }
             slug_to_source.insert(entry.slug.clone(), entry.source_path.clone());
         }
 
         // Build card_id -> CardStats lookup
-        let stats_by_card: HashMap<i64, &CardStats> = collection
+        let stats_by_card: HashMap<CardId, &CardStats> = collection
             .card_stats
             .iter()
             .map(|s| (s.card_id, s))
@@ -189,6 +190,7 @@ mod tests {
     use super::*;
     use card::registry::{CardEntry, CardRegistry};
     use chrono::Utc;
+    use common::DeckId;
 
     fn make_registry_with_card(slug: &str, anki_note_id: Option<i64>) -> CardRegistry {
         let registry = CardRegistry::open(":memory:").unwrap();
@@ -214,9 +216,9 @@ mod tests {
 
     fn make_card(card_id: i64, note_id: i64, ease: i32, lapses: i32, reps: i32) -> AnkiCard {
         AnkiCard {
-            card_id,
-            note_id,
-            deck_id: 1,
+            card_id: CardId(card_id),
+            note_id: NoteId(note_id),
+            deck_id: DeckId(1),
             ord: 0,
             mtime: 0,
             usn: 0,
@@ -232,7 +234,7 @@ mod tests {
 
     fn make_stats(card_id: i64, reviews: i32, fail_rate: f64) -> CardStats {
         CardStats {
-            card_id,
+            card_id: CardId(card_id),
             reviews,
             avg_ease: None,
             fail_rate: Some(fail_rate),

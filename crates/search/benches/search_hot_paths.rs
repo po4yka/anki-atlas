@@ -5,7 +5,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use perf_support::{DatasetProfile, SeedManifest, seed_postgres_only};
 use search::error::SearchError;
 use search::fts::SearchFilters;
-use search::reranker::Reranker;
+use search::reranker::{Reranker, ScoredNote};
 use search::service::{SearchMode, SearchParams, SearchService};
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::ContainerAsync;
@@ -97,11 +97,14 @@ impl Reranker for BenchReranker {
         &self,
         _query: &str,
         documents: &[(i64, String)],
-    ) -> Result<Vec<(i64, f64)>, SearchError> {
+    ) -> Result<Vec<ScoredNote>, SearchError> {
         Ok(documents
             .iter()
             .enumerate()
-            .map(|(index, (note_id, _))| (*note_id, 1.0 - index as f64 * 0.01))
+            .map(|(index, (note_id, _))| ScoredNote {
+                note_id: *note_id,
+                score: 1.0 - index as f64 * 0.01,
+            })
             .collect())
     }
 }

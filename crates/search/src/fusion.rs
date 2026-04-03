@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
+use crate::reranker::ScoredNote;
+
 /// Fused search result with score breakdown from all retrieval stages.
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchResult {
@@ -48,7 +50,7 @@ pub struct FusionStats {
 ///
 /// RRF score = sum( weight / (k + rank) ) across sources.
 pub fn reciprocal_rank_fusion(
-    semantic_results: &[(i64, f64)],
+    semantic_results: &[ScoredNote],
     fts_results: &[(i64, f64, Option<String>)],
     k: usize,
     limit: usize,
@@ -57,7 +59,9 @@ pub fn reciprocal_rank_fusion(
 ) -> (Vec<SearchResult>, FusionStats) {
     let mut entries: HashMap<i64, SearchResult> = HashMap::new();
 
-    for (rank_idx, &(note_id, score)) in semantic_results.iter().enumerate() {
+    for (rank_idx, scored) in semantic_results.iter().enumerate() {
+        let note_id = scored.note_id;
+        let score = scored.score;
         let rank = rank_idx + 1; // 1-indexed
         let rrf_score = semantic_weight / (k as f64 + rank as f64);
         entries.insert(
@@ -148,6 +152,14 @@ pub fn reciprocal_rank_fusion(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Helper to build `ScoredNote` slices from `(i64, f64)` tuples.
+    fn sn(pairs: &[(i64, f64)]) -> Vec<ScoredNote> {
+        pairs
+            .iter()
+            .map(|&(note_id, score)| ScoredNote { note_id, score })
+            .collect()
+    }
 
     // --- SearchResult::sources() tests ---
 
@@ -255,7 +267,7 @@ mod tests {
 
     #[test]
     fn rrf_semantic_only_results() {
-        let semantic = vec![(100, 0.95), (200, 0.85), (300, 0.75)];
+        let semantic = sn(&[(100, 0.95), (200, 0.85), (300, 0.75)]);
         let fts: Vec<(i64, f64, Option<String>)> = vec![];
 
         let (results, stats) = reciprocal_rank_fusion(&semantic, &fts, 60, 50, 1.0, 1.0);
@@ -274,7 +286,7 @@ mod tests {
 
     #[test]
     fn rrf_fts_only_results() {
-        let semantic: Vec<(i64, f64)> = vec![];
+        let semantic: Vec<ScoredNote> = vec![];
         let fts = vec![(100, 0.9, Some("headline A".to_string())), (200, 0.8, None)];
 
         let (results, stats) = reciprocal_rank_fusion(&semantic, &fts, 60, 50, 1.0, 1.0);
@@ -291,7 +303,7 @@ mod tests {
 
     #[test]
     fn rrf_overlapping_results_counts_both() {
-        let semantic = vec![(100, 0.95), (200, 0.85)];
+        let semantic = sn(&[(100, 0.95), (200, 0.85)]);
         let fts = vec![(200, 0.9, Some("hl".to_string())), (300, 0.8, None)];
 
         let (results, stats) = reciprocal_rank_fusion(&semantic, &fts, 60, 50, 1.0, 1.0);
@@ -307,7 +319,7 @@ mod tests {
     fn rrf_score_formula_verified() {
         // With known inputs, verify RRF score = sum(weight / (k + rank))
         let k = 60_usize;
-        let semantic = vec![(100, 0.95)]; // rank 1
+        let semantic = sn(&[(100, 0.95)]); // rank 1
         let fts = vec![(100, 0.9, None)]; // rank 1
 
         let (results, _) = reciprocal_rank_fusion(&semantic, &fts, k, 50, 1.0, 1.0);
@@ -324,7 +336,7 @@ mod tests {
     #[test]
     fn rrf_score_with_weights() {
         let k = 60_usize;
-        let semantic = vec![(100, 0.95)]; // rank 1
+        let semantic = sn(&[(100, 0.95)]); // rank 1
         let fts = vec![(100, 0.9, None)]; // rank 1
 
         let (results, _) = reciprocal_rank_fusion(&semantic, &fts, k, 50, 2.0, 0.5);
@@ -340,7 +352,7 @@ mod tests {
     #[test]
     fn rrf_sorted_descending_by_score() {
         // Note in both sources should rank higher than note in one source
-        let semantic = vec![(100, 0.9), (200, 0.8)];
+        let semantic = sn(&[(100, 0.9), (200, 0.8)]);
         let fts = vec![(200, 0.7, None), (300, 0.6, None)];
 
         let (results, _) = reciprocal_rank_fusion(&semantic, &fts, 60, 50, 1.0, 1.0);
@@ -361,7 +373,12 @@ mod tests {
 
     #[test]
     fn rrf_limit_truncates_results() {
-        let semantic: Vec<(i64, f64)> = (1..=10).map(|i| (i, 1.0 - i as f64 * 0.05)).collect();
+        let semantic: Vec<ScoredNote> = (1..=10)
+            .map(|i| ScoredNote {
+                note_id: i,
+                score: 1.0 - i as f64 * 0.05,
+            })
+            .collect();
         let fts: Vec<(i64, f64, Option<String>)> = vec![];
 
         let (results, stats) = reciprocal_rank_fusion(&semantic, &fts, 60, 3, 1.0, 1.0);
@@ -372,7 +389,7 @@ mod tests {
 
     #[test]
     fn rrf_preserves_headline_from_fts() {
-        let semantic = vec![(100, 0.9)];
+        let semantic = sn(&[(100, 0.9)]);
         let fts = vec![(100, 0.8, Some("matched <b>keyword</b>".to_string()))];
 
         let (results, _) = reciprocal_rank_fusion(&semantic, &fts, 60, 50, 1.0, 1.0);
@@ -385,7 +402,7 @@ mod tests {
 
     #[test]
     fn rrf_ranks_are_one_indexed() {
-        let semantic = vec![(100, 0.9), (200, 0.8)];
+        let semantic = sn(&[(100, 0.9), (200, 0.8)]);
         let fts: Vec<(i64, f64, Option<String>)> = vec![];
 
         let (results, _) = reciprocal_rank_fusion(&semantic, &fts, 60, 50, 1.0, 1.0);
@@ -400,7 +417,7 @@ mod tests {
 
     #[test]
     fn rrf_rerank_fields_initially_none() {
-        let semantic = vec![(100, 0.9)];
+        let semantic = sn(&[(100, 0.9)]);
         let (results, _) = reciprocal_rank_fusion(&semantic, &[], 60, 50, 1.0, 1.0);
 
         assert!(results[0].rerank_score.is_none());

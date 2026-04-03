@@ -23,7 +23,7 @@ pub struct ObsidianScanPreview {
     pub note_count: usize,
     pub generated_cards: usize,
     pub orphaned_notes: Vec<String>,
-    pub broken_links: Vec<(String, String)>,
+    pub broken_links: Vec<obsidian::BrokenLink>,
     pub notes: Vec<ObsidianNotePreview>,
 }
 

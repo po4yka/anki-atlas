@@ -179,7 +179,7 @@ async fn run_sync_collection(
     );
 
     // 3. Build card_id set for filtering card_stats
-    let card_ids: HashSet<i64> = collection.cards.iter().map(|c| c.card_id).collect();
+    let card_ids: HashSet<i64> = collection.cards.iter().map(|c| c.card_id.0).collect();
 
     let mut stats = SyncStats::default();
 
@@ -203,7 +203,7 @@ async fn run_sync_collection(
                    parent_name = EXCLUDED.parent_name,
                    config = EXCLUDED.config",
         )
-        .bind(deck.deck_id)
+        .bind(deck.deck_id.0)
         .bind(&deck.name)
         .bind(&deck.parent_name)
         .bind(&deck.config)
@@ -241,7 +241,7 @@ async fn run_sync_collection(
                    templates = EXCLUDED.templates,
                    config = EXCLUDED.config",
         )
-        .bind(model.model_id)
+        .bind(model.model_id.0)
         .bind(&model.name)
         .bind(&fields_json)
         .bind(&templates_json)
@@ -260,7 +260,7 @@ async fn run_sync_collection(
     }
 
     // 4c. Upsert notes (set deleted_at = NULL)
-    let note_ids: Vec<i64> = collection.notes.iter().map(|n| n.note_id).collect();
+    let note_ids: Vec<i64> = collection.notes.iter().map(|n| n.note_id.0).collect();
     emit_progress(
         progress.as_ref(),
         SyncProgressStage::UpsertingNotes,
@@ -285,8 +285,8 @@ async fn run_sync_collection(
                    usn = EXCLUDED.usn,
                    deleted_at = NULL",
             )
-            .bind(note.note_id)
-            .bind(note.model_id)
+            .bind(note.note_id.0)
+            .bind(note.model_id.0)
             .bind(&tags)
             .bind(&fields_json)
             .bind(&note.raw_fields)
@@ -359,9 +359,9 @@ async fn run_sync_collection(
                    mtime = EXCLUDED.mtime,
                    usn = EXCLUDED.usn",
             )
-            .bind(card.card_id)
-            .bind(card.note_id)
-            .bind(card.deck_id)
+            .bind(card.card_id.0)
+            .bind(card.note_id.0)
+            .bind(card.deck_id.0)
             .bind(card.ord)
             .bind(card.due)
             .bind(card.ivl)
@@ -395,7 +395,7 @@ async fn run_sync_collection(
     );
     let mut card_stats_processed = 0usize;
     for cs in &collection.card_stats {
-        if !card_ids.contains(&cs.card_id) {
+        if !card_ids.contains(&cs.card_id.0) {
             card_stats_processed += 1;
             emit_progress(
                 progress.as_ref(),
@@ -417,7 +417,7 @@ async fn run_sync_collection(
                    last_review_at = EXCLUDED.last_review_at,
                    total_time_ms = EXCLUDED.total_time_ms",
             )
-            .bind(cs.card_id)
+            .bind(cs.card_id.0)
             .bind(cs.reviews)
             .bind(cs.avg_ease)
             .bind(cs.fail_rate)

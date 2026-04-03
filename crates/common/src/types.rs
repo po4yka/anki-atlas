@@ -30,6 +30,24 @@ pub struct SlugStr(pub String);
 #[serde(transparent)]
 pub struct CardId(pub i64);
 
+impl fmt::Display for CardId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<i64> for CardId {
+    fn from(id: i64) -> Self {
+        Self(id)
+    }
+}
+
+impl From<CardId> for i64 {
+    fn from(id: CardId) -> Self {
+        id.0
+    }
+}
+
 /// Anki note identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -49,6 +67,52 @@ impl From<i64> for NoteId {
 
 impl From<NoteId> for i64 {
     fn from(id: NoteId) -> Self {
+        id.0
+    }
+}
+
+/// Anki model (note type) identifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelId(pub i64);
+
+impl fmt::Display for ModelId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<i64> for ModelId {
+    fn from(id: i64) -> Self {
+        Self(id)
+    }
+}
+
+impl From<ModelId> for i64 {
+    fn from(id: ModelId) -> Self {
+        id.0
+    }
+}
+
+/// Anki deck identifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct DeckId(pub i64);
+
+impl fmt::Display for DeckId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<i64> for DeckId {
+    fn from(id: i64) -> Self {
+        Self(id)
+    }
+}
+
+impl From<DeckId> for i64 {
+    fn from(id: DeckId) -> Self {
         id.0
     }
 }

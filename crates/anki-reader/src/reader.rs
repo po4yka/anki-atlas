@@ -1,6 +1,7 @@
 use crate::models::*;
 use chrono::Utc;
 use common::error::{AnkiAtlasError, Result};
+use common::{CardId, DeckId, ModelId, NoteId};
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -121,7 +122,7 @@ impl AnkiReader {
 
         let mut decks = Vec::new();
         for (_key, val) in decks_map {
-            let deck_id = val["id"].as_i64().unwrap_or(0);
+            let deck_id = DeckId(val["id"].as_i64().unwrap_or(0));
             let name = val["name"].as_str().unwrap_or("").to_string();
             let parent_name = if name.contains("::") {
                 name.rsplit_once("::").map(|(parent, _)| parent.to_string())
@@ -154,7 +155,7 @@ impl AnkiReader {
                     None
                 };
                 Ok(AnkiDeck {
-                    deck_id,
+                    deck_id: DeckId(deck_id),
                     name,
                     parent_name,
                     config: serde_json::Value::Null,
@@ -187,7 +188,7 @@ impl AnkiReader {
 
         let mut models = Vec::new();
         for (_key, val) in models_map {
-            let model_id = val["id"].as_i64().unwrap_or(0);
+            let model_id = ModelId(val["id"].as_i64().unwrap_or(0));
             let name = val["name"].as_str().unwrap_or("").to_string();
             let fields = val["flds"].as_array().cloned().unwrap_or_default();
             let templates = val["tmpls"].as_array().cloned().unwrap_or_default();
@@ -276,13 +277,13 @@ impl AnkiReader {
             })
             .map_err(|e| reader_err(format!("failed to read notetypes: {e}")))?
             .map(|r| {
-                let (model_id, name) =
+                let (raw_model_id, name) =
                     r.map_err(|e| reader_err(format!("failed to read notetype row: {e}")))?;
                 Ok(AnkiModel {
-                    model_id,
+                    model_id: ModelId(raw_model_id),
                     name,
-                    fields: model_fields.remove(&model_id).unwrap_or_default(),
-                    templates: model_templates.remove(&model_id).unwrap_or_default(),
+                    fields: model_fields.remove(&raw_model_id).unwrap_or_default(),
+                    templates: model_templates.remove(&raw_model_id).unwrap_or_default(),
                     config: serde_json::Value::Null,
                 })
             })
@@ -303,7 +304,7 @@ impl AnkiReader {
                 .iter()
                 .filter_map(|f| f.get("name").and_then(|n| n.as_str()).map(String::from))
                 .collect();
-            model_field_names.insert(model.model_id, names);
+            model_field_names.insert(model.model_id.0, names);
         }
 
         let mut stmt = conn
@@ -322,14 +323,14 @@ impl AnkiReader {
             })
             .map_err(|e| reader_err(format!("failed to read notes: {e}")))?
             .map(|r| {
-                let (note_id, model_id, tags_str, fields_str, mtime, usn) =
+                let (raw_note_id, raw_model_id, tags_str, fields_str, mtime, usn) =
                     r.map_err(|e| reader_err(format!("failed to read note row: {e}")))?;
 
                 let tags: Vec<String> = tags_str.split_whitespace().map(String::from).collect();
 
                 let fields: Vec<String> = fields_str.split('\x1f').map(String::from).collect();
 
-                let field_names = model_field_names.get(&model_id);
+                let field_names = model_field_names.get(&raw_model_id);
                 let fields_json: HashMap<String, String> = fields
                     .iter()
                     .enumerate()
@@ -343,8 +344,8 @@ impl AnkiReader {
                     .collect();
 
                 Ok(AnkiNote {
-                    note_id,
-                    model_id,
+                    note_id: NoteId(raw_note_id),
+                    model_id: ModelId(raw_model_id),
                     tags,
                     fields,
                     fields_json,
@@ -369,9 +370,9 @@ impl AnkiReader {
         let cards = stmt
             .query_map([], |row| {
                 Ok(AnkiCard {
-                    card_id: row.get(0)?,
-                    note_id: row.get(1)?,
-                    deck_id: row.get(2)?,
+                    card_id: CardId(row.get(0)?),
+                    note_id: NoteId(row.get(1)?),
+                    deck_id: DeckId(row.get(2)?),
                     ord: row.get(3)?,
                     mtime: row.get(4)?,
                     usn: row.get(5)?,
@@ -402,7 +403,7 @@ impl AnkiReader {
             .query_map([], |row| {
                 Ok(AnkiRevlogEntry {
                     id: row.get(0)?,
-                    card_id: row.get(1)?,
+                    card_id: CardId(row.get(1)?),
                     usn: row.get(2)?,
                     button_chosen: row.get(3)?,
                     interval: row.get(4)?,
@@ -452,7 +453,7 @@ impl AnkiReader {
                 });
 
                 Ok(CardStats {
-                    card_id,
+                    card_id: CardId(card_id),
                     reviews,
                     avg_ease,
                     fail_rate,

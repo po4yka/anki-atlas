@@ -8,6 +8,13 @@ use serde::{Deserialize, Serialize};
 use crate::error::ObsidianError;
 use crate::parser::{DEFAULT_IGNORE_DIRS, discover_notes, parse_note};
 
+/// A broken wikilink: the source note path and the unresolved target.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrokenLink {
+    pub source: String,
+    pub target: String,
+}
+
 /// Regex matching wikilinks: `[[target]]` or `[[target|alias]]`.
 static WIKILINK_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").unwrap());
@@ -20,7 +27,7 @@ pub struct VaultStats {
     pub notes_with_frontmatter: usize,
     pub wikilinks_count: usize,
     pub orphaned_notes: Vec<String>,
-    pub broken_links: Vec<(String, String)>,
+    pub broken_links: Vec<BrokenLink>,
 }
 
 /// Cached scan data for a vault.
@@ -140,14 +147,17 @@ impl VaultAnalyzer {
 
         let wikilinks_count: usize = scan.links.values().map(Vec::len).sum();
 
-        let broken_links: Vec<(String, String)> = scan
+        let broken_links: Vec<BrokenLink> = scan
             .links
             .iter()
             .flat_map(|(stem, targets)| {
                 targets
                     .iter()
                     .filter(|t| !scan.paths.contains_key(t.as_str()))
-                    .map(move |t| (stem.clone(), t.clone()))
+                    .map(move |t| BrokenLink {
+                        source: stem.clone(),
+                        target: t.clone(),
+                    })
             })
             .collect();
 
@@ -379,7 +389,10 @@ mod tests {
         let stats = analyzer.analyze().unwrap();
         assert_eq!(
             stats.broken_links,
-            vec![("a".to_string(), "missing".to_string())]
+            vec![BrokenLink {
+                source: "a".to_string(),
+                target: "missing".to_string(),
+            }]
         );
     }
 

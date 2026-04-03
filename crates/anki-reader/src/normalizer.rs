@@ -1,4 +1,5 @@
 use crate::models::{AnkiCard, AnkiDeck, AnkiNote};
+use common::{DeckId, NoteId};
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -191,8 +192,8 @@ pub fn normalize_note(note: &AnkiNote, deck_names: Option<&[String]>) -> String 
 /// Normalize all notes in-place, populating `normalized_text`.
 pub fn normalize_notes(
     notes: &mut [AnkiNote],
-    deck_map: &HashMap<i64, String>,
-    card_deck_map: &HashMap<i64, Vec<i64>>,
+    deck_map: &HashMap<DeckId, String>,
+    card_deck_map: &HashMap<NoteId, Vec<DeckId>>,
 ) {
     for note in notes.iter_mut() {
         let deck_names: Option<Vec<String>> = card_deck_map.get(&note.note_id).map(|deck_ids| {
@@ -206,13 +207,13 @@ pub fn normalize_notes(
 }
 
 /// Build deck_id -> deck_name mapping.
-pub fn build_deck_map(decks: &[AnkiDeck]) -> HashMap<i64, String> {
+pub fn build_deck_map(decks: &[AnkiDeck]) -> HashMap<DeckId, String> {
     decks.iter().map(|d| (d.deck_id, d.name.clone())).collect()
 }
 
 /// Build note_id -> vec of deck_ids mapping from cards.
-pub fn build_card_deck_map(cards: &[AnkiCard]) -> HashMap<i64, Vec<i64>> {
-    let mut map: HashMap<i64, Vec<i64>> = HashMap::new();
+pub fn build_card_deck_map(cards: &[AnkiCard]) -> HashMap<NoteId, Vec<DeckId>> {
+    let mut map: HashMap<NoteId, Vec<DeckId>> = HashMap::new();
     for card in cards {
         let entry = map.entry(card.note_id).or_default();
         if !entry.contains(&card.deck_id) {

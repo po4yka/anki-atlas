@@ -56,7 +56,8 @@ pub(crate) async fn apply_reranking<R: Reranker>(
     match build_rerank_documents(results, rerank_top_n, repository).await {
         Ok(documents) if !documents.is_empty() => match reranker.rerank(query, &documents).await {
             Ok(scores) => {
-                let score_map: HashMap<i64, f64> = scores.into_iter().collect();
+                let score_map: HashMap<i64, f64> =
+                    scores.into_iter().map(|s| (s.note_id, s.score)).collect();
                 for result in results.iter_mut() {
                     if let Some(&score) = score_map.get(&result.note_id) {
                         result.rerank_score = Some(score);

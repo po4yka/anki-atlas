@@ -1,6 +1,13 @@
 use crate::error::{RerankError, SearchError};
 use std::sync::Arc;
 
+/// A note with an associated relevance score.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScoredNote {
+    pub note_id: i64,
+    pub score: f64,
+}
+
 /// Trait for second-stage reranking implementations.
 #[async_trait::async_trait]
 #[cfg_attr(test, mockall::automock)]
@@ -9,12 +16,12 @@ pub trait Reranker: Send + Sync {
     fn model_name(&self) -> &str;
 
     /// Score (document_id, text) pairs against a query.
-    /// Returns (document_id, score) pairs in arbitrary order.
+    /// Returns scored notes in arbitrary order.
     async fn rerank(
         &self,
         query: &str,
         documents: &[(i64, String)],
-    ) -> Result<Vec<(i64, f64)>, SearchError>;
+    ) -> Result<Vec<ScoredNote>, SearchError>;
 }
 
 #[async_trait::async_trait]
@@ -30,7 +37,7 @@ where
         &self,
         query: &str,
         documents: &[(i64, String)],
-    ) -> Result<Vec<(i64, f64)>, SearchError> {
+    ) -> Result<Vec<ScoredNote>, SearchError> {
         (**self).rerank(query, documents).await
     }
 }
@@ -48,7 +55,7 @@ where
         &self,
         query: &str,
         documents: &[(i64, String)],
-    ) -> Result<Vec<(i64, f64)>, SearchError> {
+    ) -> Result<Vec<ScoredNote>, SearchError> {
         (**self).rerank(query, documents).await
     }
 }
@@ -92,7 +99,7 @@ impl Reranker for CrossEncoderReranker {
         &self,
         query: &str,
         documents: &[(i64, String)],
-    ) -> Result<Vec<(i64, f64)>, SearchError> {
+    ) -> Result<Vec<ScoredNote>, SearchError> {
         if documents.is_empty() {
             return Ok(Vec::new());
         }
@@ -152,7 +159,7 @@ impl Reranker for CrossEncoderReranker {
                     })
                 })?;
                 let (note_id, _) = batch[index];
-                all_scores.push((note_id, score));
+                all_scores.push(ScoredNote { note_id, score });
             }
         }
 
@@ -207,10 +214,13 @@ mod tests {
     async fn mock_reranker_returns_configured_scores() {
         let mut mock = MockReranker::new();
         mock.expect_rerank().returning(|_query, docs| {
-            let scores: Vec<(i64, f64)> = docs
+            let scores: Vec<ScoredNote> = docs
                 .iter()
                 .enumerate()
-                .map(|(i, (id, _))| (*id, 1.0 - i as f64 * 0.1))
+                .map(|(i, (id, _))| ScoredNote {
+                    note_id: *id,
+                    score: 1.0 - i as f64 * 0.1,
+                })
                 .collect();
             Box::pin(async move { Ok(scores) })
         });
@@ -222,9 +232,27 @@ mod tests {
         ];
         let result = mock.rerank("test query", &docs).await.unwrap();
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0], (1, 1.0));
-        assert_eq!(result[1], (2, 0.9));
-        assert_eq!(result[2], (3, 0.8));
+        assert_eq!(
+            result[0],
+            ScoredNote {
+                note_id: 1,
+                score: 1.0
+            }
+        );
+        assert_eq!(
+            result[1],
+            ScoredNote {
+                note_id: 2,
+                score: 0.9
+            }
+        );
+        assert_eq!(
+            result[2],
+            ScoredNote {
+                note_id: 3,
+                score: 0.8
+            }
+        );
     }
 
     #[tokio::test]
@@ -252,7 +280,13 @@ mod tests {
     async fn mock_reranker_preserves_document_ids() {
         let mut mock = MockReranker::new();
         mock.expect_rerank().returning(|_query, docs| {
-            let scores: Vec<(i64, f64)> = docs.iter().map(|(id, _)| (*id, 0.5)).collect();
+            let scores: Vec<ScoredNote> = docs
+                .iter()
+                .map(|(id, _)| ScoredNote {
+                    note_id: *id,
+                    score: 0.5,
+                })
+                .collect();
             Box::pin(async move { Ok(scores) })
         });
 
@@ -261,7 +295,7 @@ mod tests {
             (99, "last doc".to_string()),
         ];
         let result = mock.rerank("query", &docs).await.unwrap();
-        let ids: Vec<i64> = result.iter().map(|(id, _)| *id).collect();
+        let ids: Vec<i64> = result.iter().map(|s| s.note_id).collect();
         assert!(ids.contains(&42));
         assert!(ids.contains(&99));
     }
@@ -270,14 +304,21 @@ mod tests {
     async fn rerank_returns_scores_in_arbitrary_order() {
         let mut mock = MockReranker::new();
         mock.expect_rerank().returning(|_query, docs| {
-            let scores: Vec<(i64, f64)> = docs.iter().rev().map(|(id, _)| (*id, 0.5)).collect();
+            let scores: Vec<ScoredNote> = docs
+                .iter()
+                .rev()
+                .map(|(id, _)| ScoredNote {
+                    note_id: *id,
+                    score: 0.5,
+                })
+                .collect();
             Box::pin(async move { Ok(scores) })
         });
 
         let docs = vec![(1, "first".to_string()), (2, "second".to_string())];
         let result = mock.rerank("query", &docs).await.unwrap();
         assert_eq!(result.len(), 2);
-        let ids: Vec<i64> = result.iter().map(|(id, _)| *id).collect();
+        let ids: Vec<i64> = result.iter().map(|s| s.note_id).collect();
         assert!(ids.contains(&1));
         assert!(ids.contains(&2));
     }

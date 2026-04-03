@@ -25,7 +25,7 @@ impl CardGenerator for PreviewCardGenerator {
         let sections: Vec<_> = note
             .sections
             .iter()
-            .filter(|(heading, content)| !heading.trim().is_empty() || !content.trim().is_empty())
+            .filter(|s| !s.heading.trim().is_empty() || !s.content.trim().is_empty())
             .collect();
         let count = if sections.is_empty() {
             1
@@ -47,7 +47,7 @@ impl CardGenerator for PreviewCardGenerator {
                 apf_html: note
                     .sections
                     .get(idx)
-                    .map(|(heading, content)| format!("<h2>{heading}</h2>\n<p>{content}</p>"))
+                    .map(|s| format!("<h2>{}</h2>\n<p>{}</p>", s.heading, s.content))
                     .unwrap_or_else(|| note.body.clone()),
             })
             .collect()
@@ -75,7 +75,7 @@ impl GeneratePreviewService {
         let estimated_cards = note
             .sections
             .iter()
-            .filter(|(_, content)| !content.trim().is_empty())
+            .filter(|s| !s.content.trim().is_empty())
             .count()
             .max(1);
         let warnings = if note.title.is_none() {
@@ -87,8 +87,8 @@ impl GeneratePreviewService {
             .sections
             .iter()
             .enumerate()
-            .filter(|(_, (_, content))| !content.trim().is_empty())
-            .map(|(idx, (heading, content))| GeneratedCard {
+            .filter(|(_, s)| !s.content.trim().is_empty())
+            .map(|(idx, s)| GeneratedCard {
                 card_index: (idx + 1) as u32,
                 slug: format!(
                     "{}-{}",
@@ -100,16 +100,16 @@ impl GeneratePreviewService {
                     idx + 1
                 ),
                 lang: "unknown".to_string(),
-                apf_html: format!("<h2>{heading}</h2>\n<p>{content}</p>"),
+                apf_html: format!("<h2>{}</h2>\n<p>{}</p>", s.heading, s.content),
                 confidence: 0.5,
-                content_hash: indexer::embeddings::content_hash("preview", content),
+                content_hash: indexer::embeddings::content_hash("preview", &s.content),
             })
             .collect();
 
         Ok(GeneratePreview {
             source_file: file.to_path_buf(),
             title: note.title,
-            sections: note.sections.into_iter().map(|(name, _)| name).collect(),
+            sections: note.sections.into_iter().map(|s| s.heading).collect(),
             estimated_cards,
             warnings,
             cards,
@@ -120,6 +120,7 @@ impl GeneratePreviewService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use obsidian::parser::Section;
     use std::collections::HashMap;
 
     fn make_parsed_note(
@@ -134,7 +135,10 @@ mod tests {
             body: body.to_string(),
             sections: sections
                 .into_iter()
-                .map(|(heading, content)| (heading.to_string(), content.to_string()))
+                .map(|(heading, content)| Section {
+                    heading: heading.to_string(),
+                    content: content.to_string(),
+                })
                 .collect(),
             title: title.map(ToString::to_string),
         }

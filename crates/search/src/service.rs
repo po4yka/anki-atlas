@@ -8,7 +8,7 @@ use crate::error::SearchError;
 use crate::fts::{LexicalMode, SearchFilters};
 use crate::fusion::{FusionStats, SearchResult};
 use crate::repository::SearchReadRepository;
-use crate::reranker::Reranker;
+use crate::reranker::{Reranker, ScoredNote};
 
 /// Controls which retrieval sources are used during search.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -239,9 +239,15 @@ where
                     })
                     .or_insert(hit);
             }
-            let mut semantic_results: Vec<_> = best_by_note.into_iter().collect();
-            semantic_results
-                .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            let mut semantic_results: Vec<ScoredNote> = best_by_note
+                .into_iter()
+                .map(|(note_id, score)| ScoredNote { note_id, score })
+                .collect();
+            semantic_results.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
             semantic_results.truncate(limit);
             semantic_results
         };
@@ -711,7 +717,7 @@ mod tests {
             &self,
             _query: &str,
             documents: &[(i64, String)],
-        ) -> Result<Vec<(i64, f64)>, SearchError> {
+        ) -> Result<Vec<ScoredNote>, SearchError> {
             if self.should_fail {
                 return Err(SearchError::from(crate::error::RerankError::Protocol {
                     message: "model unavailable".to_string(),
@@ -721,7 +727,10 @@ mod tests {
             Ok(documents
                 .iter()
                 .enumerate()
-                .map(|(i, (id, _))| (*id, 1.0 - i as f64 * 0.1))
+                .map(|(i, (id, _))| ScoredNote {
+                    note_id: *id,
+                    score: 1.0 - i as f64 * 0.1,
+                })
                 .collect())
         }
     }
@@ -750,12 +759,15 @@ mod tests {
             &self,
             _query: &str,
             documents: &[(i64, String)],
-        ) -> Result<Vec<(i64, f64)>, SearchError> {
+        ) -> Result<Vec<ScoredNote>, SearchError> {
             *self.seen_documents.lock().unwrap() = documents.to_vec();
             Ok(documents
                 .iter()
                 .enumerate()
-                .map(|(index, (note_id, _))| (*note_id, 1.0 - index as f64 * 0.1))
+                .map(|(index, (note_id, _))| ScoredNote {
+                    note_id: *note_id,
+                    score: 1.0 - index as f64 * 0.1,
+                })
                 .collect())
         }
     }

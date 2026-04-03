@@ -10,6 +10,13 @@ use walkdir::WalkDir;
 use crate::error::ObsidianError;
 use crate::frontmatter::{parse_frontmatter, split_frontmatter};
 
+/// A section of a parsed note: heading text and its content body.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Section {
+    pub heading: String,
+    pub content: String,
+}
+
 /// Maximum file size: 10 MB.
 pub const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
 
@@ -29,7 +36,7 @@ pub struct ParsedNote {
     pub frontmatter: HashMap<String, serde_yml::Value>,
     pub content: String,
     pub body: String,
-    pub sections: Vec<(String, String)>,
+    pub sections: Vec<Section>,
     pub title: Option<String>,
 }
 
@@ -152,11 +159,14 @@ fn extract_title(frontmatter: &HashMap<String, serde_yml::Value>, body: &str) ->
 }
 
 /// Split body into sections by headings.
-fn split_sections(body: &str) -> Vec<(String, String)> {
+fn split_sections(body: &str) -> Vec<Section> {
     let matches: Vec<_> = HEADING_RE.find_iter(body).collect();
 
     if matches.is_empty() {
-        return vec![("".to_string(), body.to_string())];
+        return vec![Section {
+            heading: String::new(),
+            content: body.to_string(),
+        }];
     }
 
     let mut sections = Vec::new();
@@ -164,7 +174,10 @@ fn split_sections(body: &str) -> Vec<(String, String)> {
     // Pre-heading content
     let first_start = matches[0].start();
     if first_start > 0 {
-        sections.push(("".to_string(), body[..first_start].to_string()));
+        sections.push(Section {
+            heading: String::new(),
+            content: body[..first_start].to_string(),
+        });
     }
 
     for (i, m) in matches.iter().enumerate() {
@@ -172,8 +185,8 @@ fn split_sections(body: &str) -> Vec<(String, String)> {
         let content_start = m.end();
         let content_end = matches.get(i + 1).map_or(body.len(), |next| next.start());
         let content = &body[content_start..content_end];
-        let content = content.strip_prefix('\n').unwrap_or(content);
-        sections.push((heading, content.to_string()));
+        let content = content.strip_prefix('\n').unwrap_or(content).to_string();
+        sections.push(Section { heading, content });
     }
 
     sections

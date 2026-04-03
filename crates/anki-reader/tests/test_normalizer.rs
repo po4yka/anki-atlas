@@ -3,6 +3,7 @@ use anki_reader::normalizer::{
     build_card_deck_map, build_deck_map, classify_field, normalize_note, normalize_notes,
     normalize_whitespace, strip_html,
 };
+use common::{CardId, DeckId, ModelId, NoteId};
 use std::collections::HashMap;
 
 // --- strip_html ---
@@ -217,8 +218,8 @@ fn classify_field_case_insensitive() {
 
 fn make_note(fields_json: HashMap<String, String>, tags: Vec<String>) -> AnkiNote {
     AnkiNote {
-        note_id: 1,
-        model_id: 1,
+        note_id: NoteId(1),
+        model_id: ModelId(1),
         tags,
         fields: fields_json.values().cloned().collect(),
         fields_json,
@@ -303,8 +304,8 @@ fn normalize_notes_populates_normalized_text() {
     fields.insert("Back".into(), "A".into());
     let mut notes = vec![make_note(fields, vec!["tag".into()])];
 
-    let deck_map: HashMap<i64, String> = HashMap::new();
-    let card_deck_map: HashMap<i64, Vec<i64>> = HashMap::new();
+    let deck_map: HashMap<DeckId, String> = HashMap::new();
+    let card_deck_map: HashMap<NoteId, Vec<DeckId>> = HashMap::new();
 
     normalize_notes(&mut notes, &deck_map, &card_deck_map);
     assert!(!notes[0].normalized_text.is_empty());
@@ -316,13 +317,13 @@ fn normalize_notes_populates_normalized_text() {
 fn build_deck_map_creates_mapping() {
     let decks = vec![
         AnkiDeck {
-            deck_id: 1,
+            deck_id: DeckId(1),
             name: "Default".into(),
             parent_name: None,
             config: serde_json::Value::Null,
         },
         AnkiDeck {
-            deck_id: 2,
+            deck_id: DeckId(2),
             name: "Japanese".into(),
             parent_name: None,
             config: serde_json::Value::Null,
@@ -330,8 +331,8 @@ fn build_deck_map_creates_mapping() {
     ];
     let map = build_deck_map(&decks);
     assert_eq!(map.len(), 2);
-    assert_eq!(map[&1], "Default");
-    assert_eq!(map[&2], "Japanese");
+    assert_eq!(map[&DeckId(1)], "Default");
+    assert_eq!(map[&DeckId(2)], "Japanese");
 }
 
 #[test]
@@ -346,9 +347,9 @@ fn build_deck_map_empty() {
 fn build_card_deck_map_groups_by_note() {
     let cards = vec![
         AnkiCard {
-            card_id: 1,
-            note_id: 100,
-            deck_id: 10,
+            card_id: CardId(1),
+            note_id: NoteId(100),
+            deck_id: DeckId(10),
             ord: 0,
             due: None,
             ivl: 0,
@@ -361,9 +362,9 @@ fn build_card_deck_map_groups_by_note() {
             usn: 0,
         },
         AnkiCard {
-            card_id: 2,
-            note_id: 100,
-            deck_id: 20,
+            card_id: CardId(2),
+            note_id: NoteId(100),
+            deck_id: DeckId(20),
             ord: 1,
             due: None,
             ivl: 0,
@@ -376,9 +377,9 @@ fn build_card_deck_map_groups_by_note() {
             usn: 0,
         },
         AnkiCard {
-            card_id: 3,
-            note_id: 200,
-            deck_id: 10,
+            card_id: CardId(3),
+            note_id: NoteId(200),
+            deck_id: DeckId(10),
             ord: 0,
             due: None,
             ivl: 0,
@@ -393,18 +394,18 @@ fn build_card_deck_map_groups_by_note() {
     ];
     let map = build_card_deck_map(&cards);
     assert_eq!(map.len(), 2);
-    assert!(map[&100].contains(&10));
-    assert!(map[&100].contains(&20));
-    assert_eq!(map[&200], vec![10]);
+    assert!(map[&NoteId(100)].contains(&DeckId(10)));
+    assert!(map[&NoteId(100)].contains(&DeckId(20)));
+    assert_eq!(map[&NoteId(200)], vec![DeckId(10)]);
 }
 
 #[test]
 fn build_card_deck_map_deduplicates() {
     let cards = vec![
         AnkiCard {
-            card_id: 1,
-            note_id: 100,
-            deck_id: 10,
+            card_id: CardId(1),
+            note_id: NoteId(100),
+            deck_id: DeckId(10),
             ord: 0,
             due: None,
             ivl: 0,
@@ -417,9 +418,9 @@ fn build_card_deck_map_deduplicates() {
             usn: 0,
         },
         AnkiCard {
-            card_id: 2,
-            note_id: 100,
-            deck_id: 10, // same deck as card 1
+            card_id: CardId(2),
+            note_id: NoteId(100),
+            deck_id: DeckId(10), // same deck as card 1
             ord: 1,
             due: None,
             ivl: 0,
@@ -434,7 +435,7 @@ fn build_card_deck_map_deduplicates() {
     ];
     let map = build_card_deck_map(&cards);
     // deck_id 10 should appear only once for note 100
-    assert_eq!(map[&100].len(), 1);
+    assert_eq!(map[&NoteId(100)].len(), 1);
 }
 
 #[test]

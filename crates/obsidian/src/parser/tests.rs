@@ -68,10 +68,10 @@ fn parse_note_splits_sections_by_heading() {
 
     // Should have 2 sections (both headings start sections)
     assert!(note.sections.len() >= 2);
-    assert_eq!(note.sections[0].0, "# Section One");
-    assert!(note.sections[0].1.contains("Content one."));
-    assert_eq!(note.sections[1].0, "## Section Two");
-    assert!(note.sections[1].1.contains("Content two."));
+    assert_eq!(note.sections[0].heading, "# Section One");
+    assert!(note.sections[0].content.contains("Content one."));
+    assert_eq!(note.sections[1].heading, "## Section Two");
+    assert!(note.sections[1].content.contains("Content two."));
 }
 
 #[test]
@@ -88,8 +88,8 @@ fn parse_note_pre_heading_content_gets_empty_heading() {
 
     assert!(!note.sections.is_empty());
     // First section should have empty heading key for pre-heading content
-    assert_eq!(note.sections[0].0, "");
-    assert!(note.sections[0].1.contains("Intro text"));
+    assert_eq!(note.sections[0].heading, "");
+    assert!(note.sections[0].content.contains("Intro text"));
 }
 
 #[test]
@@ -101,8 +101,8 @@ fn parse_note_no_headings_single_section() {
     let note = parse_note(&path, None).unwrap();
 
     assert_eq!(note.sections.len(), 1);
-    assert_eq!(note.sections[0].0, "");
-    assert!(note.sections[0].1.contains("Just plain text."));
+    assert_eq!(note.sections[0].heading, "");
+    assert!(note.sections[0].content.contains("Just plain text."));
 }
 
 // ---------------------------------------------------------------------------
