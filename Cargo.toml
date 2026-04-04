@@ -92,6 +92,12 @@ phf = { version = "0.13", features = ["macros"] }
 ammonia = "4"
 pulldown-cmark = "0.13"
 
+# FSRS algorithm
+fsrs = "5.2"
+
+# Local embeddings
+fastembed = "4"
+
 # Testing
 mockall = "0.14"
 assert_matches = "1.5"

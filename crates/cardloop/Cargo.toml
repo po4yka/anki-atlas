@@ -13,6 +13,7 @@ obsidian = { path = "../obsidian" }
 common = { path = "../common" }
 anki-reader = { path = "../anki-reader" }
 llm = { path = "../llm" }
+fsrs = { workspace = true }
 sha2 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
