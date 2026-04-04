@@ -1,5 +1,5 @@
 use generator::{
-    GeneratedCard, GenerationDeps, GenerationResult, Severity, SplitDecision, SplitPlan,
+    CardType, GeneratedCard, GenerationDeps, GenerationResult, Severity, SplitDecision, SplitPlan,
     ValidationIssue, ValidationResult,
 };
 use sha2::{Digest, Sha256};
@@ -23,6 +23,7 @@ fn generated_card_content_hash_is_sha256_first_16_hex() {
         apf_html: apf_html.to_string(),
         confidence: 0.95,
         content_hash: expected_hash.clone(),
+        card_type: CardType::default(),
     };
 
     assert_eq!(card.content_hash, expected_hash);
@@ -38,6 +39,7 @@ fn generated_card_serialization_roundtrip() {
         apf_html: "<p>What is ownership?</p>".to_string(),
         confidence: 0.85,
         content_hash: "abcdef0123456789".to_string(),
+        card_type: CardType::default(),
     };
 
     let json = serde_json::to_string(&card).expect("serialize");
@@ -57,6 +59,7 @@ fn generated_card_confidence_range() {
         apf_html: "html".to_string(),
         confidence: 0.0,
         content_hash: String::new(),
+        card_type: CardType::default(),
     };
     assert!(card.confidence >= 0.0 && card.confidence <= 1.0);
 }

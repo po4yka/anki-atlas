@@ -1,6 +1,40 @@
 use serde::{Deserialize, Serialize};
 use taxonomy::SkillRelevance;
 
+/// Supported card types for generation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CardType {
+    /// Standard question/answer (front/back).
+    #[default]
+    Basic,
+    /// Cloze deletion: `{{c1::answer}}` patterns in the text.
+    Cloze,
+    /// Multiple choice: question with labeled options (A/B/C/D).
+    Mcq,
+}
+
+impl CardType {
+    /// Map to Anki note type string.
+    pub fn note_type(&self) -> &'static str {
+        match self {
+            Self::Basic => "APF::Simple",
+            Self::Cloze => "APF::Cloze",
+            Self::Mcq => "APF::Simple",
+        }
+    }
+}
+
+impl std::fmt::Display for CardType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Basic => write!(f, "basic"),
+            Self::Cloze => write!(f, "cloze"),
+            Self::Mcq => write!(f, "mcq"),
+        }
+    }
+}
+
 /// A single generated flashcard.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneratedCard {
@@ -10,6 +44,9 @@ pub struct GeneratedCard {
     pub apf_html: String,
     pub confidence: f32,
     pub content_hash: String,
+    /// Card type (basic, cloze, mcq). Defaults to basic for backward compatibility.
+    #[serde(default)]
+    pub card_type: CardType,
 }
 
 /// Result of a card generation run.

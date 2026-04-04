@@ -103,6 +103,7 @@ impl GeneratePreviewService {
                 apf_html: format!("<h2>{}</h2>\n<p>{}</p>", s.heading, s.content),
                 confidence: 0.5,
                 content_hash: indexer::embeddings::content_hash("preview", &s.content),
+                card_type: generator::CardType::default(),
             })
             .collect();
 

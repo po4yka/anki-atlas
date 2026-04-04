@@ -52,6 +52,7 @@ fn test_card() -> GeneratedCard {
         apf_html: "<p>Hello</p>".into(),
         confidence: 0.9,
         content_hash: "abc123".into(),
+        card_type: crate::models::CardType::default(),
     }
 }
 

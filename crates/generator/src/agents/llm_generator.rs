@@ -12,7 +12,7 @@ use taxonomy::SkillRelevance;
 
 use crate::agents::{GeneratorAgent, LlmAgentBase};
 use crate::error::GeneratorError;
-use crate::models::{GeneratedCard, GenerationDeps, GenerationResult};
+use crate::models::{CardType, GeneratedCard, GenerationDeps, GenerationResult};
 
 /// LLM-backed generator agent.
 pub struct LlmGeneratorAgent {
@@ -27,6 +27,9 @@ struct GeneratedCardPayload {
     front: String,
     back: String,
     confidence: f32,
+    /// Card type: "basic", "cloze", or "mcq". Defaults to basic if missing.
+    #[serde(default)]
+    card_type: CardType,
 }
 
 #[derive(Deserialize)]
@@ -83,7 +86,16 @@ impl GeneratorAgent for LlmGeneratorAgent {
              IMPORTANT: Generate cards that test understanding, reasoning, and application -- \
              not syntax recall or boilerplate memorization. Prefer questions about: \
              system design tradeoffs, debugging strategies, when/why to use patterns, \
-             shipping and automation decisions. Each card should require thinking, not lookup.",
+             shipping and automation decisions. Each card should require thinking, not lookup. \
+             \
+             CARD TYPES: Generate a MIX of card types for the same source material: \
+             - \"basic\": standard question/answer (front asks, back answers) \
+             - \"cloze\": cloze deletion using {{{{c1::answer}}}} syntax in the front field; \
+               back field should be empty or contain a hint \
+             - \"mcq\": multiple choice with options labeled A/B/C/D in the front; \
+               back contains the correct answer letter and explanation \
+             Include the card_type field in each card object. \
+             Aim for variety: at least one cloze and one basic per topic when appropriate.",
             deps.note_title, deps.topic, deps.language_tags, qa_pairs
         );
 
@@ -97,13 +109,36 @@ impl GeneratorAgent for LlmGeneratorAgent {
 
         let mut cards = Vec::with_capacity(response.cards.len());
         for raw in response.cards {
+            let apf_html = match raw.card_type {
+                CardType::Cloze => {
+                    // Cloze: front contains {{c1::...}} patterns, back is hint/extra
+                    if raw.back.is_empty() {
+                        format!("<p>{}</p>", raw.front)
+                    } else {
+                        format!("<p>{}</p><hr><p>{}</p>", raw.front, raw.back)
+                    }
+                }
+                CardType::Mcq => {
+                    // MCQ: front has question + options, back has answer + explanation
+                    format!(
+                        "<div class=\"mcq\"><p>{}</p></div><hr><p>{}</p>",
+                        raw.front, raw.back
+                    )
+                }
+                CardType::Basic => {
+                    // Standard front/back
+                    format!("<p>{}</p><hr><p>{}</p>", raw.front, raw.back)
+                }
+            };
+
             let card = GeneratedCard {
                 card_index: raw.card_index,
                 slug: raw.slug,
                 lang: raw.lang,
-                apf_html: format!("<p>{}</p><hr><p>{}</p>", raw.front, raw.back),
+                apf_html,
                 confidence: raw.confidence,
                 content_hash: Self::content_hash(&raw.front, &raw.back),
+                card_type: raw.card_type,
             };
             cards.push(card);
         }
