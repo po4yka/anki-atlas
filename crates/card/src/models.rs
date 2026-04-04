@@ -2,7 +2,13 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 /// Valid Anki note types.
-pub const VALID_NOTE_TYPES: &[&str] = &["APF::Simple", "APF::Cloze", "Basic", "Cloze"];
+pub const VALID_NOTE_TYPES: &[&str] = &[
+    "APF::Simple",
+    "APF::Cloze",
+    "Basic",
+    "Cloze",
+    "ImageOcclusion",
+];
 
 /// Valid 2-letter language codes (must match common::Language variants).
 const VALID_LANGUAGES: &[&str] = &["en", "ru", "de", "fr", "es", "it", "pt", "zh", "ja", "ko"];

@@ -68,11 +68,43 @@ impl OpenRouterProvider {
     }
 
     fn build_messages(&self, prompt: &str, opts: &GenerateOptions) -> Vec<serde_json::Value> {
+        use crate::provider::ContentPart;
+
         let mut messages = Vec::new();
         if !opts.system.is_empty() {
             messages.push(json!({"role": "system", "content": opts.system}));
         }
-        messages.push(json!({"role": "user", "content": prompt}));
+
+        if opts.content_parts.is_empty() {
+            // Text-only: simple string content
+            messages.push(json!({"role": "user", "content": prompt}));
+        } else {
+            // Multimodal: content array with text + image parts
+            let mut content = vec![json!({"type": "text", "text": prompt})];
+            for part in &opts.content_parts {
+                match part {
+                    ContentPart::Text { text } => {
+                        content.push(json!({"type": "text", "text": text}));
+                    }
+                    ContentPart::ImageUrl { url } => {
+                        content.push(json!({
+                            "type": "image_url",
+                            "image_url": {"url": url}
+                        }));
+                    }
+                    ContentPart::ImageBase64 { mime_type, data } => {
+                        content.push(json!({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": format!("data:{mime_type};base64,{data}")
+                            }
+                        }));
+                    }
+                }
+            }
+            messages.push(json!({"role": "user", "content": content}));
+        }
+
         messages
     }
 

@@ -46,6 +46,21 @@ impl LlmAgentBase {
             .await?;
         Ok(response.text)
     }
+
+    /// Call the LLM with multimodal content parts (e.g., images).
+    pub async fn call_llm_with_parts(
+        &self,
+        prompt: &str,
+        content_parts: Vec<llm::ContentPart>,
+    ) -> Result<String, GeneratorError> {
+        let mut opts = self.generate_opts();
+        opts.content_parts = content_parts;
+        let response = self
+            .provider
+            .generate(&self.model_name, prompt, &opts)
+            .await?;
+        Ok(response.text)
+    }
 }
 
 /// Trait for card generation from Q/A pairs.

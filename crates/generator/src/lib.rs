@@ -5,6 +5,6 @@ pub mod models;
 
 pub use error::GeneratorError;
 pub use models::{
-    CardType, GeneratedCard, GenerationDeps, GenerationResult, Severity, SplitDecision, SplitPlan,
-    ValidationIssue, ValidationResult,
+    CardType, GeneratedCard, GenerationDeps, GenerationResult, NoteImage, Severity, SplitDecision,
+    SplitPlan, ValidationIssue, ValidationResult,
 };

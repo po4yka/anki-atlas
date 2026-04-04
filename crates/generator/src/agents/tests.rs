@@ -41,6 +41,7 @@ fn test_deps() -> GenerationDeps {
         language_tags: vec!["en".into()],
         source_file: "test.md".into(),
         skill_bias: None,
+        images: vec![],
     }
 }
 

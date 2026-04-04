@@ -12,6 +12,8 @@ pub enum CardType {
     Cloze,
     /// Multiple choice: question with labeled options (A/B/C/D).
     Mcq,
+    /// Image-based card with occlusion regions.
+    ImageOcclusion,
 }
 
 impl CardType {
@@ -21,6 +23,7 @@ impl CardType {
             Self::Basic => "APF::Simple",
             Self::Cloze => "APF::Cloze",
             Self::Mcq => "APF::Simple",
+            Self::ImageOcclusion => "ImageOcclusion",
         }
     }
 }
@@ -31,8 +34,20 @@ impl std::fmt::Display for CardType {
             Self::Basic => write!(f, "basic"),
             Self::Cloze => write!(f, "cloze"),
             Self::Mcq => write!(f, "mcq"),
+            Self::ImageOcclusion => write!(f, "image_occlusion"),
         }
     }
+}
+
+/// An image associated with a note for multimodal generation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoteImage {
+    /// Relative path to the image file.
+    pub path: String,
+    /// MIME type (e.g., "image/png", "image/jpeg").
+    pub mime_type: String,
+    /// Alt text or filename description.
+    pub description: Option<String>,
 }
 
 /// A single generated flashcard.
@@ -69,6 +84,9 @@ pub struct GenerationDeps {
     /// Skill relevance bias for generation. When `Dead`, generation is skipped.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skill_bias: Option<SkillRelevance>,
+    /// Images associated with the source note for multimodal generation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<NoteImage>,
 }
 
 /// A single planned card from a split decision.

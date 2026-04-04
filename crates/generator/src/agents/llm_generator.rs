@@ -6,6 +6,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tracing::instrument;
 
+use base64::Engine;
 use llm::LlmProvider;
 
 use taxonomy::SkillRelevance;
@@ -99,7 +100,35 @@ impl GeneratorAgent for LlmGeneratorAgent {
             deps.note_title, deps.topic, deps.language_tags, qa_pairs
         );
 
-        let text = self.base.call_llm(&prompt).await?;
+        // If images are attached, use multimodal LLM call with vision
+        let text = if deps.images.is_empty() {
+            self.base.call_llm(&prompt).await?
+        } else {
+            let content_parts: Vec<llm::ContentPart> = deps
+                .images
+                .iter()
+                .filter_map(|img| {
+                    let full_path = std::path::Path::new(&deps.source_file)
+                        .parent()
+                        .unwrap_or(std::path::Path::new("."))
+                        .join(&img.path);
+                    let data = std::fs::read(&full_path).ok()?;
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+                    Some(llm::ContentPart::ImageBase64 {
+                        mime_type: img.mime_type.clone(),
+                        data: b64,
+                    })
+                })
+                .collect();
+
+            if content_parts.is_empty() {
+                self.base.call_llm(&prompt).await?
+            } else {
+                self.base
+                    .call_llm_with_parts(&prompt, content_parts)
+                    .await?
+            }
+        };
 
         let response: GeneratedCardsPayload =
             serde_json::from_str(&text).map_err(|e| GeneratorError::Generation {
@@ -128,6 +157,18 @@ impl GeneratorAgent for LlmGeneratorAgent {
                 CardType::Basic => {
                     // Standard front/back
                     format!("<p>{}</p><hr><p>{}</p>", raw.front, raw.back)
+                }
+                CardType::ImageOcclusion => {
+                    // Image occlusion: front has image + question, back has answer
+                    let img_tag = deps
+                        .images
+                        .first()
+                        .map(|img| format!("<img src=\"{}\" alt=\"diagram\">", img.path))
+                        .unwrap_or_default();
+                    format!(
+                        "<div class=\"image-occlusion\">{}<br><p>{}</p></div><hr><p>{}</p>",
+                        img_tag, raw.front, raw.back
+                    )
                 }
             };
 

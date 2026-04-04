@@ -80,7 +80,7 @@ impl AsyncScanner for LlmReviewScanner {
             system: SYSTEM_PROMPT.to_string(),
             json_mode: true,
             temperature: 0.2,
-            json_schema: None,
+            ..Default::default()
         };
 
         let mut items = Vec::new();

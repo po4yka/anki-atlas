@@ -24,6 +24,7 @@ fn generate_options_clone_is_independent() {
         temperature: 0.5,
         json_mode: true,
         json_schema: Some(serde_json::json!({"type": "object"})),
+        ..Default::default()
     };
     let cloned = opts.clone();
     assert_eq!(cloned.system, "test system");

@@ -86,6 +86,9 @@ dotenvy = "0.15"
 walkdir = "2"
 phf = { version = "0.13", features = ["macros"] }
 
+# Encoding
+base64 = "0.22"
+
 # HTML / Markdown
 ammonia = "4"
 pulldown-cmark = "0.13"
