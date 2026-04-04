@@ -2,6 +2,7 @@ pub mod audit;
 pub mod fsrs;
 pub mod generation;
 pub mod llm_review;
+pub mod stale;
 
 use crate::error::CardloopError;
 use crate::models::WorkItem;
