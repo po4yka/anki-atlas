@@ -46,6 +46,9 @@ scorecard.png
 # Worktrees
 .worktrees/
 
+# Card review cycle (autoresearch logs)
+card-review-results.tsv
+
 # Cursor
 .cursorignore
 .cursorindexingignore
