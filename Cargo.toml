@@ -19,6 +19,7 @@ members = [
   "crates/surface-contracts",
   "crates/surface-runtime",
   "crates/cardloop",
+  "crates/knowledge-graph",
   "bins/cli",
   "bins/api",
   "bins/mcp",
