@@ -60,6 +60,7 @@ fn map_analytics_error(error: AnalyticsError) -> SurfaceError {
         AnalyticsError::YamlParse(source) => SurfaceError::InvalidInput(source.to_string()),
         AnalyticsError::Io(source) => SurfaceError::Io(source),
         AnalyticsError::TopicNotFound(topic_path) => SurfaceError::NotFound(topic_path),
+        AnalyticsError::Internal(message) => SurfaceError::Provider(message),
     }
 }
 

@@ -13,4 +13,6 @@ pub enum AnalyticsError {
     Io(#[from] std::io::Error),
     #[error("topic not found: {0}")]
     TopicNotFound(String),
+    #[error("internal error: {0}")]
+    Internal(String),
 }
