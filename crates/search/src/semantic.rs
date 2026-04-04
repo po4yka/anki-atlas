@@ -1,5 +1,7 @@
 use indexer::embeddings::{EmbeddingInput, EmbeddingProvider, EmbeddingTask};
-use indexer::qdrant::{SearchFilters as VectorFilters, SemanticSearchHit, VectorRepository};
+use indexer::qdrant::{
+    QdrantRepository, SearchFilters as VectorFilters, SemanticSearchHit, VectorRepository,
+};
 
 use crate::error::SearchError;
 use crate::fts::SearchFilters;
@@ -23,6 +25,9 @@ pub(crate) fn to_vector_filters(filters: Option<&SearchFilters>) -> VectorFilter
 }
 
 /// Embed `query` and run a chunk-level vector search, returning raw hits.
+///
+/// When the query is non-empty, also generates a sparse query vector for
+/// Qdrant-native hybrid search (dense + sparse with RRF fusion).
 pub(crate) async fn run_semantic_chunk_search<E, V>(
     embedding: &E,
     vector_repo: &V,
@@ -42,10 +47,19 @@ where
         .await?;
     let query_vector = &embedded[0];
     let vector_filters = to_vector_filters(filters);
+
+    // Generate sparse query vector for hybrid search
+    let sparse = QdrantRepository::text_to_sparse_vector(query);
+    let sparse_ref = if sparse.indices.is_empty() {
+        None
+    } else {
+        Some(&sparse)
+    };
+
     vector_repo
         .search_chunks(
             query_vector,
-            None,
+            sparse_ref,
             limit.saturating_mul(4).max(limit),
             &vector_filters,
         )

@@ -4,15 +4,18 @@ use async_trait::async_trait;
 use qdrant_client::Payload;
 use qdrant_client::Qdrant;
 use qdrant_client::qdrant::{
-    Condition, CreateCollectionBuilder, DeletePointsBuilder, Distance, Filter, PointId,
-    PointStruct, RetrievedPoint, ScrollPointsBuilder, SearchPointsBuilder, Value,
-    VectorParamsBuilder, vectors_config,
+    Condition, CreateCollectionBuilder, DeletePointsBuilder, Distance, Filter, Fusion, Modifier,
+    NamedVectors, PointId, PointStruct, PrefetchQueryBuilder, Query, QueryPointsBuilder,
+    RetrievedPoint, ScrollPointsBuilder, SearchPointsBuilder, SparseVectorConfig,
+    SparseVectorParams, Value, Vector, VectorParamsBuilder, VectorParamsMap, VectorsConfig,
+    vectors_config,
 };
 use sha2::{Digest, Sha256};
 
 use super::repository::VectorRepository;
 use super::schema::{
-    NotePayload, ScoredNote, SearchFilters, SemanticSearchHit, SparseVector, VectorStoreError,
+    DENSE_VECTOR_NAME, NotePayload, SPARSE_VECTOR_NAME, ScoredNote, SearchFilters,
+    SemanticSearchHit, SparseVector, VectorStoreError,
 };
 
 /// Concrete Qdrant implementation.
@@ -177,10 +180,30 @@ impl QdrantRepository {
     }
 
     async fn create_collection(&self, dimension: usize) -> Result<(), VectorStoreError> {
+        let mut sparse_map = HashMap::new();
+        sparse_map.insert(
+            SPARSE_VECTOR_NAME.to_string(),
+            SparseVectorParams {
+                modifier: Some(Modifier::Idf as i32),
+                index: None,
+            },
+        );
+
+        let mut dense_map = HashMap::new();
+        dense_map.insert(
+            DENSE_VECTOR_NAME.to_string(),
+            VectorParamsBuilder::new(dimension as u64, Distance::Cosine).build(),
+        );
+
         self.client
             .create_collection(
                 CreateCollectionBuilder::new(&self.collection_name)
-                    .vectors_config(VectorParamsBuilder::new(dimension as u64, Distance::Cosine)),
+                    .vectors_config(VectorsConfig {
+                        config: Some(vectors_config::Config::ParamsMap(VectorParamsMap {
+                            map: dense_map,
+                        })),
+                    })
+                    .sparse_vectors_config(SparseVectorConfig { map: sparse_map }),
             )
             .await
             .map_err(|error| VectorStoreError::Client(error.to_string()))?;
@@ -241,6 +264,12 @@ impl QdrantRepository {
             ));
         };
 
+        // Try named vector first ("dense"), fall back to unnamed for legacy collections
+        if let Some(qdrant_client::qdrant::vector_output::Vector::Dense(dense)) =
+            vectors.get_vector_by_name(DENSE_VECTOR_NAME)
+        {
+            return Ok(Some(dense.data));
+        }
         match vectors.get_vector() {
             Some(qdrant_client::qdrant::vector_output::Vector::Dense(dense)) => {
                 Ok(Some(dense.data))
@@ -376,7 +405,7 @@ impl VectorRepository for QdrantRepository {
         &self,
         vectors: &[Vec<f32>],
         payloads: &[NotePayload],
-        _sparse_vectors: Option<&[SparseVector]>,
+        sparse_vectors: Option<&[SparseVector]>,
     ) -> Result<usize, VectorStoreError> {
         if vectors.len() != payloads.len() {
             return Err(VectorStoreError::Client(
@@ -385,15 +414,34 @@ impl VectorRepository for QdrantRepository {
         }
         let points = vectors
             .iter()
-            .zip(payloads.iter())
-            .map(|(vector, payload)| {
+            .enumerate()
+            .map(|(i, vector)| {
+                let payload = &payloads[i];
                 let json = serde_json::to_value(payload)
                     .map_err(|error| VectorStoreError::Client(error.to_string()))?;
                 let qdrant_payload = Payload::try_from(json)
                     .map_err(|error| VectorStoreError::Client(error.to_string()))?;
+
+                let mut named = NamedVectors::default();
+                named.vectors.insert(
+                    DENSE_VECTOR_NAME.to_string(),
+                    Vector::new_dense(vector.clone()),
+                );
+
+                if let Some(sparse_vecs) = sparse_vectors {
+                    if let Some(sv) = sparse_vecs.get(i) {
+                        if !sv.indices.is_empty() {
+                            named.vectors.insert(
+                                SPARSE_VECTOR_NAME.to_string(),
+                                Vector::new_sparse(sv.indices.clone(), sv.values.clone()),
+                            );
+                        }
+                    }
+                }
+
                 Ok(PointStruct::new(
                     self.point_id_from_chunk_id(&payload.chunk_id),
-                    vector.clone(),
+                    named,
                     qdrant_payload,
                 ))
             })
@@ -451,16 +499,74 @@ impl VectorRepository for QdrantRepository {
     async fn search_chunks(
         &self,
         query_vector: &[f32],
-        _query_sparse: Option<&SparseVector>,
+        query_sparse: Option<&SparseVector>,
         limit: usize,
         filters: &SearchFilters,
     ) -> Result<Vec<SemanticSearchHit>, VectorStoreError> {
+        let filter = self.build_filters(filters);
+
+        // Hybrid search: dense + sparse prefetch with Qdrant-native RRF fusion
+        if let Some(sparse) = query_sparse.filter(|s| !s.indices.is_empty()) {
+            let prefetch_limit = (limit * 3) as u64;
+
+            let mut dense_prefetch = PrefetchQueryBuilder::default()
+                .query(Query::from(query_vector.to_vec()))
+                .using(DENSE_VECTOR_NAME.to_string())
+                .limit(prefetch_limit);
+            if let Some(ref f) = filter {
+                dense_prefetch = dense_prefetch.filter(f.clone());
+            }
+
+            let sparse_tuples: Vec<(u32, f32)> = sparse
+                .indices
+                .iter()
+                .zip(sparse.values.iter())
+                .map(|(&i, &v)| (i, v))
+                .collect();
+
+            let mut sparse_prefetch = PrefetchQueryBuilder::default()
+                .query(Query::from(sparse_tuples))
+                .using(SPARSE_VECTOR_NAME.to_string())
+                .limit(prefetch_limit);
+            if let Some(ref f) = filter {
+                sparse_prefetch = sparse_prefetch.filter(f.clone());
+            }
+
+            let mut request = QueryPointsBuilder::new(&self.collection_name)
+                .add_prefetch(dense_prefetch)
+                .add_prefetch(sparse_prefetch)
+                .query(Query::new_fusion(Fusion::Rrf))
+                .limit(limit as u64)
+                .with_payload(true);
+            if let Some(f) = filter {
+                request = request.filter(f);
+            }
+
+            let response = self
+                .client
+                .query(request)
+                .await
+                .map_err(|error| VectorStoreError::Client(error.to_string()))?;
+
+            return response
+                .result
+                .into_iter()
+                .map(|point| {
+                    let payload = self.payload_from_map(point.payload)?;
+                    let score = point.score;
+                    Ok(self.semantic_hit_from_payload(payload, score))
+                })
+                .collect();
+        }
+
+        // Dense-only fallback (SemanticOnly mode or no sparse vector)
         let mut request =
             SearchPointsBuilder::new(&self.collection_name, query_vector.to_vec(), limit as u64)
+                .vector_name(DENSE_VECTOR_NAME)
                 .with_payload(true)
                 .with_vectors(false);
-        if let Some(filter) = self.build_filters(filters) {
-            request = request.filter(filter);
+        if let Some(f) = filter {
+            request = request.filter(f);
         }
 
         let response = self
