@@ -282,6 +282,38 @@ impl AnkiConnectClient {
         self.invoke_unit("sync", None).await?;
         Ok(())
     }
+
+    /// Upload a media file to Anki's media folder.
+    ///
+    /// `data` must be base64-encoded file content.
+    /// Returns the stored filename.
+    #[instrument(skip(self, data))]
+    pub async fn store_media_file(&self, filename: &str, data: &str) -> Result<String> {
+        self.invoke_typed(
+            "storeMediaFile",
+            Some(json!({"filename": filename, "data": data})),
+        )
+        .await
+    }
+
+    /// Upload a media file from a local filesystem path.
+    ///
+    /// Reads the file, base64-encodes it, and stores it in Anki's media folder.
+    /// Returns the stored filename.
+    #[instrument(skip(self))]
+    pub async fn store_media_file_from_path(
+        &self,
+        filename: &str,
+        path: &std::path::Path,
+    ) -> Result<String> {
+        use base64::Engine;
+        let bytes = std::fs::read(path).map_err(|e| AnkiAtlasError::AnkiReader {
+            message: format!("failed to read media file {}: {e}", path.display()),
+            context: Default::default(),
+        })?;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        self.store_media_file(filename, &encoded).await
+    }
 }
 
 impl Default for AnkiConnectClient {

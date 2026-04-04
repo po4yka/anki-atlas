@@ -29,6 +29,23 @@ static H1_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^#\s+(.+)$").u
 /// Regex matching any heading (H1-H6) for section splitting.
 static HEADING_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^(#{1,6}\s+.+)$").unwrap());
 
+/// Regex matching Obsidian wikilink image embeds: `![[image.png]]`
+static WIKILINK_IMG_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"!\[\[([^\]]+\.(?:png|jpe?g|gif|webp|svg))\]\]").unwrap());
+
+/// Regex matching standard markdown image embeds: `![alt](image.png)`
+static MARKDOWN_IMG_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"!\[([^\]]*)\]\(([^)]+\.(?:png|jpe?g|gif|webp|svg))\)").unwrap());
+
+/// A reference to an image embedded in an Obsidian note.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImageRef {
+    /// Path as written in the note (relative to vault root or note).
+    pub rel_path: String,
+    /// Alt text (markdown syntax only; None for wikilinks).
+    pub description: Option<String>,
+}
+
 /// A parsed Obsidian markdown note.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedNote {
@@ -38,6 +55,8 @@ pub struct ParsedNote {
     pub body: String,
     pub sections: Vec<Section>,
     pub title: Option<String>,
+    /// Images embedded in the note via `![[...]]` or `![...](...)` syntax.
+    pub images: Vec<ImageRef>,
 }
 
 /// Parse a single markdown note from disk.
@@ -78,6 +97,8 @@ pub fn parse_note(path: &Path, vault_root: Option<&Path>) -> Result<ParsedNote, 
     let title = extract_title(&frontmatter, &body);
     let sections = split_sections(&body);
 
+    let images = extract_images(&body);
+
     Ok(ParsedNote {
         path: path.to_path_buf(),
         frontmatter,
@@ -85,6 +106,7 @@ pub fn parse_note(path: &Path, vault_root: Option<&Path>) -> Result<ParsedNote, 
         body,
         sections,
         title,
+        images,
     })
 }
 
@@ -200,6 +222,43 @@ fn matches_any_pattern(path: &Path, patterns: &[&str]) -> bool {
             .and_then(|ext| path.extension().map(|e| e == ext))
             .unwrap_or(false)
     })
+}
+
+/// Extract embedded image references from Obsidian markdown content.
+///
+/// Matches both syntaxes:
+/// - Wikilink: `![[image.png]]`, `![[path/to/diagram.jpg]]`
+/// - Markdown: `![alt text](image.png)`, `![](photo.jpg)`
+///
+/// Returns deduplicated references in order of first appearance.
+pub fn extract_images(content: &str) -> Vec<ImageRef> {
+    let mut seen = std::collections::HashSet::new();
+    let mut images = Vec::new();
+
+    // Wikilink images: ![[path.ext]]
+    for cap in WIKILINK_IMG_RE.captures_iter(content) {
+        let rel_path = cap[1].to_string();
+        if seen.insert(rel_path.clone()) {
+            images.push(ImageRef {
+                rel_path,
+                description: None,
+            });
+        }
+    }
+
+    // Markdown images: ![alt](path.ext)
+    for cap in MARKDOWN_IMG_RE.captures_iter(content) {
+        let rel_path = cap[2].to_string();
+        if seen.insert(rel_path.clone()) {
+            let alt = cap[1].to_string();
+            images.push(ImageRef {
+                rel_path,
+                description: if alt.is_empty() { None } else { Some(alt) },
+            });
+        }
+    }
+
+    images
 }
 
 #[cfg(test)]
