@@ -20,6 +20,7 @@ members = [
   "crates/surface-runtime",
   "crates/cardloop",
   "crates/knowledge-graph",
+  "crates/ingest",
   "bins/cli",
   "bins/api",
   "bins/mcp",
