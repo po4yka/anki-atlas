@@ -1,7 +1,7 @@
 ---
 name: card-review-cycle
-description: Autonomous card review cycle using autoresearch loop pattern. Scans Anki decks, improves/deletes/generates cards with mechanical metrics, git-as-memory, and automatic rollback. Supports bounded iterations.
-version: 1.0.0
+description: Autonomous card review cycle using autoresearch loop pattern. Scans Anki decks, improves/deletes/generates cards with mechanical metrics, git-as-memory, and automatic rollback. Supports bounded iterations, usage-limit detection, and checkpoint/resume.
+version: 2.0.0
 ---
 
 # Card Review Cycle -- Autonomous Improvement Loop
@@ -53,7 +53,209 @@ If the user did not provide Deck or Iterations inline, ask via batched `AskUserQ
 
 **YOU MUST NOT start any loop or execution without completing interactive setup when config is missing.**
 
+## Usage Limit Detection
+
+The loop monitors Claude Code subscription usage via the OMC HUD cache to avoid
+wasting iterations when the model is about to be throttled or downgraded.
+
+### How It Works
+
+The OMC HUD polls `api.anthropic.com/api/oauth/usage` every 90 seconds and caches
+the result. The skill reads this cache file -- a lightweight disk read, no API call.
+
+**Cache location (find dynamically):**
+```bash
+USAGE_CACHE=$(find ~/.claude/plugins -name ".usage-cache.json" -path "*/oh-my-claudecode/*" 2>/dev/null | head -1)
+```
+
+**Cache structure (relevant fields):**
+```json
+{
+  "timestamp": 1743782400000,
+  "data": {
+    "fiveHourPercent": 45,
+    "weeklyPercent": 12,
+    "fiveHourResetsAt": "2026-04-04T17:30:00Z",
+    "weeklyResetsAt": "2026-04-08T10:00:00Z"
+  },
+  "error": false,
+  "source": "anthropic"
+}
+```
+
+### Limit Check Procedure
+
+Run this check at the START of every Phase 1 (Review), BEFORE picking the next item:
+
+```bash
+# 1. Find the cache file
+USAGE_CACHE=$(find ~/.claude/plugins -name ".usage-cache.json" -path "*/oh-my-claudecode/*" 2>/dev/null | head -1)
+
+# 2. If not found, skip limit checks (HUD not installed)
+if [ -z "$USAGE_CACHE" ]; then
+  echo "WARN: Usage monitoring unavailable -- HUD cache not found"
+  # Continue without limit checks
+fi
+
+# 3. Read and parse
+cat "$USAGE_CACHE" | jq '{
+  five_hour: .data.fiveHourPercent,
+  weekly: .data.weeklyPercent,
+  five_hour_resets: .data.fiveHourResetsAt,
+  weekly_resets: .data.weeklyResetsAt,
+  cache_age_s: ((now - (.timestamp / 1000)) | floor),
+  has_error: .error
+}'
+```
+
+### Decision Table
+
+| Condition | Action |
+|-----------|--------|
+| Cache file not found | Log warning, continue without checks |
+| `cache_age_s > 900` (stale >15 min) | Log warning, continue with caution |
+| `error == true` | Log warning, skip check |
+| `five_hour < 80` AND `weekly < 80` | Continue normally |
+| `five_hour >= 80` OR `weekly >= 80` (but < 95) | Log warning: "Usage at N% -- approaching limit", continue |
+| `five_hour >= 95` OR `weekly >= 95` | **GRACEFUL STOP**: write checkpoint, print summary, stop |
+
+### Graceful Stop Procedure
+
+When usage >= 95% on either window:
+
+1. **Do NOT start the next iteration** -- stop at Phase 1 before Phase 2
+2. Write checkpoint file (see Checkpoint & Resume section below)
+3. Print stop message:
+   ```
+   === Usage Limit Reached ===
+   Five-hour window: <N>% (resets at <time>)
+   Weekly window: <N>% (resets at <time>)
+   
+   Checkpoint saved to .cardloop/review-checkpoint.json
+   Resume later with: /card-review-cycle --resume
+   ```
+4. Print the standard progress summary (baseline -> current, keeps/discards)
+5. STOP the loop
+
+**CRITICAL:** Never stop between Phase 3 (Fix) and Phase 8 (Decide). Always complete
+the current iteration before checking limits. The check happens at the START of Phase 1.
+
+## Checkpoint & Resume
+
+### Checkpoint File
+
+**Location:** `.cardloop/review-checkpoint.json` (gitignored)
+
+Written on graceful stop (usage limit or any future pause reason). Contains all state
+needed to resume without re-asking the user.
+
+```json
+{
+  "version": 1,
+  "paused_at": "2026-04-04T15:30:00Z",
+  "reason": "five_hour_limit_95_percent",
+  "resume_after": "2026-04-04T17:30:00Z",
+  "iteration": 23,
+  "max_iterations": 50,
+  "baseline_metric": 45.0,
+  "current_metric": 67.2,
+  "last_item_id": "abc123def456",
+  "last_item_status": "keep",
+  "resume_count": 0,
+  "config": {
+    "deck": "Kotlin",
+    "topic": null,
+    "loop_kind": "audit",
+    "scanners": ["fsrs"],
+    "apply": "auto"
+  },
+  "stats": {
+    "keeps": 15,
+    "discards": 6,
+    "crashes": 1,
+    "skipped": 1
+  }
+}
+```
+
+### Resume Logic (runs at the very start of Phase 0)
+
+When invoked with `--resume` OR when a checkpoint file exists:
+
+```
+1. Read .cardloop/review-checkpoint.json
+2. IF file does not exist:
+     Print "No checkpoint found. Starting fresh."
+     Proceed to normal Phase 0
+
+3. IF checkpoint.paused_at is older than 7 days:
+     Print "Stale checkpoint (>7 days old) -- discarding"
+     Delete checkpoint file
+     Proceed to normal Phase 0
+
+4. IF checkpoint.paused_at is older than 24 hours:
+     ASK user: "Found checkpoint from <N>h ago. Resume or start fresh?"
+     IF user says fresh: delete checkpoint, proceed to normal Phase 0
+
+5. Check current usage limits:
+     Read OMC HUD cache
+     IF five_hour >= 95 OR weekly >= 95:
+       Print "Still limited (five-hour: <N>%, weekly: <N>%)"
+       Print "Resets at: <time>"
+       STOP (do not delete checkpoint -- user will retry later)
+
+6. IF checkpoint.resume_count >= 3 AND time_since_pause < 5 minutes:
+     Print "Repeated immediate re-hits detected (3+ resumes within 5 min)"
+     Print "Wait for the limit window to reset before resuming."
+     STOP (do not delete checkpoint)
+
+7. Restore state from checkpoint:
+     current_iteration = checkpoint.iteration
+     max_iterations = checkpoint.max_iterations
+     config = checkpoint.config
+     stats = checkpoint.stats
+     Increment resume_count in checkpoint (write back before deleting)
+
+8. Print:
+     "Resuming card review cycle from iteration <N>"
+     "Paused: <reason> at <time>"
+     "Config: Deck=<deck>, Iterations=<max>"
+     "Progress: <keeps> keeps, <discards> discards"
+
+9. Delete checkpoint file (state is now in memory)
+10. Skip to Phase 1 (do NOT re-run Phase 0 baseline/scan)
+```
+
+### What Already Persists (no extra work)
+
+| State | Location | Survives restart? |
+|-------|----------|-------------------|
+| Work item queue | `.cardloop/state.db` (SQLite) | Yes |
+| Item statuses | `.cardloop/state.db` | Yes |
+| Score history | `.cardloop/progression.jsonl` | Yes |
+| Iteration log | `card-review-results.tsv` | Yes |
+| Git experiment history | Git commits | Yes |
+
+The checkpoint only adds: iteration counter, original config, cumulative stats, and
+pause reason -- everything else already persists automatically.
+
 ## Phase 0: Baseline (do once)
+
+### 0.0 Resume Check (runs FIRST, before anything else)
+
+Before starting a fresh session, check for an existing checkpoint:
+
+```bash
+# Check for checkpoint
+if [ -f .cardloop/review-checkpoint.json ]; then
+  echo "Checkpoint found"
+  cat .cardloop/review-checkpoint.json | jq '{iteration, reason, paused_at, resume_after}'
+fi
+```
+
+Follow the resume logic described in "Checkpoint & Resume" section above.
+If resuming: skip to Phase 1 with restored state.
+If no checkpoint or user chose fresh start: continue to 0.1.
 
 ### 0.1 Precondition Checks
 
@@ -158,14 +360,22 @@ LOOP (FOREVER or N times):
 
 **You MUST complete ALL steps before picking the next item.**
 
-1. Read last 10 entries from `card-review-results.tsv`
-2. Run `git log --oneline -20` to see recent card improvements
-3. Run `anki-atlas cardloop status` for current score dashboard
-4. If bounded: check `current_iteration < max_iterations`
-5. Identify patterns: what issue kinds succeed? What slug patterns fail?
+1. **LIMIT GATE (first!):** Run the usage limit check procedure from "Usage Limit Detection" section
+   - If result is **GRACEFUL STOP** (>= 95%): write checkpoint, print summary, STOP
+   - If result is **WARNING** (>= 80%): log the warning, continue
+   - If result is **OK** or **UNKNOWN**: continue normally
+2. Read last 10 entries from `card-review-results.tsv`
+3. Run `git log --oneline -20` to see recent card improvements
+4. Run `anki-atlas cardloop status` for current score dashboard
+5. If bounded: check `current_iteration < max_iterations`
+6. Identify patterns: what issue kinds succeed? What slug patterns fail?
 
 **Why read git history every time?** Git IS the memory. The log shows which fixes were
 kept vs reverted. Use this to inform the next iteration -- avoid repeating failed approaches.
+
+**Why check limits first?** The limit gate runs BEFORE any new work begins. This ensures
+we never start a fix we can't finish. The current iteration always completes fully before
+the next limit check.
 
 ### Phase 2: Next (get work item)
 
@@ -377,6 +587,11 @@ ELSE:
     Print final summary. STOP.
 ```
 
+**Usage limit stop (triggered at Phase 1):**
+When the limit gate fires at Phase 1, the loop writes a checkpoint and stops.
+The stop happens BEFORE the current iteration begins (not mid-iteration).
+See "Usage Limit Detection" and "Checkpoint & Resume" sections above.
+
 **Final summary format:**
 ```
 === Card Review Cycle Complete (N/N iterations) ===
@@ -385,6 +600,14 @@ Open: <start_open> -> <end_open> (<diff>)
 Keeps: X | Discards: Y | Crashes: Z | Skipped: W
 Best iteration: #N -- <description>
 Top issue kinds fixed: MissingTags (X), LowQuality (Y), ...
+```
+
+**If stopped by usage limit, append:**
+```
+Stopped: usage limit (<window> at <N>%)
+Checkpoint: .cardloop/review-checkpoint.json
+Resume after: <resets_at time>
+Command: /card-review-cycle --resume
 ```
 
 ## Git as Memory
@@ -448,7 +671,7 @@ Loop-Kind: both
 Scanners: fsrs, duplicates
 Iterations: 50
 
-# Unlimited gap-filling
+# Unlimited gap-filling (stops automatically at usage limit)
 /card-review-cycle
 Loop-Kind: generation
 
@@ -460,4 +683,7 @@ Iterations: 20
 # Full audit of everything
 /card-review-cycle
 Scanners: fsrs, duplicates, llm-review
+
+# Resume after usage limit pause
+/card-review-cycle --resume
 ```

@@ -46,8 +46,9 @@ scorecard.png
 # Worktrees
 .worktrees/
 
-# Card review cycle (autoresearch logs)
+# Card review cycle (autoresearch logs + checkpoint)
 card-review-results.tsv
+.cardloop/review-checkpoint.json
 
 # Cursor
 .cursorignore
