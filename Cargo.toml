@@ -57,9 +57,6 @@ reqwest = { version = "0.13", features = ["json", "rustls"], default-features = 
 # Vector DB
 qdrant-client = "1"
 
-# Redis
-rustis = { version = "0.19", features = ["tokio-runtime"] }
-
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
 

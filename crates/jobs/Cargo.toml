@@ -8,7 +8,7 @@ license.workspace = true
 [dependencies]
 common = { path = "../common" }
 async-trait.workspace = true
-rustis = { workspace = true }
+sqlx = { workspace = true }
 serde = { workspace = true }
 serde_json.workspace = true
 thiserror.workspace = true
@@ -16,7 +16,6 @@ tokio = { workspace = true, features = ["time", "sync"] }
 tracing.workspace = true
 uuid = { workspace = true }
 chrono = { workspace = true }
-url.workspace = true
 strum = { workspace = true }
 
 [dev-dependencies]

@@ -2,7 +2,7 @@ use super::*;
 use crate::config::WorkerConfig;
 use crate::envelope::JobEnvelope;
 use jobs::{
-    IndexJobPayload, JobManager, JobPayload, JobRecord, JobStatus, JobType, RedisJobManager,
+    IndexJobPayload, JobManager, JobPayload, JobRecord, JobStatus, JobType, PgJobManager,
     SyncJobPayload,
 };
 use std::future::Future;
@@ -17,7 +17,7 @@ use testcontainers::{
 
 fn test_config() -> WorkerConfig {
     WorkerConfig {
-        redis_url: "redis://localhost:6379".to_string(),
+        postgres_url: "postgres://localhost:5432/anki_atlas_test".to_string(),
         queue_name: "test:queue".to_string(),
         max_concurrency: 2,
         max_retries: 3,
@@ -109,13 +109,17 @@ where
     }
 }
 
-async fn start_redis_container() -> anyhow::Result<testcontainers::ContainerAsync<GenericImage>> {
+async fn start_postgres_container() -> anyhow::Result<testcontainers::ContainerAsync<GenericImage>>
+{
     let mut last_error = None;
 
     for attempt in 1..=3 {
-        match GenericImage::new("redis", "7-alpine")
-            .with_exposed_port(6379.tcp())
-            .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
+        match GenericImage::new("postgres", "16-alpine")
+            .with_exposed_port(5432.tcp())
+            .with_env_var("POSTGRES_PASSWORD", "postgres")
+            .with_wait_for(WaitFor::message_on_stderr(
+                "database system is ready to accept connections",
+            ))
             .start()
             .await
         {
@@ -130,8 +134,8 @@ async fn start_redis_container() -> anyhow::Result<testcontainers::ContainerAsyn
     }
 
     Err(anyhow::anyhow!(
-        "start redis container after retries: {}",
-        last_error.expect("redis startup should produce an error")
+        "start postgres container after retries: {}",
+        last_error.expect("postgres startup should produce an error")
     ))
 }
 
@@ -144,43 +148,54 @@ async fn shutdown_and_join<Q: QueueBackend + 'static>(
     assert!(result.is_ok(), "worker task should shut down cleanly");
 }
 
-struct RealRedisBackend {
-    client: rustis::client::Client,
+struct RealPgBackend {
+    pool: sqlx::PgPool,
 }
 
-impl RealRedisBackend {
-    async fn connect(redis_url: &str) -> anyhow::Result<Self> {
-        Ok(Self {
-            client: jobs::connection::create_redis_client(redis_url)
-                .await
-                .map_err(anyhow::Error::from)?,
-        })
+impl RealPgBackend {
+    async fn connect(postgres_url: &str) -> anyhow::Result<Self> {
+        let pool = jobs::connection::create_job_pool(postgres_url)
+            .await
+            .map_err(anyhow::Error::from)?;
+        jobs::persistence::ensure_schema(&pool)
+            .await
+            .map_err(anyhow::Error::from)?;
+        Ok(Self { pool })
     }
 }
 
-impl QueueBackend for RealRedisBackend {
-    async fn brpop(&self, key: &str, timeout: f64) -> anyhow::Result<Option<String>> {
-        use rustis::commands::BlockingCommands;
-
-        let result: Option<(String, String)> = self.client.brpop(key, timeout).await?;
-        Ok(result.map(|(_, value)| value))
+impl QueueBackend for RealPgBackend {
+    async fn brpop(&self, _key: &str, timeout: f64) -> anyhow::Result<Option<String>> {
+        match jobs::persistence::pop_next_job(&self.pool).await? {
+            Some(record) => {
+                let envelope = jobs::JobEnvelope::from(&record);
+                let json = serde_json::to_string(&envelope)?;
+                Ok(Some(json))
+            }
+            None => {
+                tokio::time::sleep(std::time::Duration::from_secs_f64(timeout)).await;
+                Ok(None)
+            }
+        }
     }
 
-    async fn lpush(&self, key: &str, value: &str) -> anyhow::Result<()> {
-        use rustis::commands::ListCommands;
-
-        let _: usize = self.client.lpush(key, value).await?;
+    async fn lpush(&self, _key: &str, value: &str) -> anyhow::Result<()> {
+        let envelope: jobs::JobEnvelope = serde_json::from_str(value)?;
+        let record = self.load_job_record(&envelope.job_id).await?;
+        if let Some(record) = record {
+            jobs::persistence::reenqueue_job(&self.pool, &record).await?;
+        }
         Ok(())
     }
 
     async fn load_job_record(&self, job_id: &str) -> anyhow::Result<Option<JobRecord>> {
-        jobs::persistence::load_job_record(&self.client, job_id)
+        jobs::persistence::load_job_record(&self.pool, job_id)
             .await
             .map_err(anyhow::Error::from)
     }
 
     async fn save_job_record(&self, record: &JobRecord, ttl_seconds: u64) -> anyhow::Result<()> {
-        jobs::persistence::save_job_record(&self.client, record, ttl_seconds)
+        jobs::persistence::save_job_record(&self.pool, record, ttl_seconds)
             .await
             .map_err(anyhow::Error::from)
     }
@@ -685,25 +700,30 @@ async fn brpop_uses_configured_queue_name_and_timeout() {
 }
 
 #[tokio::test]
-async fn redis_manager_and_worker_drive_terminal_job_status() {
-    let (redis_url, _container) = match start_redis_container().await {
+async fn pg_manager_and_worker_drive_terminal_job_status() {
+    let (postgres_url, _container) = match start_postgres_container().await {
         Ok(container) => {
-            let host = container.get_host().await.expect("redis host");
-            let port = container
-                .get_host_port_ipv4(6379)
-                .await
-                .expect("redis port");
-            (format!("redis://{host}:{port}/0"), container)
+            let host = container.get_host().await.expect("pg host");
+            let port = container.get_host_port_ipv4(5432).await.expect("pg port");
+            (
+                format!("postgres://postgres:postgres@{host}:{port}/postgres"),
+                container,
+            )
         }
         Err(error) => {
-            eprintln!("skipping redis e2e test: {error}");
+            eprintln!("skipping pg e2e test: {error}");
             return;
         }
     };
-    let queue_name = "test:jobs:e2e";
-    let manager = RedisJobManager::new(&redis_url, queue_name, 3, 3600)
-        .await
-        .expect("create job manager");
+    let manager = PgJobManager::new(
+        jobs::connection::create_job_pool(&postgres_url)
+            .await
+            .expect("create pool"),
+        3,
+        3600,
+    )
+    .await
+    .expect("create job manager");
     let job = manager
         .enqueue_sync_job(
             SyncJobPayload {
@@ -718,11 +738,11 @@ async fn redis_manager_and_worker_drive_terminal_job_status() {
         .expect("enqueue sync job");
 
     let mut config = test_config();
-    config.redis_url = redis_url.clone();
-    config.queue_name = queue_name.to_string();
+    config.postgres_url = postgres_url.clone();
+    config.queue_name = "test:jobs:e2e".to_string();
     config.poll_interval = Duration::from_millis(10);
 
-    let backend = RealRedisBackend::connect(&redis_url)
+    let backend = RealPgBackend::connect(&postgres_url)
         .await
         .expect("connect worker backend");
     let worker = Arc::new(Worker::new(config, backend));

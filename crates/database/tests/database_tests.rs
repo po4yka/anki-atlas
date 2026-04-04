@@ -37,7 +37,7 @@ fn settings_for_container(host: &str, port: u16) -> common::config::Settings {
         qdrant_url: "http://localhost:6333".to_string(),
         qdrant_quantization: common::config::Quantization::None,
         qdrant_on_disk: false,
-        redis_url: "redis://localhost:6379/0".to_string(),
+        postgres_url: "postgres://localhost:5432/anki_atlas".to_string(),
         job_queue_name: "test_jobs".to_string(),
         job_result_ttl_seconds: 3600,
         job_max_retries: 3,

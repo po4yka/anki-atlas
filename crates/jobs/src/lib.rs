@@ -6,10 +6,10 @@ pub mod tasks;
 pub mod types;
 
 pub use error::JobError;
-pub use manager::{JobManager, RedisJobManager};
+pub use manager::{JobManager, PgJobManager};
 pub use types::{
-    IndexJobPayload, IndexJobResult, JOB_KEY_PREFIX, JobEnvelope, JobPayload, JobRecord,
-    JobResultData, JobStatus, JobType, SyncJobPayload, SyncJobResult,
+    IndexJobPayload, IndexJobResult, JobEnvelope, JobPayload, JobRecord, JobResultData, JobStatus,
+    JobType, SyncJobPayload, SyncJobResult,
 };
 
 #[cfg(test)]

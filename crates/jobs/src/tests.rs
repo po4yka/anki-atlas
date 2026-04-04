@@ -1,10 +1,8 @@
-use crate::connection::{RedisConfig, parse_redis_url};
 use crate::error::JobError;
 use crate::manager::{JobManager, MockJobManager};
-use crate::persistence::job_key;
 use crate::types::{
-    IndexJobPayload, JOB_KEY_PREFIX, JobPayload, JobRecord, JobResultData, JobStatus, JobType,
-    SyncJobPayload, SyncJobResult,
+    IndexJobPayload, JobPayload, JobRecord, JobResultData, JobStatus, JobType, SyncJobPayload,
+    SyncJobResult,
 };
 use chrono::Utc;
 
@@ -18,7 +16,6 @@ fn all_types_are_send_sync() {
     _assert_send_sync::<JobType>();
     _assert_send_sync::<JobStatus>();
     _assert_send_sync::<JobRecord>();
-    _assert_send_sync::<RedisConfig>();
 }
 
 // ── JobStatus tests ──────────────────────────────────────────────────────────
@@ -175,80 +172,6 @@ fn job_record_json_with_all_fields() {
     assert_eq!(restored.error.as_deref(), Some("some error"));
 }
 
-// ── persistence::job_key ─────────────────────────────────────────────────────
-
-#[test]
-fn job_key_format() {
-    assert_eq!(job_key("abc-123"), format!("{JOB_KEY_PREFIX}abc-123"));
-}
-
-#[test]
-fn job_key_produces_correct_prefix() {
-    let key = job_key("my-job-id");
-    assert_eq!(key, "ankiatlas:job:my-job-id");
-}
-
-#[test]
-fn job_key_empty_id() {
-    assert_eq!(job_key(""), "ankiatlas:job:");
-}
-
-// ── connection::parse_redis_url ──────────────────────────────────────────────
-
-#[test]
-fn parse_redis_url_basic() {
-    let config = parse_redis_url("redis://localhost:6379/0").expect("parse");
-    assert_eq!(config.host, "localhost");
-    assert_eq!(config.port, 6379);
-    assert_eq!(config.database, 0);
-    assert!(!config.tls);
-    assert!(config.username.is_none());
-    assert!(config.password.is_none());
-}
-
-#[test]
-fn parse_redis_url_with_auth() {
-    let config = parse_redis_url("rediss://user:secret@redis.example.com:6380/2").expect("parse");
-    assert_eq!(config.host, "redis.example.com");
-    assert_eq!(config.port, 6380);
-    assert_eq!(config.database, 2);
-    assert!(config.tls);
-    assert_eq!(config.username.as_deref(), Some("user"));
-    assert_eq!(config.password.as_deref(), Some("secret"));
-}
-
-#[test]
-fn parse_redis_url_default_port() {
-    let config = parse_redis_url("redis://myhost/1").expect("parse");
-    assert_eq!(config.host, "myhost");
-    assert_eq!(config.port, 6379);
-    assert_eq!(config.database, 1);
-}
-
-#[test]
-fn parse_redis_url_no_database() {
-    let config = parse_redis_url("redis://localhost").expect("parse");
-    assert_eq!(config.database, 0);
-}
-
-#[test]
-fn parse_redis_url_rejects_http() {
-    let result = parse_redis_url("http://localhost:6379/0");
-    assert!(result.is_err());
-}
-
-#[test]
-fn parse_redis_url_rejects_empty() {
-    let result = parse_redis_url("");
-    assert!(result.is_err());
-}
-
-#[test]
-fn parse_redis_url_rejects_ftp() {
-    let result = parse_redis_url("ftp://localhost/0");
-    assert!(result.is_err());
-}
-
 // ── MockJobManager compiles ──────────────────────────────────────────────────
 
 #[tokio::test]
@@ -341,8 +264,8 @@ fn unsupported_error_is_not_retryable() {
 }
 
 #[test]
-fn redis_error_is_retryable() {
-    let error = JobError::Redis("timeout".to_string());
+fn database_error_is_retryable() {
+    let error = JobError::Database("timeout".to_string());
     assert!(error.is_retryable());
 }
 
@@ -362,7 +285,7 @@ fn error_display_messages() {
     };
     assert!(e.to_string().contains("succeeded"));
 
-    let e = JobError::Redis("timeout".to_string());
+    let e = JobError::Database("timeout".to_string());
     assert!(e.to_string().contains("timeout"));
 
     let e = JobError::Serialization("bad json".to_string());
@@ -373,11 +296,4 @@ fn error_display_messages() {
 
     let e = JobError::Unsupported("scheduling".to_string());
     assert!(e.to_string().contains("scheduling"));
-}
-
-// ── JOB_KEY_PREFIX constant ──────────────────────────────────────────────────
-
-#[test]
-fn job_key_prefix_value() {
-    assert_eq!(JOB_KEY_PREFIX, "ankiatlas:job:");
 }

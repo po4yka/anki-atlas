@@ -9,7 +9,7 @@ use common::config::{EmbeddingProviderKind, Settings};
 use database::create_pool;
 use indexer::embeddings::{EmbeddingProvider, EmbeddingProviderConfig, create_embedding_provider};
 use indexer::qdrant::{QdrantRepository, VectorRepository};
-use jobs::{JobManager, RedisJobManager};
+use jobs::{JobManager, PgJobManager};
 use search::error::{RerankError, SearchError};
 use search::repository::SqlxSearchReadRepository;
 use search::reranker::{CrossEncoderReranker, Reranker};
@@ -523,16 +523,15 @@ pub async fn build_surface_services(
 
     let job_settings = settings.jobs();
     let job_manager = Arc::new(
-        RedisJobManager::new(
-            &job_settings.redis_url,
-            &job_settings.queue_name,
+        PgJobManager::new(
+            db.clone(),
             job_settings.max_retries,
             u64::from(job_settings.result_ttl_seconds),
         )
         .await
         .map_err(|e| {
             SurfaceError::Configuration(format!(
-                "create Redis job manager for surface runtime: {e}"
+                "create PostgreSQL job manager for surface runtime: {e}"
             ))
         })?,
     ) as Arc<dyn JobManager>;

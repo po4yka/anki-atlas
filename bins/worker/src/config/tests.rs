@@ -8,7 +8,7 @@ fn test_settings() -> common::config::Settings {
         qdrant_url: "http://localhost:6333".to_string(),
         qdrant_quantization: common::config::Quantization::Scalar,
         qdrant_on_disk: false,
-        redis_url: "redis://localhost:6379/0".to_string(),
+        postgres_url: "postgres://localhost:5432/anki_atlas".to_string(),
         job_queue_name: "ankiatlas_jobs".to_string(),
         job_result_ttl_seconds: 86400,
         job_max_retries: 3,
@@ -29,10 +29,10 @@ fn test_settings() -> common::config::Settings {
 }
 
 #[test]
-fn from_settings_maps_redis_url() {
+fn from_settings_maps_postgres_url() {
     let settings = test_settings();
     let config = WorkerConfig::from_job_settings(&settings.jobs());
-    assert_eq!(config.redis_url, "redis://localhost:6379/0");
+    assert_eq!(config.postgres_url, "redis://localhost:6379/0");
 }
 
 #[test]
@@ -86,11 +86,11 @@ fn from_settings_custom_max_retries() {
 }
 
 #[test]
-fn from_settings_custom_redis_url() {
+fn from_settings_custom_postgres_url() {
     let mut settings = test_settings();
-    settings.redis_url = "redis://custom:6380/2".to_string();
+    settings.postgres_url = "postgres://custom:5432/test".to_string();
     let config = WorkerConfig::from_job_settings(&settings.jobs());
-    assert_eq!(config.redis_url, "redis://custom:6380/2");
+    assert_eq!(config.postgres_url, "postgres://custom:5432/test");
 }
 
 #[test]

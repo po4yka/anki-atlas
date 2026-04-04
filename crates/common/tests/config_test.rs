@@ -37,7 +37,6 @@ fn settings_load_returns_defaults_when_no_env_vars() {
         vec![
             "ANKIATLAS_POSTGRES_URL",
             "ANKIATLAS_QDRANT_URL",
-            "ANKIATLAS_REDIS_URL",
             "ANKIATLAS_EMBEDDING_PROVIDER",
             "ANKIATLAS_EMBEDDING_MODEL",
             "ANKIATLAS_EMBEDDING_DIMENSION",
@@ -69,7 +68,7 @@ fn settings_load_returns_defaults_when_no_env_vars() {
             assert!(!settings.qdrant_on_disk);
 
             // Async jobs
-            assert!(settings.redis_url.starts_with("redis://"));
+            assert!(settings.postgres_url.starts_with("postgres"));
             assert_eq!(settings.job_queue_name, "ankiatlas_jobs");
             assert_eq!(settings.job_result_ttl_seconds, 86400);
             assert_eq!(settings.job_max_retries, 3);
@@ -107,10 +106,6 @@ fn settings_load_reads_ankiatlas_prefixed_env_vars() {
                 Some("postgresql://custom:1234/db"),
             ),
             ("ANKIATLAS_QDRANT_URL", Some("https://qdrant.example.com")),
-            (
-                "ANKIATLAS_REDIS_URL",
-                Some("redis://redis.example.com:6379/1"),
-            ),
             ("ANKIATLAS_API_PORT", Some("9090")),
             ("ANKIATLAS_DEBUG", Some("true")),
             ("ANKIATLAS_API_KEY", Some("secret-key-123")),
@@ -129,7 +124,6 @@ fn settings_load_reads_ankiatlas_prefixed_env_vars() {
 
             assert_eq!(settings.postgres_url, "postgresql://custom:1234/db");
             assert_eq!(settings.qdrant_url, "https://qdrant.example.com");
-            assert_eq!(settings.redis_url, "redis://redis.example.com:6379/1");
             assert_eq!(settings.api_port, 9090);
             assert!(settings.debug);
             assert_eq!(settings.api_key, Some("secret-key-123".to_string()));
@@ -166,7 +160,7 @@ fn validate_accepts_postgres_scheme() {
         vec![("ANKIATLAS_POSTGRES_URL", Some("postgres://localhost/db"))],
         || {
             let settings = Settings::load().expect("postgres:// should be accepted");
-            assert!(settings.postgres_url.starts_with("postgres://"));
+            assert!(settings.postgres_url.starts_with("postgres"));
         },
     );
 }
@@ -205,30 +199,6 @@ fn qdrant_grpc_url_swaps_default_rest_port() {
 fn qdrant_grpc_url_preserves_custom_port() {
     let grpc_url = qdrant_grpc_url("http://localhost:7444").expect("grpc url");
     assert_eq!(grpc_url, "http://localhost:7444");
-}
-
-// ── Validation: redis_url ───────────────────────────────────────────────
-
-#[test]
-fn validate_rejects_invalid_redis_url() {
-    temp_env::with_vars(
-        vec![("ANKIATLAS_REDIS_URL", Some("http://localhost:6379"))],
-        || {
-            let result = Settings::load();
-            assert!(result.is_err(), "Should reject non-redis URL");
-        },
-    );
-}
-
-#[test]
-fn validate_accepts_rediss_url() {
-    temp_env::with_vars(
-        vec![("ANKIATLAS_REDIS_URL", Some("rediss://secure-redis:6380/0"))],
-        || {
-            let settings = Settings::load().expect("rediss:// should be accepted");
-            assert!(settings.redis_url.starts_with("rediss://"));
-        },
-    );
 }
 
 // ── Validation: embedding_dimension ─────────────────────────────────────
@@ -385,11 +355,7 @@ fn settings_load_returns_config_error_variant() {
 #[test]
 fn settings_debug_impl() {
     temp_env::with_vars_unset(
-        vec![
-            "ANKIATLAS_POSTGRES_URL",
-            "ANKIATLAS_QDRANT_URL",
-            "ANKIATLAS_REDIS_URL",
-        ],
+        vec!["ANKIATLAS_POSTGRES_URL", "ANKIATLAS_QDRANT_URL"],
         || {
             let settings = Settings::load().expect("defaults should work");
             let debug = format!("{settings:?}");
@@ -403,11 +369,7 @@ fn settings_debug_impl() {
 #[test]
 fn settings_clone() {
     temp_env::with_vars_unset(
-        vec![
-            "ANKIATLAS_POSTGRES_URL",
-            "ANKIATLAS_QDRANT_URL",
-            "ANKIATLAS_REDIS_URL",
-        ],
+        vec!["ANKIATLAS_POSTGRES_URL", "ANKIATLAS_QDRANT_URL"],
         || {
             let settings = Settings::load().expect("defaults should work");
             let cloned = settings.clone();
@@ -455,7 +417,6 @@ fn settings_projection_methods_return_narrow_runtime_contracts() {
         vec![
             "ANKIATLAS_POSTGRES_URL",
             "ANKIATLAS_QDRANT_URL",
-            "ANKIATLAS_REDIS_URL",
             "ANKIATLAS_API_KEY",
         ],
         || {
@@ -465,7 +426,7 @@ fn settings_projection_methods_return_narrow_runtime_contracts() {
             assert!(database.postgres_url.starts_with("postgresql://"));
 
             let jobs = settings.jobs();
-            assert!(jobs.redis_url.starts_with("redis://"));
+            assert!(jobs.postgres_url.starts_with("postgres"));
             assert_eq!(jobs.queue_name, "ankiatlas_jobs");
 
             let api = settings.api();

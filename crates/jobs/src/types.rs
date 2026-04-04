@@ -34,8 +34,6 @@ impl JobStatus {
     }
 }
 
-pub const JOB_KEY_PREFIX: &str = "ankiatlas:job:";
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SyncJobPayload {
     pub source: String,
@@ -115,7 +113,7 @@ pub struct JobRecord {
     pub error: Option<String>,
 }
 
-/// Serialized job message pushed to the Redis queue.
+/// Minimal job envelope used by the worker for dispatch.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JobEnvelope {
     pub job_id: String,

@@ -1,7 +1,7 @@
+use sqlx::PgPool;
+
 use crate::error::JobError;
-use crate::types::{
-    IndexJobPayload, JobEnvelope, JobPayload, JobRecord, JobStatus, JobType, SyncJobPayload,
-};
+use crate::types::{IndexJobPayload, JobPayload, JobRecord, JobStatus, JobType, SyncJobPayload};
 use chrono::{DateTime, Utc};
 use tracing::instrument;
 
@@ -33,28 +33,37 @@ pub trait JobManager: Send + Sync {
     async fn close(&self) -> Result<(), JobError>;
 }
 
-/// Redis-backed job manager.
-pub struct RedisJobManager {
-    client: rustis::client::Client,
-    queue_name: String,
+/// PostgreSQL-backed job manager.
+///
+/// Uses the `job_queue` table for both queue semantics and job state storage.
+/// Replaces the previous Redis-backed implementation with zero external dependencies
+/// beyond the existing PostgreSQL database.
+pub struct PgJobManager {
+    pool: PgPool,
     max_retries: u32,
     result_ttl_seconds: u64,
 }
 
-impl RedisJobManager {
+impl PgJobManager {
+    /// Create a new PostgreSQL job manager.
+    ///
+    /// Automatically creates the `job_queue` table if it doesn't exist.
     pub async fn new(
-        redis_url: &str,
-        queue_name: &str,
+        pool: PgPool,
         max_retries: u32,
         result_ttl_seconds: u64,
     ) -> Result<Self, JobError> {
-        let client = crate::connection::create_redis_client(redis_url).await?;
+        crate::persistence::ensure_schema(&pool).await?;
         Ok(Self {
-            client,
-            queue_name: queue_name.to_string(),
+            pool,
             max_retries,
             result_ttl_seconds,
         })
+    }
+
+    /// Access the underlying connection pool (used by the worker).
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
     }
 
     fn create_record(&self, job_type: JobType, payload: JobPayload) -> JobRecord {
@@ -79,25 +88,12 @@ impl RedisJobManager {
     }
 
     async fn enqueue(&self, record: &JobRecord) -> Result<(), JobError> {
-        use rustis::commands::ListCommands;
-
-        crate::persistence::save_job_record(&self.client, record, self.result_ttl_seconds).await?;
-
-        let envelope = JobEnvelope::from(record);
-        let json =
-            serde_json::to_string(&envelope).map_err(|e| JobError::Serialization(e.to_string()))?;
-        let _: usize = self
-            .client
-            .lpush(&self.queue_name, &json)
-            .await
-            .map_err(|e| JobError::Redis(e.to_string()))?;
-
-        Ok(())
+        crate::persistence::save_job_record(&self.pool, record, self.result_ttl_seconds).await
     }
 }
 
 #[async_trait::async_trait]
-impl JobManager for RedisJobManager {
+impl JobManager for PgJobManager {
     #[instrument(skip(self))]
     async fn enqueue_sync_job(
         &self,
@@ -134,7 +130,7 @@ impl JobManager for RedisJobManager {
 
     #[instrument(skip(self))]
     async fn get_job(&self, job_id: &str) -> Result<JobRecord, JobError> {
-        crate::persistence::load_job_record(&self.client, job_id)
+        crate::persistence::load_job_record(&self.pool, job_id)
             .await?
             .ok_or_else(|| JobError::NotFound(job_id.to_string()))
     }
@@ -150,12 +146,17 @@ impl JobManager for RedisJobManager {
         }
         record.cancel_requested = true;
         record.status = JobStatus::CancelRequested;
-        crate::persistence::save_job_record(&self.client, &record, self.result_ttl_seconds).await?;
+        crate::persistence::save_job_record(&self.pool, &record, self.result_ttl_seconds).await?;
         Ok(record)
     }
 
     #[instrument(skip(self))]
     async fn close(&self) -> Result<(), JobError> {
+        // Cleanup expired jobs on close
+        let deleted = crate::persistence::cleanup_expired(&self.pool).await?;
+        if deleted > 0 {
+            tracing::info!(deleted, "cleaned up expired job records");
+        }
         Ok(())
     }
 }

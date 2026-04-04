@@ -14,8 +14,8 @@ pub enum JobError {
     #[error("unsupported jobs feature: {0}")]
     Unsupported(String),
 
-    #[error("Redis error: {0}")]
-    Redis(String),
+    #[error("database error: {0}")]
+    Database(String),
 
     #[error("serialization error: {0}")]
     Serialization(String),
@@ -26,6 +26,12 @@ pub enum JobError {
 
 impl JobError {
     pub fn is_retryable(&self) -> bool {
-        matches!(self, Self::BackendUnavailable(_) | Self::Redis(_))
+        matches!(self, Self::BackendUnavailable(_) | Self::Database(_))
+    }
+}
+
+impl From<sqlx::Error> for JobError {
+    fn from(e: sqlx::Error) -> Self {
+        Self::Database(e.to_string())
     }
 }

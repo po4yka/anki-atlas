@@ -118,7 +118,7 @@ impl TestStack {
         let settings = build_settings(
             format!("postgresql://postgres:postgres@{postgres_host}:{postgres_port}/postgres"),
             format!("http://{qdrant_host}:{qdrant_grpc_port}"),
-            format!("redis://{redis_host}:{redis_port}/0"),
+            format!("postgres://localhost:5432/anki_atlas"),
             queue_name.clone(),
             api_key.map(ToOwned::to_owned),
         );
@@ -596,7 +596,7 @@ impl TestStack {
 fn build_settings(
     postgres_url: String,
     qdrant_url: String,
-    redis_url: String,
+    postgres_url: String,
     queue_name: String,
     api_key: Option<String>,
 ) -> Settings {
@@ -605,7 +605,7 @@ fn build_settings(
         qdrant_url,
         qdrant_quantization: Quantization::None,
         qdrant_on_disk: false,
-        redis_url,
+        postgres_url,
         job_queue_name: queue_name,
         job_result_ttl_seconds: 300,
         job_max_retries: 3,
@@ -637,7 +637,7 @@ fn default_env(settings: &Settings) -> HashMap<String, String> {
         ),
         (
             "ANKIATLAS_REDIS_URL".to_string(),
-            settings.redis_url.clone(),
+            settings.postgres_url.clone(),
         ),
         (
             "ANKIATLAS_JOB_QUEUE_NAME".to_string(),

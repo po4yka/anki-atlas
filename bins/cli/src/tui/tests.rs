@@ -341,7 +341,7 @@ fn render_home_ready_screen_contains_runtime_summary() {
             summary: Some(RuntimeSettingsSummary {
                 postgres_url: "postgres://db".to_string(),
                 qdrant_url: "http://qdrant".to_string(),
-                redis_url: "redis://cache".to_string(),
+                job_backend: "postgresql".to_string(),
                 embedding_provider: "openai".to_string(),
                 embedding_model: "text-embedding-3-small".to_string(),
                 rerank_enabled: true,

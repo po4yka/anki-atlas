@@ -124,7 +124,7 @@ fn test_settings() -> Settings {
         qdrant_url: "http://localhost:6333".into(),
         qdrant_quantization: common::config::Quantization::None,
         qdrant_on_disk: false,
-        redis_url: "redis://localhost:6379/0".into(),
+        postgres_url: "postgres://localhost:5432/anki_atlas".into(),
         job_queue_name: "test_jobs".into(),
         job_result_ttl_seconds: 3600,
         job_max_retries: 3,

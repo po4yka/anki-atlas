@@ -9,7 +9,6 @@ use database::run_migrations;
 pub use error::PerfError;
 use indexer::embeddings::{DeterministicEmbeddingProvider, EmbeddingProvider, content_hash};
 use indexer::qdrant::{NotePayload, QdrantRepository, VectorRepository};
-use rustis::commands::{FlushingMode, ServerCommands};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
@@ -131,7 +130,7 @@ pub async fn reset_and_seed(
     let pool = database::create_pool(&settings.database()).await?;
     run_migrations(&pool).await?;
     truncate_runtime_tables(&pool).await?;
-    flush_redis(&settings.redis_url).await?;
+    flush_job_queue(&pool).await?;
 
     let state = seed_postgres_internal(&pool, profile).await?;
     reset_qdrant(settings, &state.notes).await?;
@@ -187,18 +186,11 @@ pub fn profile_manifest(profile: DatasetProfile) -> SeedManifest {
     }
 }
 
-async fn flush_redis(redis_url: &str) -> Result<(), PerfError> {
-    let client = jobs::connection::create_redis_client(redis_url)
+async fn flush_job_queue(pool: &PgPool) -> Result<(), PerfError> {
+    sqlx::query("DELETE FROM job_queue WHERE TRUE")
+        .execute(pool)
         .await
-        .map_err(|e| PerfError::Redis {
-            message: format!("{e}"),
-        })?;
-    client
-        .flushdb(FlushingMode::Sync)
-        .await
-        .map_err(|e| PerfError::Redis {
-            message: format!("{e}"),
-        })?;
+        .ok(); // Ignore error if table doesn't exist yet
     Ok(())
 }
 

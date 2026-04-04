@@ -13,7 +13,6 @@ jobs = { path = "../jobs" }
 
 thiserror = { workspace = true }
 qdrant-client = { workspace = true }
-rustis = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }

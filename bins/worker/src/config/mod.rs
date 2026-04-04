@@ -5,10 +5,10 @@ use common::config::JobSettings;
 /// Worker configuration, loaded from Settings.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorkerConfig {
-    /// Redis URL for job queue.
-    pub redis_url: String,
+    /// PostgreSQL URL for job queue (shared with application database).
+    pub postgres_url: String,
 
-    /// Name of the Redis list to poll for jobs.
+    /// Logical queue name (used for logging, not for table routing).
     pub queue_name: String,
 
     /// Maximum concurrent job executions.
@@ -23,7 +23,7 @@ pub struct WorkerConfig {
     /// Allow aborting running jobs on shutdown.
     pub allow_abort_on_shutdown: bool,
 
-    /// TTL for job results in Redis.
+    /// TTL for completed job records (seconds).
     pub result_ttl_seconds: u64,
 }
 
@@ -31,7 +31,7 @@ impl WorkerConfig {
     /// Build from job-specific runtime settings.
     pub fn from_job_settings(settings: &JobSettings) -> Self {
         Self {
-            redis_url: settings.redis_url.clone(),
+            postgres_url: settings.postgres_url.clone(),
             queue_name: settings.queue_name.clone(),
             max_concurrency: 4,
             max_retries: settings.max_retries,

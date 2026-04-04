@@ -208,9 +208,9 @@ dependencies = [
  "dotenvy",
  "jobs",
  "mockall",
- "rustis",
  "serde",
  "serde_json",
+ "sqlx",
  "surface-runtime",
  "testcontainers",
  "testcontainers-modules",
@@ -1198,9 +1198,6 @@ name = "bytes"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "bytesize"
@@ -1632,12 +1629,6 @@ name = "crc-catalog"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19d374276b40fb8bbdee95aef7c7fa6b5316ec764510eb64b8dd0e2ed0d7e7f5"
-
-[[package]]
-name = "crc16"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "338089f42c427b86394a5ee60ff321da23a5c89c9d89514c829687b26359fcff"
 
 [[package]]
 name = "crc32fast"
@@ -2710,12 +2701,6 @@ dependencies = [
  "bit-set 0.5.3",
  "regex",
 ]
-
-[[package]]
-name = "fast-float2"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8eb564c5c7423d25c886fb561d1e4ee69f72354d16918afa32c08811f6b6a55"
 
 [[package]]
 name = "fastembed"
@@ -4285,14 +4270,13 @@ dependencies = [
  "chrono",
  "common",
  "mockall",
- "rustis",
  "serde",
  "serde_json",
+ "sqlx",
  "strum 0.28.0",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
- "url",
  "uuid",
 ]
 
@@ -5451,7 +5435,6 @@ dependencies = [
  "indexer",
  "jobs",
  "qdrant-client",
- "rustis",
  "serde",
  "serde_json",
  "sqlx",
@@ -6708,32 +6691,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
  "semver",
-]
-
-[[package]]
-name = "rustis"
-version = "0.19.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53709ab61f0c2788b0de01aa6a8cb1c57bb7bc62974cb8249ddf42356bfdbf2f"
-dependencies = [
- "atoi",
- "bytes",
- "crc16",
- "dtoa",
- "fast-float2",
- "futures-channel",
- "futures-util",
- "itoa",
- "log",
- "memchr",
- "rand 0.9.2",
- "serde",
- "smallvec",
- "socket2 0.6.3",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "url",
 ]
 
 [[package]]

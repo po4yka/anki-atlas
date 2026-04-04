@@ -12,9 +12,12 @@ use worker::{QueueBackend, Worker};
 use common::logging::{LoggingConfig, init_global_logging};
 use jobs::JobRecord;
 
-/// Redis-backed queue backend for production use.
-struct RedisQueueBackend {
-    client: rustis::client::Client,
+/// PostgreSQL-backed queue backend for production use.
+///
+/// Uses `SELECT ... FOR UPDATE SKIP LOCKED` for reliable job dequeuing
+/// and standard INSERT/UPDATE for job state persistence.
+struct PgQueueBackend {
+    pool: sqlx::PgPool,
 }
 
 fn ensure_worker_runtime_enabled() -> anyhow::Result<()> {
@@ -32,36 +35,55 @@ set ANKIATLAS_ENABLE_EXPERIMENTAL_JOB_WORKER=1 only for development and test run
     )
 }
 
-impl RedisQueueBackend {
-    async fn connect(redis_url: &str) -> anyhow::Result<Self> {
-        let client = jobs::connection::create_redis_client(redis_url)
+impl PgQueueBackend {
+    async fn connect(postgres_url: &str) -> anyhow::Result<Self> {
+        let pool = jobs::connection::create_job_pool(postgres_url)
             .await
             .map_err(anyhow::Error::from)?;
-        Ok(Self { client })
+        // Ensure schema exists
+        jobs::persistence::ensure_schema(&pool)
+            .await
+            .map_err(anyhow::Error::from)?;
+        Ok(Self { pool })
     }
 }
 
-impl QueueBackend for RedisQueueBackend {
-    async fn brpop(&self, key: &str, timeout: f64) -> anyhow::Result<Option<String>> {
-        use rustis::commands::BlockingCommands;
-        let result: Option<(String, String)> = self.client.brpop(key, timeout).await?;
-        Ok(result.map(|(_, value)| value))
+impl QueueBackend for PgQueueBackend {
+    async fn brpop(&self, _key: &str, timeout: f64) -> anyhow::Result<Option<String>> {
+        // Try to pop a job using FOR UPDATE SKIP LOCKED
+        match jobs::persistence::pop_next_job(&self.pool).await? {
+            Some(record) => {
+                // Convert to envelope JSON for the worker
+                let envelope = jobs::JobEnvelope::from(&record);
+                let json = serde_json::to_string(&envelope)?;
+                Ok(Some(json))
+            }
+            None => {
+                // No jobs available -- sleep for the timeout period
+                tokio::time::sleep(std::time::Duration::from_secs_f64(timeout)).await;
+                Ok(None)
+            }
+        }
     }
 
-    async fn lpush(&self, key: &str, value: &str) -> anyhow::Result<()> {
-        use rustis::commands::ListCommands;
-        let _: usize = self.client.lpush(key, value).await?;
+    async fn lpush(&self, _key: &str, value: &str) -> anyhow::Result<()> {
+        // Re-enqueue: parse the envelope and set status back to queued
+        let envelope: jobs::JobEnvelope = serde_json::from_str(value)?;
+        let record = self.load_job_record(&envelope.job_id).await?;
+        if let Some(record) = record {
+            jobs::persistence::reenqueue_job(&self.pool, &record).await?;
+        }
         Ok(())
     }
 
     async fn load_job_record(&self, job_id: &str) -> anyhow::Result<Option<JobRecord>> {
-        jobs::persistence::load_job_record(&self.client, job_id)
+        jobs::persistence::load_job_record(&self.pool, job_id)
             .await
             .map_err(anyhow::Error::from)
     }
 
     async fn save_job_record(&self, record: &JobRecord, ttl_seconds: u64) -> anyhow::Result<()> {
-        jobs::persistence::save_job_record(&self.client, record, ttl_seconds)
+        jobs::persistence::save_job_record(&self.pool, record, ttl_seconds)
             .await
             .map_err(anyhow::Error::from)
     }
@@ -85,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!(queue = %config.queue_name, concurrency = config.max_concurrency, "starting worker");
 
-    let backend = RedisQueueBackend::connect(&config.redis_url).await?;
+    let backend = PgQueueBackend::connect(&config.postgres_url).await?;
     let worker = Worker::new(config, backend);
 
     tokio::select! {

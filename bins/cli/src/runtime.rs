@@ -26,7 +26,7 @@ impl ExecutionMode {
 pub struct RuntimeSettingsSummary {
     pub postgres_url: String,
     pub qdrant_url: String,
-    pub redis_url: String,
+    pub job_backend: String,
     pub embedding_provider: String,
     pub embedding_model: String,
     pub rerank_enabled: bool,
@@ -79,7 +79,7 @@ pub fn summarize_settings(settings: &Settings) -> RuntimeSettingsSummary {
     RuntimeSettingsSummary {
         postgres_url: settings.postgres_url.clone(),
         qdrant_url: settings.qdrant_url.clone(),
-        redis_url: settings.redis_url.clone(),
+        job_backend: "postgresql".to_string(),
         embedding_provider: embedding_provider_label(settings.embedding_provider).to_string(),
         embedding_model: settings.embedding_model.clone(),
         rerank_enabled: settings.rerank_enabled,

@@ -37,9 +37,9 @@ pub(crate) fn render_home(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
                         .unwrap_or("(unknown)")
                 )),
                 Line::from(format!(
-                    "Redis: {}",
+                    "Jobs: {}",
                     summary
-                        .map(|item| item.redis_url.as_str())
+                        .map(|item| item.job_backend.as_str())
                         .unwrap_or("(unknown)")
                 )),
                 Line::from(format!(

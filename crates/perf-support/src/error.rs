@@ -14,9 +14,6 @@ pub enum PerfError {
     #[error("embedding error: {0}")]
     Embedding(#[from] indexer::embeddings::EmbeddingError),
 
-    #[error("redis error: {message}")]
-    Redis { message: String },
-
     #[error("serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 

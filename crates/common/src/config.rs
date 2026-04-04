@@ -44,7 +44,6 @@ pub struct Settings {
     pub qdrant_url: String,
     pub qdrant_quantization: Quantization,
     pub qdrant_on_disk: bool,
-    pub redis_url: String,
     pub job_queue_name: String,
     pub job_result_ttl_seconds: u32,
     pub job_max_retries: u32,
@@ -72,7 +71,7 @@ pub struct DatabaseSettings {
 /// Job runtime settings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobSettings {
-    pub redis_url: String,
+    pub postgres_url: String,
     pub queue_name: String,
     pub result_ttl_seconds: u32,
     pub max_retries: u32,
@@ -118,7 +117,6 @@ impl Settings {
                 .parse_enum("qdrant_quantization")?,
             qdrant_on_disk: env_or("ANKIATLAS_QDRANT_ON_DISK", "false")
                 .parse_bool("qdrant_on_disk")?,
-            redis_url: env_or("ANKIATLAS_REDIS_URL", "redis://localhost:6379/0"),
             job_queue_name: env_or("ANKIATLAS_JOB_QUEUE_NAME", "ankiatlas_jobs"),
             job_result_ttl_seconds: env_or("ANKIATLAS_JOB_RESULT_TTL_SECONDS", "86400")
                 .parse_u32("job_result_ttl_seconds")?,
@@ -173,14 +171,6 @@ impl Settings {
             return Err(ConfigError(format!(
                 "qdrant_url must start with http:// or https://, got: {}",
                 self.qdrant_url
-            )));
-        }
-
-        // redis_url must start with redis:// or rediss://
-        if !self.redis_url.starts_with("redis://") && !self.redis_url.starts_with("rediss://") {
-            return Err(ConfigError(format!(
-                "redis_url must start with redis:// or rediss://, got: {}",
-                self.redis_url
             )));
         }
 
@@ -248,7 +238,7 @@ impl Settings {
     /// Extract the job-runtime settings needed by queue producers and workers.
     pub fn jobs(&self) -> JobSettings {
         JobSettings {
-            redis_url: self.redis_url.clone(),
+            postgres_url: self.postgres_url.clone(),
             queue_name: self.job_queue_name.clone(),
             result_ttl_seconds: self.job_result_ttl_seconds,
             max_retries: self.job_max_retries,
