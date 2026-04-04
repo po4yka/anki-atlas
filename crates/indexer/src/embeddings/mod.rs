@@ -4,10 +4,14 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 mod deterministic;
+#[cfg(feature = "local-embeddings")]
+pub mod fastembed;
 mod google;
 mod openai;
 
 pub use deterministic::DeterministicEmbeddingProvider;
+#[cfg(feature = "local-embeddings")]
+pub use fastembed::FastEmbedProvider;
 pub use google::GoogleEmbeddingProvider;
 pub use openai::OpenAiEmbeddingProvider;
 
@@ -289,6 +293,11 @@ pub enum EmbeddingProviderConfig {
     Mock {
         dimension: usize,
     },
+    #[cfg(feature = "local-embeddings")]
+    FastEmbed {
+        model: String,
+        dimension: usize,
+    },
 }
 
 /// Create provider from config.
@@ -323,5 +332,10 @@ pub fn create_embedding_provider(
             api_key.clone(),
         )
         .map(|p| Box::new(p) as Box<dyn EmbeddingProvider>),
+        #[cfg(feature = "local-embeddings")]
+        EmbeddingProviderConfig::FastEmbed { model, dimension } => {
+            FastEmbedProvider::new(model.clone(), *dimension)
+                .map(|p| Box::new(p) as Box<dyn EmbeddingProvider>)
+        }
     }
 }

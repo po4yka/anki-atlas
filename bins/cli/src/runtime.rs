@@ -71,6 +71,7 @@ fn embedding_provider_label(provider: EmbeddingProviderKind) -> &'static str {
         EmbeddingProviderKind::OpenAi => "openai",
         EmbeddingProviderKind::Google => "google",
         EmbeddingProviderKind::Mock => "mock",
+        EmbeddingProviderKind::FastEmbed => "fastembed",
     }
 }
 

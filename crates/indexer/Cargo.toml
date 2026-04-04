@@ -15,11 +15,16 @@ reqwest = { workspace = true }
 qdrant-client = { workspace = true }
 sha2 = { workspace = true }
 futures = { workspace = true }
+fastembed = { workspace = true, optional = true }
 base64 = "0.22"
 hex = "0.4"
 thiserror = { workspace = true }
 tracing = { workspace = true }
 regex = { workspace = true }
+
+[features]
+default = []
+local-embeddings = ["fastembed"]
 
 [dev-dependencies]
 mockall = { workspace = true }

@@ -21,6 +21,7 @@ pub enum Quantization {
 pub enum EmbeddingProviderKind {
     OpenAi,
     Google,
+    FastEmbed,
     Mock,
 }
 

@@ -328,6 +328,13 @@ fn build_embedding_config(settings: &Settings) -> Result<EmbeddingProviderConfig
                     )
                 })?,
         },
+        EmbeddingProviderKind::FastEmbed => {
+            return Err(SurfaceError::Configuration(
+                "FastEmbed provider requires the 'local-embeddings' feature on the indexer crate. \
+                 Use ANKIATLAS_EMBEDDING_PROVIDER=openai or google for the server runtime."
+                    .into(),
+            ));
+        }
     };
 
     Ok(config)
