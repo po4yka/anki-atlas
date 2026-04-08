@@ -50,6 +50,9 @@ scorecard.png
 card-review-results.tsv
 .cardloop/review-checkpoint.json
 
+# Claude Code
+.claude/plans/
+
 # Cursor
 .cursorignore
 .cursorindexingignore
